@@ -72,7 +72,8 @@ function linkDirectory(source: string, destination: string): void {
 function mirrorDependencyLinks(sourceRoot: string, destinationRoot: string): string[] {
   const names: string[] = []
   for (const entry of readdirSync(sourceRoot, { withFileTypes: true })) {
-    if (entry.name === '.bin') continue
+    // pnpm metadata and build caches (for example .vite-temp) are not packages.
+    if (entry.name.startsWith('.')) continue
     const source = join(sourceRoot, entry.name)
     if (entry.name.startsWith('@') && (entry.isDirectory() || entry.isSymbolicLink())) {
       mkdirSync(join(destinationRoot, entry.name), { recursive: true })

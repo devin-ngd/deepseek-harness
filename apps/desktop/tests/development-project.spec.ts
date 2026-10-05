@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -70,6 +70,9 @@ describe('desktop development project', () => {
     writeFileSync(join(dependencies, 'plain-dependency', 'package.json'), '{}\n')
     mkdirSync(join(dependencies, '@scope', 'dependency'))
     writeFileSync(join(dependencies, '@scope', 'dependency', 'package.json'), '{}\n')
+    // Build caches are not packages, even if a cache contains its own manifest.
+    for (const name of ['.vite-temp', '.cache', '.bin']) mkdirSync(join(dependencies, name))
+    writeFileSync(join(dependencies, '.cache', 'package.json'), '{"name":"cache","version":"1.0.0"}\n')
 
     const project = prepareDevelopmentProject({
       projectDir: join(root, 'development'),
@@ -85,6 +88,10 @@ describe('desktop development project', () => {
       .toBe(realpathSync(join(dependencies, 'plain-dependency')))
     expect(realpathSync(join(project, 'node_modules', '@scope', 'dependency')))
       .toBe(realpathSync(join(dependencies, '@scope', 'dependency')))
+    for (const name of ['.vite-temp', '.cache', '.bin']) {
+      expect(existsSync(join(project, 'node_modules', name))).toBe(false)
+      expect(existsSync(join(dependencies, name))).toBe(true)
+    }
     const manifest = JSON.parse(readFileSync(join(project, 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>
     }
