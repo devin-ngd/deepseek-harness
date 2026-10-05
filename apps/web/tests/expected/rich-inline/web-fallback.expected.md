@@ -1,0 +1,5 @@
+- region "Agent-generated interactive content":
+  - text: Interactive content
+  - status: This browser shows the text version. Open Desktop for interactive content.
+  - status: Completed
+  - paragraph: "Trip ready: Hangzhou west lake, total 825.50. The original message contains the updated plan."

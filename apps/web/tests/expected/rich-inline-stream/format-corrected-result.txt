@@ -1,0 +1,6 @@
+[
+  {
+    "type": "text",
+    "text": "```rich-html\n{\"key\":\"format-corrected\",\"html\":\"<section id=\\\"corrected\\\" class=\\\"rich-card\\\"><h2>Searchable documents</h2><label>Search<input id=\\\"search\\\" placeholder=\\\"Filter by title\\\"></label><ul class=\\\"rich-list\\\"><li>Alpha notes</li><li>Beta report</li></ul></section>\",\"css\":\"#corrected label{margin-bottom:14px}\",\"js\":\"document.getElementById(\\\"search\\\").oninput=e=>document.querySelectorAll(\\\"li\\\").forEach(row=>row.hidden=!row.textContent.toLowerCase().includes(e.target.value.toLowerCase()));\",\"fallbackText\":\"Alpha notes; Beta report\",\"stateSchemaVersion\":1}\n```"
+  }
+]

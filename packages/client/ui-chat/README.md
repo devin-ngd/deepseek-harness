@@ -87,6 +87,8 @@ Work-details modes control process-group display and reasoning previews. Compact
 <a id="grouped-rendering"></a>
 ## Grouped rendering
 
+Inline-content plugins register in the Session-scoped `conversation.chat.assistant-block` chain to claim individual Assistant text or unknown blocks. Pure selectors receive original indexes, stable Node keys, optional durable message IDs, and streaming/interruption state; declining retains Markdown or JSON. Chat executes no authored HTML through this slot and grants no tools. The occupying plugin owns content validation, isolation, and action handling.
+
 Chat registers its process Group Definition through `uiConversation.groups`. React renders the mixed `node`/`group` root sequence through stable Group and Node seats; group headers subscribe to data separately from member arrays. Settled group titles remain independent of the live-detail preference; only running titles update when that preference changes. [Process-group business rules](src/client/conversation-nodes/README.md#process-grouping) define segmentation and activity summaries.
 
 `groupPart` selects reasoning or response in the Assistant renderer without copying Node payloads. A Tool node owns its preparing, dispatched, and result stages under one callId. Each part has a distinct DOM anchor for reading-position restoration; Turn navigation addresses the original Node key and lands on its first visible part. Group sources, member parents, and keys survive display-mode changes and newly loaded prefixes that extend an intact group. The source Node Store remains the only Node-data owner, and a replaced Builder rebinds keyed subscriptions without remounting seats. Mode changes retain size observers and reuse the Turn-state selector.

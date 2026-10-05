@@ -442,14 +442,18 @@ export interface LaunchOptions {
   }
   /** Reuse an existing harness home so a second Host can verify user settings across origins. */
   harnessHome?: string
+  /** Caller-owned roots kept on close for a genuine Host restart scenario. */
+  persistentWorld?: { workspaceCwd: string; persistenceRoot: string }
 }
 
 /** Dispose the booted tree and remove both owned temp roots, reporting every independent cleanup failure. */
-async function cleanupScaffoldWorld(ctx: Context, workspaceCwd: string, persistenceRoot: string): Promise<unknown[]> {
+async function cleanupScaffoldWorld(ctx: Context, workspaceCwd: string, persistenceRoot: string, removeRoots = true): Promise<unknown[]> {
   const failures: unknown[] = []
   await Promise.resolve(ctx.fiber.dispose()).catch((error: unknown) => failures.push(error))
-  await rm(workspaceCwd, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
-  await rm(persistenceRoot, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
+  if (removeRoots) {
+    await rm(workspaceCwd, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
+    await rm(persistenceRoot, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
+  }
   return failures
 }
 
@@ -502,7 +506,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       process.env.DEEPSEEK_API_KEY = originalDeepSeekCredential
     }
   }
-  const workspaceCwd = await realpath(await mkdtemp(join(tmpdir(), 'dsh-web-e2e-ws-')))
+  const workspaceCwd = await realpath(options.persistentWorld?.workspaceCwd ?? await mkdtemp(join(tmpdir(), 'dsh-web-e2e-ws-')))
   // Isolated harness home: the settings/credentials rows resolve $DSH_HOME
   // paths at load, and an in-process boot must NEVER touch the developer's
   // real ~/.dsh document or credential file.
@@ -537,7 +541,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   Object.assign(process.env, skillRootEnvironment)
   let persistenceRoot: string
   try {
-    persistenceRoot = await mkdtemp(join(tmpdir(), 'dsh-web-e2e-sessions-'))
+    persistenceRoot = options.persistentWorld?.persistenceRoot ?? await mkdtemp(join(tmpdir(), 'dsh-web-e2e-sessions-'))
   } catch (error) {
     const failures: unknown[] = [error]
     await rm(workspaceCwd, { recursive: true, force: true }).catch((cleanupError: unknown) => failures.push(cleanupError))
@@ -726,7 +730,9 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       // Reproduce that link so a private bundle can import its own plugin.
       const installedLink = join(profileDir, 'node_modules', manifest.name)
       await mkdir(dirname(installedLink), { recursive: true })
-      await symlink(packageDir, installedLink, 'junction')
+      if (existsSync(installedLink)) {
+        if (await realpath(installedLink) !== await realpath(packageDir)) throw new Error('web scaffold install anchor changed across restart')
+      } else await symlink(packageDir, installedLink, 'junction')
       return {
         packageName: manifest.name,
         packageDir,
@@ -902,7 +908,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     }
   } catch (error) {
     if (process.cwd() !== originalCwd) process.chdir(originalCwd)
-    const cleanupFailures = await cleanupScaffoldWorld(ctx, workspaceCwd, persistenceRoot)
+    const cleanupFailures = await cleanupScaffoldWorld(ctx, workspaceCwd, persistenceRoot, options.persistentWorld === undefined)
     if (publicProxy !== undefined) {
       await publicProxy.close().catch((closeError: unknown) => cleanupFailures.push(closeError))
     }
@@ -978,7 +984,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       }
       try {
         stopObservingSessions()
-        failures.push(...await cleanupScaffoldWorld(ctx, workspaceCwd, persistenceRoot))
+        failures.push(...await cleanupScaffoldWorld(ctx, workspaceCwd, persistenceRoot, options.persistentWorld === undefined))
         if (publicProxy !== undefined) {
           try {
             await publicProxy.close()

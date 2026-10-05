@@ -19,6 +19,10 @@
     "apps/desktop/src/keyboard.ts",
     "apps/desktop/src/keybindings.ts",
     "apps/desktop/src/browser-guests.ts",
+    "apps/desktop/src/rich-guests.ts",
+    "apps/desktop/src/rich-types.ts",
+    "apps/desktop/src/rich-document.ts",
+    "apps/desktop/src/rich-limits.ts",
     "apps/desktop/src/ipc.ts",
     "apps/desktop/src/update-overlay.ts",
     "apps/desktop/tests/**/*.client.spec.tsx",
@@ -142,6 +146,7 @@
     { "path": "./packages/api/workspace-files/tsconfig.client.json" },
     { "path": "./packages/client/web" },
     { "path": "./packages/context/file-reference" },
+    { "path": "./packages/experimental/rich-inline/tsconfig.client.json" },
     { "path": "./apps/web" }
   ]
 }

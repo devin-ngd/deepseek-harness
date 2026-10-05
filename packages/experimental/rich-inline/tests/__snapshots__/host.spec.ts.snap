@@ -1,0 +1,11 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`bounded final format correction > logs one correction, removes tools, denies forged tool execution, and never retries on historical mounting > logged format correction 1`] = `
+[
+  {
+    "text": "Rich inline output format check: The substantive result is plain text or Markdown, not generated HTML/CSS/JavaScript.
+The work above is already done. Correct only the presentation of the existing result, in the user's language. Do not repeat any tool call or external operation; tools are disabled for this correction. Return only a valid rich-html fenced JSON object with key, html, css, js, fallbackText and stateSchemaVersion. Create an actual styled webpage fragment with a clear layout and appropriate local controls (for example search or filtering for a list), not Markdown copied into a pre, article or text box. Put all explanations inside the HTML. Preserve the existing facts and sources. If necessary facts are missing, show that limitation in the HTML. 不要再输出 Markdown。只生成 HTML/CSS/JavaScript 代码，渲染由插件完成。",
+    "type": "text",
+  },
+]
+`;

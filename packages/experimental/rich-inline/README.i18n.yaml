@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/rich-inline/README.md
+/:
+  en: cc6ac08c5cbcda49
+  zh: b3bf4a5c669dbd6b
+/deepseek-ai-dsh-experimental-rich-inline:
+  en: b4578d55d40d42c5
+  zh: a0e7c0698c9bca0d
+/deepseek-ai-dsh-experimental-rich-inline/summary:
+  en: 7598822942e6d88b
+  zh: 0e248aa5d7e69b84
+/deepseek-ai-dsh-experimental-rich-inline/table-of-contents:
+  en: b563e4ec4727d0de
+  zh: 44ebe7ceeda3dff6
+/deepseek-ai-dsh-experimental-rich-inline/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-experimental-rich-inline/use-this-package/install-into-a-profile:
+  en: 7e267c54b2021b40
+  zh: dd482070e8898707
+/deepseek-ai-dsh-experimental-rich-inline/use-this-package/what-you-get:
+  en: 9bf9d86bd2a295a7
+  zh: 06b7b7b11aac14e8
+/deepseek-ai-dsh-experimental-rich-inline/use-this-package/built-in-dark-appearance:
+  en: f7208abf8b1799e5
+  zh: 3c55ed44b6e91cda
+/deepseek-ai-dsh-experimental-rich-inline/understand-the-implementation:
+  en: 9c2e28194a88b7b4
+  zh: 17bcac9a89d838b0
+/deepseek-ai-dsh-experimental-rich-inline/further-exploration:
+  en: e462682922983ac6
+  zh: a14b0d4894d4441f
+/deepseek-ai-dsh-experimental-rich-inline/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-rich-inline/model-experience/interaction-tools:
+  en: c0882c1d81f6d914
+  zh: 438cb49b15ccfa9e
+/deepseek-ai-dsh-experimental-rich-inline/model-experience/interaction-tools/what-the-model-sees:
+  en: 9e576a1d145d84bc
+  zh: d6d95315f889a42e
+/deepseek-ai-dsh-experimental-rich-inline/model-experience/interaction-tools/token-effect:
+  en: bb0d4376cc3d57e3
+  zh: 8c3d51da7571deed
+/deepseek-ai-dsh-experimental-rich-inline/model-experience/interaction-tools/kv-cache-effect:
+  en: 0e72ea8aa37bf79b
+  zh: 1ec019ec84f85e79
+/deepseek-ai-dsh-experimental-rich-inline/known-limitations-and-deferred-work:
+  en: 7fa83f38717f3f24
+  zh: 2f3fb6a9c995ab36
+/deepseek-ai-dsh-experimental-rich-inline/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: f9d48dd8cd7b4949

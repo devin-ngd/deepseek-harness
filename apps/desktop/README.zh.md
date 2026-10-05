@@ -100,7 +100,17 @@ Electron 拥有 `$DSH_HOME/profiles/desktop`。其 `dependencies` 包含 pnpm �
 
 应用 preload 只向 `dsh-app://app` 文档暴露启动就绪、致命启动失败上报、原生目录选择、用于 composer 路径引用的 `__DSH_HOST_PATHS__` 桥接和租约范围内的 Browser 桥接。同一个 preload 通过 `dshDesktop.deviceInfo()` 转发主进程采集的机器描述，按 `name=value` 字段以 `; ` 分隔：`platform`、`os`、`app_arch`（应用二进制实际运行的架构，模拟运行时与硬件架构不同）、`cpu` 和 `memory_gib`（物理内存总量，GiB，保留一位小数）。取值不可用时省略对应字段。该描述不包含主机名、用户名或序列号。产品页面还获得 Desktop 标记、更新展示数据和打开原生确认的操作，不能选择安装产物或授权安装。插件管理使用 Web 应用经过认证的 HTTP API；Electron 在 `dsh-app://shell/` 本地提供更新弹窗文档和资源，不依赖 Host 就绪。Electron 不提供插件管理 IPC 或独立管理页面。任何渲染进程都不会获得文件系统访问、原始 Electron IPC、shell 或任意 pnpm 参数。
 
-只有主应用窗口启用 `<webview>`。guest 挂载必须匹配主进程签发的租约和分区；guest 保持 sandbox、context isolation 和 Web security，不启用 Node integration 或 guest preload。Browser IPC 监听只为应用文档创建。[Sidebar Browser](../../packages/client/ui-sidebar-browser/README.zh.md) 说明存储分组和 guest 限制；Host 鉴权仍独立于 URL 过滤而必需。
+只有主应用窗口启用 `<webview>`。guest 挂载必须匹配主进程签发的租约和分区；guest 保持 sandbox、context isolation 和 Web security，不启用 Node integration。Sidebar Browser guest 没有 preload。Browser IPC 监听只为应用文档创建。[Sidebar Browser](../../packages/client/ui-sidebar-browser/README.zh.md) 说明存储分组和 guest 限制；Host 鉴权仍独立于 URL 过滤而必需。
+
+### 消息富内容 guest
+
+应用 preload 暴露 `dshDesktop.rich.acquire({mountId, mountNonce, html, css, js})`、`send(lease, packet)`、`subscribe(lease, listener)` 和 `release(lease)`。获取的预留信息提供 `lease` 句柄、消息内 webview 必须使用的 `partition` 和惰性 `src`。主进程选择 preload 与最终文档；调用方不能指定 URL、文件系统读取器、Electron 对象或 shell 操作。guest 只获得 `richGuest.send(packet)` 和 `richGuest.subscribe(listener)`。原生传输绑定已登记的 guest 主帧与固定 mount 身份；消息 schema、顺序检查、持久接受、草稿和 Agent 执行仍由功能插件负责。
+
+每次 mount 使用全新非持久分区，并在已有 `dsh-app` scheme 下提供私有文档。HTML 布局、内联 CSS 和 nonce 绑定的 JavaScript 可使用普通 DOM 事件；此版本不支持内联事件属性、动态脚本来源、`eval`、Worker 或 WebRTC。图像、字体和媒体字节可通过 data URL 提供。主进程在生成代码运行前安装网络策略、响应 CSP、DNS 预取抑制、权限拒绝、导航与弹窗拒绝、文件选择拦截及隔离文件拖放处理。生成内容不能授权工具、文件访问或其他特权操作；确认界面由可信应用绘制。
+
+主进程要求 guest 的 OS 进程 ID 与所属应用不同，才提交文档。释放租约时先撤销传输，再断开 guest 的 Chromium 调试会话，然后终止隔离 renderer，不等待生成代码的 `beforeunload`，随后清除存储和协议处理器。必须先断开调试会话再终止：否则 Electron 44 会把 renderer 退出通知或已销毁 guest 的会话关闭交给已释放的调试器客户端，使浏览器主进程崩溃。所属应用文档导航、重载、失去 renderer 或被销毁时，该文档的所有 guest 都按同一方式释放。初始化失败发出 `{type: 'native.error', code}` 并关闭 guest。任意脚本仍会消耗 CPU 与内存；独立 renderer 和撤销能力不等于系统级内存限额，也不能据此证明所有浏览器侧通道均被封闭。
+
+Windows Electron 44 原生 runner 已在保留 sandbox、contextIsolation 和 webSecurity 的情况下通过，真实断言覆盖 Node/Host 访问阻断、独立进程、网络/导航/文件选择/拖放阻断、数据包洪泛、死循环终止时宿主仍响应，以及宿主重载后死循环与空闲 guest 的进程均结束。[原生聊天测试](../web/tests/rich-inline-native.e2e.ts) 组装真实 Loader、Host、Session 和 Client，仅模型采用确定性替身，检查消息、草稿、动作、附件、重启和分支。每次使用新结果目录；当前证据只覆盖对应平台，不代表签名安装程序或真实模型已验收。
 
 `dsh-app://shell/` 无需联系 Host 即可提供打包的更新文档、脚本和样式。静态请求保留 GET/HEAD、路径范围和 MIME 处理；每个更新文档继续使用隔离 preload 和所属窗口的 IPC 校验。
 

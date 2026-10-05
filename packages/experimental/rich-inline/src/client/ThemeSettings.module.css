@@ -1,0 +1,134 @@
+/* Theme section: heading and description over a tile grid, matching the plugin page's own section headings. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.description {
+  margin: 2px 0 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.tile {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 6px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.tile:hover:not(:disabled, [aria-pressed='true']) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.tile:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Same selected treatment as the Appearance cubes in General settings. */
+.tile[aria-pressed='true'] {
+  border-color: var(--dsw-static-neutral-bluish-400);
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+/* Each swatch draws its theme from inline --rich-* palette properties, so it looks the same under either app theme. */
+.swatch {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  height: 48px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background:
+    radial-gradient(70px 36px at 0 0, color-mix(in srgb, var(--rich-accent) 32%, transparent), transparent 72%) no-repeat,
+    radial-gradient(64px 36px at 100% 0, color-mix(in srgb, var(--rich-accent-2) 26%, transparent), transparent 72%) no-repeat,
+    var(--rich-bg);
+}
+
+.swatch::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--rich-accent), var(--rich-accent-2));
+}
+
+.heading,
+.line,
+.pill {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.heading {
+  width: 52%;
+  background: var(--rich-text-strong);
+}
+
+.line {
+  width: 76%;
+  background: var(--rich-muted);
+}
+
+.pill {
+  width: 26%;
+  background: var(--rich-accent);
+}
+
+/* Graphite has no edge light or glow. */
+.swatch[data-theme='dark'] {
+  background: var(--rich-bg);
+}
+
+.swatch[data-theme='dark']::before,
+.swatch[data-theme='none']::before {
+  display: none;
+}
+
+/* Without a built-in theme, blocks use the app's own colors. */
+.swatch[data-theme='none'] {
+  --rich-text-strong: var(--dsw-alias-label-primary);
+  --rich-muted: var(--dsw-alias-label-tertiary);
+  --rich-accent: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-bg-base);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

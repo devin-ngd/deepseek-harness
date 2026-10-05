@@ -18,7 +18,7 @@ import type { ChatPresentationPolicy } from '../presentation-policy.ts'
 import type { ToolCallId } from './store.ts'
 import type { ChatConversationViewNode, ChatNode, ChatNodeKind } from './chat-nodes.ts'
 import type {
-  ChatNodeProcessSource, ChatNodeSource, ChatSnapshot, ChatTurnProcessPresentation,
+  AssistantBlock, ChatNodeProcessSource, ChatNodeSource, ChatSnapshot, ChatTurnProcessPresentation,
 } from './snapshot.ts'
 import type { TurnProcessSpec } from './turn-process.ts'
 import type { PerformanceUsageMode } from '../../chat-settings.ts'
@@ -55,6 +55,19 @@ export interface TurnTailOwnerProps {
 /** Owner currency of finalized-assistant actions. */
 export interface AssistantActionOwnerProps {
   messageId: MessageId
+}
+
+/** One original Assistant content block offered to message-inline renderers. */
+export interface AssistantBlockOwnerProps {
+  /** Stable Chat Node identity across streaming and settlement. */
+  readonly nodeKey: ChatConversationViewNode['key']
+  /** Durable Assistant identity, absent before settlement and on synthetic interruptions. */
+  readonly messageId?: MessageId | undefined
+  /** Index in the original Assistant block array, including hidden blocks. */
+  readonly blockIndex: number
+  readonly block: AssistantBlock
+  readonly streaming: boolean
+  readonly interrupted?: boolean | undefined
 }
 
 /** Stable quota failure codes retained in the Session log; both raise the frame-wide notice. */
@@ -282,6 +295,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 
   interface SlotMap {
+    /**
+     * Optional inline renderer for one text or unknown Assistant block. The
+     * first selector accepting the owner replaces that block; all-decline
+     * retains Chat's Markdown or JSON fallback. Session identity comes from
+     * the enclosing binding, never from authored block data.
+     */
+    'conversation.chat.assistant-block': {
+      kind: 'chain'
+      scope: 'session'
+      owner: AssistantBlockOwnerProps
+    }
     /**
      * Final Chat node renderer, keyed by `ChatNodeKind`. The component receives
      * the typed node, shared Chat actions, and Turn-data hook. Reusing a key

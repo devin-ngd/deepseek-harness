@@ -54,6 +54,7 @@ import { DesktopPolicyTestAuth } from './policy-test-auth.ts'
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
+import { DesktopRichGuests } from './rich-guests.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
 import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
@@ -399,8 +400,8 @@ async function main(): Promise<void> {
   const applicationUrl = `${SCHEME}://app/`
   let hostUrl: string | undefined
   let hostCookie: string | undefined
-  const browserGuests = new DesktopBrowserGuests(() => hostUrl)
-  let injections: readonly unknown[] = []
+  const richGuests = new DesktopRichGuests(fileURLToPath(new URL('./preload-rich.cjs', import.meta.url)))
+  const browserGuests = new DesktopBrowserGuests(() => hostUrl, richGuests)
   let welcomeBackend: DesktopWelcomeBackend | undefined
   let reportedLaunch = false
   let analyticsEnabled = false
@@ -451,7 +452,6 @@ async function main(): Promise<void> {
         hostCookie = await authenticateWebHost(ready.url)
         hostUrl = ready.url
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
-        injections = ready.injections
         welcomeBackend = await connectDesktopWelcome(ready.url, (input, init) => net.fetch(input, init), async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
@@ -506,6 +506,7 @@ async function main(): Promise<void> {
       },
       updateTasks: (action: 'inspect' | 'lock' | 'unlock') => host.updateTasks(action),
       inspectQuit: () => host.inspectQuit(),
+      readIndexInjections: () => host.readIndexInjections(),
     }
   }, (state) => {
     if (state.phase === 'error') reportFatal(state.failure, 'host')
@@ -686,7 +687,7 @@ async function main(): Promise<void> {
     assertDesktopSender(event, ['app'])
     await startup
     if (backend.host === undefined || hostUrl === undefined) throw new Error('Desktop Host is unavailable')
-    return { injections, streamBaseUrl: new URL(hostUrl).origin }
+    return { injections: await backend.host.readIndexInjections(), streamBaseUrl: new URL(hostUrl).origin }
   })
 
   ipcMain.handle(DESKTOP_IPC.bootFailed, (event, message: unknown) => {
@@ -701,6 +702,23 @@ async function main(): Promise<void> {
   ipcMain.handle(DESKTOP_IPC.browserAcquire, (event, workspace: unknown) => {
     assertProductSender(event)
     return browserGuests.acquire(event.sender, workspace)
+  })
+  ipcMain.handle(DESKTOP_IPC.richAcquire, (event, request: unknown) => {
+    assertProductSender(event)
+    return richGuests.acquire(event.sender, request)
+  })
+  ipcMain.handle(DESKTOP_IPC.richSend, (event, lease: unknown, packet: unknown) => {
+    assertProductSender(event)
+    richGuests.send(event.sender, lease, packet)
+  })
+  ipcMain.handle(DESKTOP_IPC.richRelease, (event, lease: unknown) => {
+    assertProductSender(event)
+    return richGuests.release(event.sender, lease)
+  })
+  ipcMain.on(DESKTOP_IPC.richBootstrap, (event) => { event.returnValue = richGuests.bootstrap(event) })
+  ipcMain.on(DESKTOP_IPC.richFromGuest, (event, packet: unknown) => {
+    try { richGuests.receive(event, packet) }
+    catch (error) { console.error('Rich guest packet rejected', error) }
   })
   ipcMain.handle(DESKTOP_IPC.browserRelease, (event, lease: unknown) => {
     assertProductSender(event)

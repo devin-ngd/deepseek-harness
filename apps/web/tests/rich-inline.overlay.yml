@@ -1,0 +1,10 @@
+# Opt-in experimental plugin for keyless Host and Web-fallback integration tests.
+- insert:
+    - id: rich-inline
+      name: '@deepseek-ai/dsh-experimental-rich-inline'
+      config:
+        maxContentBytes: 2097152
+        maxInputBytes: 131072
+        maxFileBytes: 10485760
+        maxBlocksPerSession: 128
+        maxActionsPerSession: 2000

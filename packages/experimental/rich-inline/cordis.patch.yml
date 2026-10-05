@@ -1,0 +1,4 @@
+# Explicit opt-in: retain the existing Session queue and trusted permission UI.
+- insert:
+    - id: rich-inline
+      name: '@deepseek-ai/dsh-experimental-rich-inline'

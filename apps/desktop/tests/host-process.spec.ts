@@ -73,6 +73,23 @@ afterEach(async () => {
 })
 
 describe('desktop host process', () => {
+  it('reads current plugin URLs after replacement instead of reusing startup entries', async () => {
+    const runtime = projectWithHost(HTTP_HOST
+      .replace('const server = createServer', 'let generation = 1\nconst server = createServer')
+      .replace("if (request.url === '/fatal')", "if (request.url === '/replace-plugin') { generation++; response.end('replaced'); return }\n  if (request.url === '/fatal')")
+      .replace("url: 'http://127.0.0.1:'", "injections: [{ type: 'module', url: '/plugins/old/index.js' }], url: 'http://127.0.0.1:'")
+      .replace("if (message.type === 'update-tasks')", "if (message.type === 'index-injections') { process.send({ type: 'index-injections', requestId: message.requestId, injections: [{ type: 'module', url: '/plugins/' + generation + '/index.js' }] }); return }\n  if (message.type === 'update-tasks')"))
+    const host = hostProcess(runtime)
+    await expect(host.readIndexInjections()).rejects.toThrow('desktop boot: Host is unavailable')
+    const ready = await host.start()
+    expect(ready.injections).toEqual([{ type: 'module', url: '/plugins/old/index.js' }])
+    expect(await host.readIndexInjections()).toEqual([{ type: 'module', url: '/plugins/1/index.js' }])
+    await fetch(new URL('/replace-plugin', ready.url))
+    expect(await host.readIndexInjections()).toEqual([{ type: 'module', url: '/plugins/2/index.js' }])
+    await host.stop(true)
+    await expect(host.readIndexInjections()).rejects.toThrow('desktop boot: Host is unavailable')
+  })
+
   it('correlates task inspections and admission changes over private IPC', async () => {
     const host = hostProcess(projectWithHost())
     await expect(host.updateTasks('inspect')).rejects.toThrow('Host is unavailable')

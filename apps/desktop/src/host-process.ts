@@ -29,6 +29,11 @@ type DesktopHostEvent = ReadyEvent | FatalEvent | PlatformSessionEvent | { reado
   readonly active: boolean
   readonly error?: string
 } | {
+  readonly type: 'index-injections'
+  readonly requestId: number
+  readonly injections: readonly unknown[]
+  readonly error?: string
+} | {
   readonly type: 'quit-inspection'
   readonly requestId: number
   readonly activeTasks: boolean
@@ -85,6 +90,9 @@ function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
     case 'quit-inspection':
       return Number.isSafeInteger(candidate.requestId) && typeof candidate.activeTasks === 'boolean'
         && typeof candidate.scheduledTasks === 'boolean' && (candidate.error === undefined || typeof candidate.error === 'string')
+    case 'index-injections':
+      return Number.isSafeInteger(candidate.requestId) && Array.isArray(candidate.injections)
+        && (candidate.error === undefined || typeof candidate.error === 'string')
     default:
       return false
   }
@@ -257,13 +265,26 @@ export class DesktopHostProcess {
     return { activeTasks: response.activeTasks, scheduledTasks: response.scheduledTasks }
   }
 
+  /**
+   * Collect the currently active Client entries after plugin installation or removal.
+   * @returns Current entries; rejects unavailable or unresponsive Hosts instead of returning stale URLs.
+   */
+  async readIndexInjections(): Promise<readonly unknown[]> {
+    const response = await this.control({ type: 'index-injections' }, 10_000, 'desktop boot: plugin inspection timed out')
+    if (response.type !== 'index-injections') throw new Error('desktop boot: Host answered with a different control response')
+    return response.injections
+  }
+
   private async control(
-    request: { readonly type: 'update-tasks'; readonly action: 'inspect' | 'lock' | 'unlock' } | { readonly type: 'quit-inspection' },
+    request: { readonly type: 'update-tasks'; readonly action: 'inspect' | 'lock' | 'unlock' }
+      | { readonly type: 'quit-inspection' } | { readonly type: 'index-injections' },
     deadlineMs: number, deadlineMessage: string,
   ): Promise<DesktopHostControlResponse> {
     const child = this.child
     if (child === undefined || !child.connected || this.failureReported || this.stopping) {
-      throw new Error(`${request.type === 'update-tasks' ? 'desktop update' : 'desktop quit'}: Host is unavailable`)
+      const operation = request.type === 'update-tasks' ? 'desktop update'
+        : request.type === 'quit-inspection' ? 'desktop quit' : 'desktop boot'
+      throw new Error(`${operation}: Host is unavailable`)
     }
     const requestId = this.nextControlId++
     let timer: ReturnType<typeof setTimeout> | undefined

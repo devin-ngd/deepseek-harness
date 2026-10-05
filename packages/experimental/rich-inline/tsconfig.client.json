@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo" },
+  "include": ["src/client/**/*.ts", "src/client/**/*.tsx", "src/shared/**/*.ts", "src/css-modules.d.ts"],
+  "references": [
+    { "path": "../../../vendor/cordis" }, { "path": "../../../vendor/schemastery" },
+    { "path": "../../api/remotes/tsconfig.client.json" }, { "path": "../../api/session-controller/tsconfig.client.json" },
+    { "path": "../../client/file-upload/tsconfig.client.json" }, { "path": "../../client/locale/tsconfig.client.json" },
+    { "path": "../../client/store" }, { "path": "../../client/ui-chat/tsconfig.client.json" },
+    { "path": "../../client/ui-layout" }, { "path": "../../client/ui-plugin-manager/tsconfig.client.json" },
+    { "path": "../../client/ui-primitives" }, { "path": "../../client/ui-renderer" },
+    { "path": "../../client/ui-settings/tsconfig.client.json" }, { "path": "../../client/ui-slots" },
+    { "path": "../../core/session" }, { "path": "../../llm/llm" }, { "path": "../../util/crypto" }, { "path": "../../util/brand" }, { "path": "../../util/values" }
+  ]
+}

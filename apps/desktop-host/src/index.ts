@@ -44,6 +44,7 @@ async function main(): Promise<void> {
   const control: {
     updateTasks?: ReturnType<typeof installDesktopUpdateTaskControl>
     quitInspection?: ReturnType<typeof installDesktopQuitInspection>
+    indexInjections?: () => readonly unknown[]
   } = {}
   const send = (message: object): Promise<void> => new Promise((resolve, reject) => {
     if (!process.connected || process.send === undefined) { resolve(); return }
@@ -59,6 +60,19 @@ async function main(): Promise<void> {
   process.on('message', (message: unknown) => {
     if (typeof message !== 'object' || message === null || !('type' in message)) return
     if (message.type === 'shutdown') { void stop(); return }
+    if (message.type === 'index-injections') {
+      if (!('requestId' in message) || !Number.isSafeInteger(message.requestId)) return
+      void (async () => {
+        try {
+          if (stopping !== undefined || control.indexInjections === undefined) throw new Error('desktop boot: Host is unavailable')
+          await send({ type: 'index-injections', requestId: message.requestId, injections: control.indexInjections() })
+        } catch (error) {
+          await send({ type: 'index-injections', requestId: message.requestId, injections: [],
+            error: error instanceof Error ? error.message : String(error) })
+        }
+      })().catch((error: unknown) => { console.error(error) })
+      return
+    }
     if (message.type === 'quit-inspection') {
       if (!('requestId' in message) || !Number.isSafeInteger(message.requestId)) return
       const requestId = message.requestId
@@ -90,6 +104,7 @@ async function main(): Promise<void> {
   })
   process.once('disconnect', () => { void stop() })
   const { ctx } = await application
+  control.indexInjections = () => ctx.webServer.collectIndexInjections()
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   control.quitInspection = installDesktopQuitInspection(ctx)
   await ctx.plugin(desktopOffice, {

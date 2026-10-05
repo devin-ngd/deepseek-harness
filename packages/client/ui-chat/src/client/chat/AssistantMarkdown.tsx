@@ -3,7 +3,8 @@ import { fileMediaUrl } from '@deepseek-ai/dsh-util-workspace-path'
 import type { ReactNode } from 'react'
 import { JsonBlock, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownFileMentions, MarkdownPathImages } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ChatNodeOwnerProps, ChatViewSlotProps, UseDisclosure, UsePresentation } from '../contract/slots.ts'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type { AssistantBlockOwnerProps, ChatNodeOwnerProps, ChatViewSlotProps, UseDisclosure, UsePresentation } from '../contract/slots.ts'
 import type { AssistantBlock } from '../contract/snapshot.ts'
 import { markdownLabels } from '../markdown-labels.ts'
 import { ReasoningRow } from './ReasoningRow.tsx'
@@ -28,6 +29,10 @@ export function localPathMediaUrl(base: string, value: string): string | undefin
 }
 
 export interface AssistantMarkdownProps {
+  /** Chat identity supplied only when this helper renders inside the owning Node seat. */
+  blockOwner?: Pick<AssistantBlockOwnerProps, 'nodeKey' | 'messageId'> | undefined
+  /** Framework-owned child dispatch; standalone Markdown keeps its ordinary presentation. */
+  renderSlotChain?: PropsRenderSlots<'conversation.chat.assistant-block'>['renderSlotChain'] | undefined
   /** Render only the requested business portion, preserving original block indexes. */
   groupPart?: string | undefined
   /** Stable Hook forwarded to each independently expandable reasoning block. */
@@ -53,7 +58,7 @@ export interface AssistantMarkdownProps {
 /** Reasoning block as the Think variant summary row (figma 39:28304). */
 export const AssistantMarkdown = memo(function AssistantMarkdown({
   blocks, streaming, interrupted, renderMessageImages, groupPart, useDisclosure,
-  reasoningHidden = false, usePresentation, revealProcess, mentions, t,
+  reasoningHidden = false, usePresentation, revealProcess, mentions, blockOwner, renderSlotChain, t,
 }: AssistantMarkdownProps) {
   // Stable per locale revision (t identity changes on switch): a fresh object
   // per render would rebuild MarkdownText's component table every chunk.
@@ -71,24 +76,29 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
     || blocks.some(block => block.kind !== 'tool-call')
   if (!hasVisible) return null
   const rendered: ReactNode[] = []
+  const renderInline = (block: AssistantBlock, blockIndex: number, fallback: ReactNode): ReactNode => (
+    <Fragment key={blockIndex}>
+      {renderSlotChain !== undefined && blockOwner !== undefined
+        ? renderSlotChain('conversation.chat.assistant-block', {
+          ...blockOwner, blockIndex, block, streaming, interrupted,
+        }, { fallback })
+        : fallback}
+    </Fragment>
+  )
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]
     if (block === undefined) continue
     if (groupPart === 'reasoning' && block.kind !== 'reasoning') continue
     if (groupPart === 'response' && block.kind === 'reasoning') continue
     switch (block.kind) {
-      case 'text':
-        rendered.push(
-          <MarkdownText
-            key={i}
-            text={block.text}
-            streaming={streaming}
-            labels={labels}
-            fileMentions={mentions}
-            pathImages={pathImages}
-          />,
+      case 'text': {
+        const fallback = (
+          <MarkdownText text={block.text} streaming={streaming} labels={labels}
+            fileMentions={mentions} pathImages={pathImages} />
         )
+        rendered.push(renderInline(block, i, fallback))
         break
+      }
       case 'reasoning':
         rendered.push(
           <ProcessReasoning
@@ -128,15 +138,13 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
       // Grouped into tool rows by ChatView; hasVisible above skips an empty shell.
       case 'tool-call':
         break
-      default:
-        rendered.push(
-          <JsonBlock
-            key={i}
-            label={t('message.unknownBlock')}
-            payload={block.block}
-            truncatedLabel={total => t('json.truncated', { total })}
-          />,
+      default: {
+        const fallback = (
+          <JsonBlock label={t('message.unknownBlock')} payload={block.block}
+            truncatedLabel={total => t('json.truncated', { total })} />
         )
+        rendered.push(renderInline(block, i, fallback))
+      }
     }
   }
   return (

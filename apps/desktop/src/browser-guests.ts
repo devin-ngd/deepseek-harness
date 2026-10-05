@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { app, session, type BrowserWindow, type Session, type WebContents } from 'electron'
 import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { DESKTOP_IPC } from './ipc.ts'
+import type { DesktopRichGuests } from './rich-guests.ts'
 
 interface GuestLease {
   readonly owner: WebContents
@@ -18,7 +19,7 @@ export class DesktopBrowserGuests {
   private readonly leases = new Map<DesktopBrowserLeaseId, GuestLease>()
 
   /** @param hostUrl - current authenticated DSH Host, which guests cannot request. */
-  constructor(private readonly hostUrl: () => string | undefined) {}
+  constructor(private readonly hostUrl: () => string | undefined, private readonly rich?: DesktopRichGuests) {}
 
   /**
    * Reserve one guest in a workspace's process-lifetime partition.
@@ -70,6 +71,7 @@ export class DesktopBrowserGuests {
   bind(window: BrowserWindow, attachInput: (guest: WebContents, name: DesktopBrowserLeaseId) => () => void): void {
     const owner = window.webContents
     owner.on('will-attach-webview', (event, preferences, params) => {
+      if (this.rich?.prepareAttach(owner, event, preferences, params)) return
       const id = typeof params.src === 'string' && params.src.startsWith('about:blank#')
         ? params.src.slice('about:blank#'.length) : ''
       const lease = this.leases.get(id as DesktopBrowserLeaseId)
@@ -92,6 +94,7 @@ export class DesktopBrowserGuests {
       params.httpreferrer = ''
     })
     owner.on('did-attach-webview', (_event, guest) => {
+      if (this.rich?.bindGuest(owner, guest)) return
       let attachedLease: DesktopBrowserLeaseId | undefined
       // The first document is an inert about:blank carrying the approved lease.
       // Bind on the main-process event before the renderer can navigate the ready guest.
@@ -127,6 +130,7 @@ export class DesktopBrowserGuests {
       guest.on('login', (event, _details, _authInfo, callback) => { event.preventDefault(); callback() })
     })
     const releaseAll = (): void => {
+      this.rich?.releaseAll(owner)
       for (const [id, lease] of this.leases) {
         if (lease.owner === owner) void this.release(owner, id).catch((error: unknown) => { console.error(error) })
       }

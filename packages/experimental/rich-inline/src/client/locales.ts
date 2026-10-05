@@ -1,0 +1,59 @@
+/** Trusted toolbar copy, visually separate from generated HTML. */
+export const zh = {
+  legacy: '模型输出了 Markdown；此处为兼容阅读，尚未生成交互网页',
+  original: '查看原文',
+  previewClosed: '预览已关闭；生成代码仍保留',
+  preview: '正在生成内容；预览只读，完成后启用交互',
+  incomplete: '内容未完成或未通过校验；脚本未执行，可查看保留的代码',
+  source: '查看保留的代码', previewError: '预览暂不可用；完成后将重新校验并渲染',
+  repairing: '渲染出错，已反馈给 Agent 修正代码；当前草稿保留',
+  lateAfterCancel: '取消请求后收到的结果；不代表外部操作已撤回',
+  archived: '查看已归档草稿（可复制恢复）',
+  inputWarning: '输入仍保留在当前内容中，尚未保存或提交成功。请检查输入并重试，勿关闭或刷新。',
+  sizeError: '内容或恢复状态超过安全传输限额；完整数据仍保留，可阅读文字版本',
+  close: '关闭交互内容', file: '添加文件', update: '应用新版本', reload: '重新加载交互内容',
+  archiveWarning: '新版本的输入格式已改变。应用后旧草稿会归档，当前内容将替换。', archive: '归档草稿并更新', keep: '保留当前内容',
+  readOnly: '分支继承的内容只读；不会重放原会话动作', cancel: '请求取消',
+  accepted: '输入已接收，尚未完成', queued: '排队中', running: '处理中', cancel_requested: '已请求取消，等待结果',
+  outcome_unknown: '结果未知，请核实后再发起新动作', completed: '已完成', failed: '已失败', cancelled: '已取消',
+  pending: '新内容已就绪，当前输入仍保留', error: '交互内容暂不可用，可继续阅读文字',
+  web: '当前浏览器显示文字版本，交互内容需在桌面端打开',
+  label: 'Agent 生成的交互内容', title: '交互内容', trusted: '宿主控制', loading: '正在加载交互内容',
+  copy: '复制', copied: '已复制', code: '代码', wrap: '换行', unwrap: '取消换行', footnotes: '脚注',
+  themeTitle: '交互内容主题', themeDescription: '消息中交互内容使用的暗色样式，已显示的内容会随切换更新',
+  themeCyber: '赛博', themeAurora: '极光', themeNeon: '霓虹', themeTerminal: '终端', themeEmber: '余烬', themeDark: '石墨', themeNone: '关闭',
+  themeSaved: '主题已切换', themeFailed: '无法切换主题',
+} satisfies Record<string, string>
+
+/** Exact key set keeps both supported locales complete. */
+export type RichLocaleKey = keyof typeof zh
+/** English toolbar dictionary. */
+export const en: Record<RichLocaleKey, string> = {
+  legacy: 'The model returned Markdown. This is a compatibility view; an interactive webpage was not generated.',
+  original: 'View original text',
+  previewClosed: 'Preview closed; generated source is preserved.',
+  preview: 'Generating content; read-only preview. Interaction starts after completion.',
+  incomplete: 'Content is incomplete or invalid; scripts were not executed. Source is preserved.',
+  source: 'View preserved source', previewError: 'Preview unavailable; completed content will be validated and rendered again.',
+  repairing: 'Rendering failed; the Agent is repairing the code. Your draft is preserved.',
+  lateAfterCancel: 'Result received after cancellation; external effects may remain',
+  archived: 'Archived drafts (copy to restore)',
+  inputWarning: 'Your input remains in this content but was not saved or accepted. Check it and retry before closing or refreshing.',
+  sizeError: 'Content or restored state exceeds the transport limit; complete data is preserved and the text remains readable',
+  close: 'Close interactive content', file: 'Add file', update: 'Apply new version', reload: 'Reload interactive content',
+  archiveWarning: 'The input format changed. Applying this version archives the old draft and replaces the current content.',
+  archive: 'Archive draft and update', keep: 'Keep current content', readOnly: 'Inherited branch content is read-only; original actions are never replayed', cancel: 'Request cancellation',
+  accepted: 'Input accepted; work is not complete', queued: 'Queued', running: 'Processing', cancel_requested: 'Cancellation requested; awaiting outcome',
+  outcome_unknown: 'Outcome unknown; verify before starting new work', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled',
+  pending: 'New content is ready; your current input is preserved', error: 'Interactive content is unavailable; the text remains readable',
+  web: 'This browser shows the text version. Open Desktop for interactive content.',
+  label: 'Agent-generated interactive content', title: 'Interactive content', trusted: 'Host controls', loading: 'Loading interactive content',
+  copy: 'Copy', copied: 'Copied', code: 'Code', wrap: 'Wrap', unwrap: 'Unwrap', footnotes: 'Footnotes',
+  themeTitle: 'Interactive content theme', themeDescription: 'Dark style for interactive content in messages. Content already shown updates after a switch.',
+  themeCyber: 'Cyber', themeAurora: 'Aurora', themeNeon: 'Neon', themeTerminal: 'Terminal', themeEmber: 'Ember', themeDark: 'Graphite', themeNone: 'Off',
+  themeSaved: 'Theme changed', themeFailed: 'Could not change theme',
+}
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap { /** Trusted inline guest controls. */ richInline: RichLocaleKey }
+}

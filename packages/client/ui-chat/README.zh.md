@@ -87,6 +87,8 @@ Chat 末尾为进行中的 Turn 控制行，且该轮尚无可见输入时，第
 <a id="grouped-rendering"></a>
 ## 分组渲染
 
+消息内内容插件注册到 Session 范围的 `conversation.chat.assistant-block` 链，认领单个 Assistant 文本或未知块。纯选择器接收原始索引、稳定 Node key、可选持久消息 ID 及流式/中断状态；拒绝认领时保留 Markdown 或 JSON。Chat 不通过该槽位执行生成的 HTML，也不授予工具权限。认领插件负责内容校验、隔离与操作处理。
+
 Chat 通过 `uiConversation.groups` 注册过程 Group Definition。React 通过稳定的 Group 与 Node 容器渲染混合 `node`/`group` 根序列，组头数据与成员数组分别订阅。已结束组的标题独立于实时详情偏好，只有运行中的标题在该偏好变化时更新。[过程分组业务规则](src/client/conversation-nodes/README.zh.md#process-grouping) 定义切分方式与活动摘要。
 
 `groupPart` 在 Assistant 渲染器中选择推理或回复，不复制 Node 载荷。同一个 callId 的准备、派发与结果阶段由 Tool 节点自己拥有。每个部分有独立的 DOM 锚点用于恢复阅读位置；轮次导航使用原 Node key，落到它的第一个可见部分。展示模式切换以及为完整旧组补入更早成员时，保留组来源、成员父级及 key。原 Node Store 仍是唯一节点数据所有者，替换 Builder 时重新绑定按键订阅，不重挂载容器。模式变化保留尺寸观察器，并复用整轮状态选择器。
