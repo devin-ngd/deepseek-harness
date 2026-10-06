@@ -9,7 +9,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { promisify } from 'node:util'
@@ -45,6 +45,14 @@ async function probeTar(): Promise<string | undefined> {
 
 async function probeWindowsInstallerToolchain(environment: NodeJS.ProcessEnv): Promise<DesktopToolchainProbeFailure[]> {
   const failures: DesktopToolchainProbeFailure[] = []
+  if (environment.DSH_DESKTOP_VCVARS32 !== undefined) {
+    try {
+      if (!(await stat(environment.DSH_DESKTOP_VCVARS32)).isFile()) throw new Error('not a file')
+    } catch {
+      failures.push({ tool: 'vcvars32', detail: 'DSH_DESKTOP_VCVARS32 must name an existing MSVC environment script' })
+    }
+    return failures
+  }
   const programFiles = environment['ProgramFiles(x86)']
   const vswhere = programFiles === undefined
     ? undefined

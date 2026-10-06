@@ -64,6 +64,17 @@ describe('installer preparation preserves application dependencies', () => {
     }
   })
 
+  it('omits update policy and the update feed from an opted-out unsigned Windows app', async () => {
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const environment = { DSH_DESKTOP_APP_ID: 'com.example.installer', DSH_DESKTOP_TARGET_PLATFORM: 'win32',
+      DSH_DESKTOP_UNSIGNED: '1', DSH_DESKTOP_MANDATORY_UPDATE_DISABLED: '1' }
+    const config = createElectronBuilderConfig(environment, 'win32', 'x64')
+    expect(config.extraMetadata).not.toHaveProperty('dshMandatoryUpdatePolicy')
+    expect(config.publish).toBeNull()
+    expect(() => createElectronBuilderConfig({ ...environment, DSH_DESKTOP_UNSIGNED: '0' }, 'win32', 'x64'))
+      .toThrow('requires an unsigned local build')
+  })
+
   it('names unsigned Windows artifacts so they cannot pass for release builds', async () => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     const config = createElectronBuilderConfig({

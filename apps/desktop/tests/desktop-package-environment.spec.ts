@@ -23,6 +23,28 @@ async function withDirectory(action: (directory: string) => Promise<void>): Prom
 }
 
 describe('Desktop local packaging configuration', () => {
+  it('resolves the explicit Windows compiler script from the local file', async () => {
+    await withDirectory(async (directory) => {
+      const parent = { DSH_DESKTOP_VCVARS32: 'stale-compiler' }
+      await writeFile(join(directory, '.env.windows'), 'DSH_DESKTOP_VCVARS32=compiler/vcvars32.bat\n')
+      expect(loadDesktopPackageEnvironment('win32', parent, directory).DSH_DESKTOP_VCVARS32)
+        .toBe(join(directory, 'compiler/vcvars32.bat'))
+      await writeFile(join(directory, '.env.windows'), '')
+      expect(loadDesktopPackageEnvironment('win32', parent, directory).DSH_DESKTOP_VCVARS32).toBeUndefined()
+    })
+  })
+
+  it('takes the local unsigned policy opt-out only from the platform file', async () => {
+    await withDirectory(async (directory) => {
+      const parent = { DSH_DESKTOP_MANDATORY_UPDATE_DISABLED: '1' }
+      await writeFile(join(directory, '.env.windows'), 'DSH_DESKTOP_MANDATORY_UPDATE_DISABLED=0\n')
+      expect(loadDesktopPackageEnvironment('win32', parent, directory).DSH_DESKTOP_MANDATORY_UPDATE_DISABLED).toBe('0')
+      await writeFile(join(directory, '.env.windows'), '')
+      expect(loadDesktopPackageEnvironment('win32', parent, directory).DSH_DESKTOP_MANDATORY_UPDATE_DISABLED).toBeUndefined()
+      expect(parent.DSH_DESKTOP_MANDATORY_UPDATE_DISABLED).toBe('1')
+    })
+  })
+
   it('takes cache concurrency from the Windows file and defaults to four without ambient overrides', async () => {
     await withDirectory(async (directory) => {
       const parent = { DSH_DESKTOP_WINDOWS_SIGNATURE_CACHE_CONCURRENCY: '8' }

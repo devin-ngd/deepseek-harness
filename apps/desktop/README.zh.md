@@ -343,7 +343,7 @@ Windows 安装程序使用原生 NSIS 页面，提供亮暗配色、系统阴影
 
 主题在启动时跟随 Windows；可用 `/THEME=light`、`/THEME=dark` 和 `/THEME=auto` 显式选择配色。窗口在品牌控件准备完成后显示。欢迎页首次出现时，安装窗口会一次性移到普通窗口前方；若焦点在其他窗口，任务栏按钮会闪烁提示，但安装窗口不会始终置顶。进度读取锁定版本的 7-Zip 解压器百分比；目录替换、注册和清理仍使用有界估算。加权百分比不代表剩余时间。NSIS 报告成功后，进度条用 600 毫秒补满并短暂显示 100%，再显示完成页；切换目标时长为 750 毫秒。完成页保留窗口位置。点击完成后，安装程序先隐藏窗口，再启动已安装的可执行文件；启动失败会恢复页面以供重试。目录替换和失败恢复遵循上文描述的安装流程。首次启动的配置档案准备仍属于独立的 Desktop 操作。
 
-Windows 打包使用 Visual C++ Build Tools 和 Windows SDK 编译 x86 Win32/GDI+ 辅助库；签名构建通过已配置的 Windows 签名器对该库签名。准备钩子在所有平台上均由 electron-builder 继续负责收集生产依赖。
+Windows 打包使用 Visual C++ Build Tools 和 Windows SDK 编译 x86 Win32/GDI+ 辅助库；签名构建通过已配置的 Windows 签名器对该库签名。准备钩子在所有平台上均由 electron-builder 继续负责收集生产依赖。如果 MSVC 已安装但缺少 Visual Studio 登记信息，可在 `.env.windows` 中将 `DSH_DESKTOP_VCVARS32` 设为它的 `vcvars32.bat`；相对路径从 `apps/desktop` 解析，无效路径会在打包前报错。
 
 在有交互式桌面的 Windows x64 上，从仓库根目录运行 `pnpm --dir apps/desktop run test:installer`，可将小型原生测试载荷接入正式安装配置并执行验证。每次运行使用独立产品身份，依次验证仅英文和仅中文的安装器变体，并根据实际显示的欢迎页按钮选择测试文案。两个变体均安装到私有目录并在测试后卸载；截图和结果保留在 `.desktop-build/installer-tests/` 下。检查包含末尾带分隔符的已登记路径升级，以及磁盘根目录拒绝。可选的 `--signed` 标志使用下文的 Windows EV 配置，在嵌入前对测试程序和辅助库签名；它不会启用更新源。
 
@@ -430,7 +430,7 @@ Windows 下载完成后的更新确认说明应用会在安装期间关闭、完
 
 ### 强制更新策略
 
-打包读取 `.env.windows` 或 `.env.macos`：`DSH_DESKTOP_AUTO_UPDATE_ENV=test`（默认值）选择 `DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN`；`production` 选择 `DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN`。模板将两个源站留空；在 Git 忽略的目标 dotenv 文件中填写所选部署的源站。在准备产物或签名前，所选源站必须配置，包括未签名和仅准备构建；未选环境的源站可不填。这些配置不会回退到父进程环境或另一部署环境。打包将选定策略与应用 ID 写入元数据；打包应用忽略运行时覆盖。
+打包读取 `.env.windows` 或 `.env.macos`：`DSH_DESKTOP_AUTO_UPDATE_ENV=test`（默认值）选择 `DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN`；`production` 选择 `DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN`。模板将两个源站留空；在 Git 忽略的目标 dotenv 文件中填写所选部署的源站。在准备产物或签名前，所选源站必须配置，包括未签名和仅准备构建；只有本地未签名构建显式设置 `DSH_DESKTOP_MANDATORY_UPDATE_DISABLED=1` 时可以省略，未选环境的源站可不填。这个开关会省略打包策略元数据和远程策略查询，无需策略源站或登录配置；签名和仅准备构建拒绝启用它。默认值为 `0`，且只从目标 dotenv 文件读取。这些配置不会回退到父进程环境或另一部署环境。打包将选定策略与应用 ID 写入元数据；打包应用忽略运行时覆盖。
 
 `DSH_DESKTOP_MANDATORY_UPDATE_CONFIG` JSON 提供测试登录源站，以及可选的轮询和下载页面选项；打包拒绝其中的 `origin` 和 `authentication`。页面白名单默认只包含所选服务源站；需要其他已批准下载页面源站时应显式配置。测试包选择 `feishu-test`，且必须在 `DSH_DESKTOP_MANDATORY_UPDATE_CONFIG` 中配置 `allowedAuthOrigins`；正式包选择 `anonymous`，并拒绝该字段。每个登录源站必须是没有凭据、路径、查询或片段的 HTTPS origin。登录窗口仅允许文档导航到所选策略源站和这些已配置源站。策略请求拒绝重定向；仅测试鉴权携带网关 Cookie。未打包开发模式则从此变量读取完整策略 JSON，并要求 `DSH_DESKTOP_APP_ID`；缺少 JSON 会禁用开发模式策略查询，仅匿名开发允许 HTTP `127.0.0.1`。用户发起常规检查时会并发触发策略检查，但不会等待或展示策略失败。只有已确认的强更决定可以关闭常规弹窗。测试环境鉴权会等待当前常规弹窗结束，取消或失败不会丢弃 updater 结果。
 

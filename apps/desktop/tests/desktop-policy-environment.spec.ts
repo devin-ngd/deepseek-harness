@@ -7,8 +7,30 @@ const origins = { DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://test.exampl
   DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://prod.example.com' }
 const auth = { DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: JSON.stringify({ allowedAuthOrigins: ['https://login.example.com'] }) }
 
+it('omits mandatory policy only for explicitly opted-out unsigned builds', () => {
+  const environment = { DSH_DESKTOP_APP_ID: 'com.example.local', DSH_DESKTOP_MANDATORY_UPDATE_DISABLED: '1' }
+  expect(resolveDesktopPolicyEnvironment(environment, { unsigned: true })).toBeUndefined()
+  expect(resolveDesktopPolicyConfig(resolveDesktopPolicyEnvironment(environment, { unsigned: true }))).toBeUndefined()
+  expect(() => {
+    validateDesktopPackageEnvironment(environment, { platform: 'win32', arch: 'x64' }, { unsigned: true })
+  }).not.toThrow()
+  for (const options of [{}, { prepareOnly: true }]) {
+    expect(() => {
+      validateDesktopPackageEnvironment({ ...environment, ...origins, ...auth }, { platform: 'win32', arch: 'x64' }, options)
+    }).toThrow('requires an unsigned local build')
+  }
+  expect(() => resolveDesktopPolicyEnvironment({ ...environment, DSH_DESKTOP_MANDATORY_UPDATE_DISABLED: '0' },
+    { unsigned: true })).toThrow('DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN')
+})
+
+it.each(['', 'true', '2'])('rejects invalid mandatory-update opt-out %s', (disabled) => {
+  expect(() => resolveDesktopPolicyEnvironment({ DSH_DESKTOP_MANDATORY_UPDATE_DISABLED: disabled },
+    { unsigned: true })).toThrow('must be 0 or 1')
+})
+
 it.each(['test', 'production'] as const)('selects the %s policy and authentication together', (deployment) => {
   const policy = resolveDesktopPolicyEnvironment({ ...origins, ...(deployment === 'test' ? auth : {}), DSH_DESKTOP_AUTO_UPDATE_ENV: deployment })
+  if (policy === undefined) throw new Error('Expected a mandatory-update policy for this deployment')
   const origin = deployment === 'test' ? origins.DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN : origins.DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN
   expect(policy).toEqual({ origin, allowedPageOrigins: [origin],
     ...(deployment === 'test' ? { allowedAuthOrigins: ['https://login.example.com'] } : {}),

@@ -51,7 +51,6 @@ export function createElectronBuilderConfig(
   preparedRuntimeVersion = undefined,
 ) {
   const appId = resolveDesktopAppId(env)
-  const policy = resolveDesktopPolicyEnvironment(env)
   const targetPlatform = env.DSH_DESKTOP_TARGET_PLATFORM
   const resolvedPlatform = targetPlatform ?? hostPlatform
   const resolvedArch = env.DSH_DESKTOP_TARGET_ARCH ?? hostArch
@@ -60,6 +59,7 @@ export function createElectronBuilderConfig(
   }
   const unsigned = env.DSH_DESKTOP_UNSIGNED === '1'
   if (unsigned && resolvedPlatform !== 'win32') throw new Error('desktop package: unsigned builds require Windows')
+  const policy = resolveDesktopPolicyEnvironment(env, { unsigned })
   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
   const packagesWindows = resolvedPlatform === 'win32'
   if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
@@ -102,7 +102,7 @@ export function createElectronBuilderConfig(
     protocols: [{ name: 'DeepSeek Harness', schemes: ['dsh'] }],
     extraMetadata: {
       dshDesktopAppId: appId,
-      dshMandatoryUpdatePolicy: policy,
+      ...policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy },
       ...buildVersion === productVersion ? {} : { version: buildVersion },
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
     },
@@ -130,6 +130,7 @@ export function createElectronBuilderConfig(
       'lib/main.js',
       'lib/welcome/**/*',
       'lib/preload-app.cjs',
+      'lib/preload-rich.cjs',
       'lib/preload-mandatory.cjs',
       'lib/preload-platform-account.cjs',
       'lib/preload-update-dialog.cjs',
