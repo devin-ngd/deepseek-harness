@@ -42,7 +42,7 @@ For a CLI-managed **Web** profile, the verified local install/removal path is:
 
 ```powershell
 $env:DSH_HOME = 'D:\Temp\dsh-rich-profile'
-node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.0-rc.2.tgz' --ignore-scripts --config.auto-install-peers=false
+node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.1-alpha.1.tgz' --ignore-scripts --config.auto-install-peers=false
 node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-experimental-rich-inline'
 ```
 
@@ -50,7 +50,20 @@ The CLI refuses to manage `desktop`: use the application plugin manager. `dsh.bu
 
 ### What you get
 
-Enabling the plugin adds its [authoring contract](src/host/guidance.ts) after generic deliverable guidance and a logged runtime-context reminder to every ordinary session in that profile, including existing sessions' next turn. Reports, news, plans, lists and comparisons use styled HTML with suitable local controls by default, as do animations and interactive interfaces. Ask naturally; no tool reminder is needed. Short acknowledgements and explicit text/source requests retain their text presentation. Previously settled structured prose of at least 600 characters receives a labelled compatibility view without another model call; this is Markdown presentation, not model-authored interactive HTML. The original text remains accessible and persisted unchanged.
+By default, `activePresets: []` enables authoring throughout the profile. Set `activePresets: [lumina]` to require rich output only in sessions selecting that [declared mode](../../preset/agent-preset-registry/README.md). Other modes retain ordinary Markdown and coding tools, with no rich tools or formatting correction; saved rich blocks remain viewable. A Lumina declaration can use Standard's complete child plugin list so it retains the same coding capabilities.
+
+`projectDefaults` selects a declared mode for fresh blank sessions in an exact project directory. It does not change resumed or started conversations, subdirectories, or a different explicitly selected mode. The new-session mode picker can override the project default before the first turn. Both fields belong in the `rich-inline` row's profile configuration; quit and relaunch Desktop after editing them:
+
+```yaml
+activePresets: [lumina]
+projectDefaults:
+  - path: /absolute/path/to/project
+    preset: lumina
+```
+
+Project paths must exist; duplicate canonical directories fail activation. Empty `projectDefaults` adds no project default. Mode declarations and defaults are separate: an unknown or unusable preset is refused by the normal preset selection operation.
+
+In enabled session modes, the plugin adds its [authoring contract](src/host/guidance.ts) after generic deliverable guidance and a logged runtime-context reminder, including existing sessions' next turn. Reports, news, plans, lists and comparisons use styled HTML with suitable local controls by default, as do animations and interactive interfaces. Ask naturally; no tool reminder is needed. Short acknowledgements and explicit text/source requests retain their text presentation. Previously settled structured prose of at least 600 characters receives a labelled compatibility view without another model call; this is Markdown presentation, not model-authored interactive HTML. The original text remains accessible and persisted unchanged.
 
 At a live turn's stop boundary, the plugin checks complete publications, unique keys and surrounding prose. A substantive text-only answer (at least 160 characters) or invalid `rich-html` publication receives at most one logged formatting correction (`maxFormatRepairAttempts`, 0–2, default 1). Correction uses the existing result, hides tool schemas and denies tool execution, so it cannot repeat business operations. Short conversation, explicit text/source requests and already-updated blocks are exempt. History viewing, mounting and refreshing never trigger this correction. A model that still refuses the format retains its original answer with a compatibility notice; it has not passed HTML acceptance.
 

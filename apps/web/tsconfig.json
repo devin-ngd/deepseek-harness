@@ -24,6 +24,7 @@
   "exclude": [
     "tests/rich-inline-native.e2e.ts",
     "tests/rich-inline.e2e.ts",
+    "tests/rich-inline-mode.e2e.ts",
     "tests/fixtures/rich-inline-content.ts",
     "tests/layout-bottom.e2e.ts",
     "tests/shortcuts-desktop.e2e.ts",

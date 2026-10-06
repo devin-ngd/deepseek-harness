@@ -11,6 +11,7 @@
     "src/shared/**/*.ts"
   ],
   "references": [
+    { "path": "../../preset/agent-preset-registry" },
     {
       "path": "../../../vendor/cordis"
     },

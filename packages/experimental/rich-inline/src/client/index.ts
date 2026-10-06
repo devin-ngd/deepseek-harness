@@ -25,9 +25,11 @@ import { ThemeSettings, ThemeToast } from './ThemeSettings.tsx'
 import type { ThemeSettingsInjected } from './ThemeSettings.tsx'
 
 /** Deployment-configurable durable status refresh cadence. */
-export interface Config { readonly pollIntervalMs: number }
+export interface Config { readonly pollIntervalMs: number; readonly activePresets?: readonly string[] }
 /** Validated polling bounds avoid hidden per-deployment timers. */
-export const Config = z.object({ pollIntervalMs: z.number().min(250).max(60000).default(1000) })
+export const Config = z.object({
+  pollIntervalMs: z.number().min(250).max(60000).default(1000), activePresets: z.array(z.string().min(1)).default([]),
+})
 /** Client integration waits on the generated Host namespace and trusted UI services. */
 export const inject = ['slots', 'locale', 'remote', 'fileUpload']
 
@@ -119,6 +121,7 @@ async function activate(ctx: Context, config: Config): Promise<void> {
     name: 'conversation.chat.assistant-block', locale: 'richInline',
     select: owner => owner.block.kind !== 'text' ? null : richParts(owner.block.text, owner.streaming || owner.interrupted === true),
     inject: (sessionId): RichInjected => ({
+      activePresets: config.activePresets ?? [],
       hooks: { appearance },
       keyedHooks: { rich: key => controller(sessionId, key) },
       open: (key, messageId, blockId) => controller(sessionId, key).open(messageId, blockId),

@@ -42,7 +42,7 @@ CLI 管理的 **Web** 配置已验证以下安装/移除路径：
 
 ```powershell
 $env:DSH_HOME = 'D:\Temp\dsh-rich-profile'
-node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.0-rc.2.tgz' --ignore-scripts --config.auto-install-peers=false
+node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.1-alpha.1.tgz' --ignore-scripts --config.auto-install-peers=false
 node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-experimental-rich-inline'
 ```
 
@@ -50,7 +50,20 @@ CLI 拒绝管理 `desktop`，桌面端应使用应用插件管理器。`dsh.bund
 
 ### 获得的能力
 
-启用后，插件向该 profile 的所有普通会话提供默认[创作规则](src/host/guidance.ts)，放在通用交付规则之后，并提供写入会话日志的运行时格式提醒；已有会话的下一回合也生效。报告、要闻、方案、列表和对比默认使用有布局、样式及合适本地控件的 HTML，动画和交互界面同样如此。自然提问即可，不必提醒工具名。简短交流及明确要求的文字或源码保持原展示。已有至少 600 字符的结构化长回答显示有明确标注的兼容阅读，不新增模型调用。这仍是 Markdown 的展示，不代表模型生成了交互 HTML；原文可查看，持久化内容不改写。
+默认的 `activePresets: []` 在整个配置中启用交互输出。设置 `activePresets: [lumina]` 后，仅选择了这个[已声明模式](../../preset/agent-preset-registry/README.zh.md)的会话要求交互输出。其他模式保留普通 Markdown 和编码工具，不提供 rich 工具或格式修正；已有交互卡片仍可查看。Lumina 模式可以使用标准模式的完整子插件列表，从而保留相同的编码能力。
+
+`projectDefaults` 为指定项目目录中的新空白会话选择已声明的模式，不修改恢复或已开始的会话、子目录，或另一个已明确选择的模式。新会话中的模式选择器可在首轮开始前覆盖项目默认值。这两个字段属于 `rich-inline` 项的配置，编辑后完整退出并重启桌面端：
+
+```yaml
+activePresets: [lumina]
+projectDefaults:
+  - path: /absolute/path/to/project
+    preset: lumina
+```
+
+项目路径必须存在；重复的规范目录会导致启用失败。空的 `projectDefaults` 不添加项目默认值。模式声明和默认值分别配置：未知或不可用的模式由现有模式选择操作拒绝。
+
+在启用的会话模式中，插件提供默认[创作规则](src/host/guidance.ts)，放在通用交付规则之后，并提供写入会话日志的运行时格式提醒；已有会话的下一回合也生效。报告、要闻、方案、列表和对比默认使用有布局、样式及合适本地控件的 HTML，动画和交互界面同样如此。自然提问即可，不必提醒工具名。简短交流及明确要求的文字或源码保持原展示。已有至少 600 字符的结构化长回答显示有明确标注的兼容阅读，不新增模型调用。这仍是 Markdown 的展示，不代表模型生成了交互 HTML；原文可查看，持久化内容不改写。
 
 实时回合准备结束时，插件检查完整发布、唯一块名和块外文字。实质性纯文本回答（至少 160 字符）或非法 `rich-html` 会收到至多一次已记录的格式修正请求（`maxFormatRepairAttempts`，0–2，默认 1）。修正只使用已有结果，隐藏工具定义并拒绝工具执行，不能重复业务操作。简短交流、明确要求文字或源码、已有内容块更新均免除修正。查看历史、挂载及刷新不会触发修正。模型仍拒绝格式时保留原回答及兼容提示，不能视为 HTML 验收通过。
 

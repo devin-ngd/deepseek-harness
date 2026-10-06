@@ -22,6 +22,7 @@
     "apps/web/tests/code-language.snapshot.ts",
     "apps/web/tests/scaffold.ts",
     "apps/web/tests/rich-inline.e2e.ts",
+    "apps/web/tests/rich-inline-mode.e2e.ts",
     "apps/web/tests/rich-inline-native.e2e.ts",
     "packages/experimental/rich-inline/examples/content.ts",
     "packages/experimental/rich-inline/examples/theme.ts",

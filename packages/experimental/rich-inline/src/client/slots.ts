@@ -9,6 +9,8 @@ import type { RichAppearance } from '../shared/theme.ts'
 
 /** Actions are scoped by the trusted Session injection factory. */
 export interface RichInjected {
+  /** Modes whose settled ordinary prose may receive the compatibility view; saved rich blocks remain viewable. */
+  activePresets: readonly string[]
   hooks: { /** Profile appearance; follows the profile theme without remounting messages. */ appearance: HostObservable<RichAppearance> }
   keyedHooks: { /** One immutable view per message/block key. */ rich: (key: string) => HostObservable<BlockView> }
   /** @param key - private view key. @param messageId - durable owner. @param blockId - marker. @returns cleanup. */

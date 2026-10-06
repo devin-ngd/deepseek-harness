@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { SessionRequestId, PromptContentPart } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId, SessionEvent } from '@deepseek-ai/dsh-session/types'
@@ -39,9 +40,14 @@ import { authoredBlockId, authoredContent, authoredFences } from '../shared/auth
 import { legacyContent } from './legacy.ts'
 import { legacyEligible } from '../shared/legacy.ts'
 import { installFormatCheck, explicitTextRequested } from './format.ts'
+import { installProjectDefaults } from './project-defaults.ts'
 
 /** Deployment bounds; protocols and required authorization rules are fixed. */
 export interface Config {
+  /** Empty means profile-wide authoring; otherwise only these selected presets author rich output. */
+  readonly activePresets?: string[]
+  /** Defaults for fresh sessions in these exact project directories; explicit UI selections can override them. */
+  readonly projectDefaults?: { readonly path: string; readonly preset: string }[]
   /** Built-in sheet; user settings change it live without remounting the plugin. */
   readonly theme: Volatile<RichAppearance['theme']>
   readonly accent: RichAppearance['accent']
@@ -80,6 +86,8 @@ export class RichInline extends TypertRemoteService {
     'typert', 'storage', 'storageDomain', 'sessionController', 'sessionPersistence', 'tools', 'attachments', 'fileUploads', 'agents', 'systemPrompt',
   ]
   static Config = z.object({
+    activePresets: z.array(z.string().min(1)).default([]),
+    projectDefaults: z.array(z.object({ path: z.string().min(1).required(), preset: z.string().min(1).required() })).default([]),
     theme: z.union([...RICH_THEMES, 'none']).default('cyber').volatile(),
     accent: z.union(['auto', 'blue', 'violet', 'teal']).default('auto'),
     maxContentBytes: z.natural().min(1).max(RICH_MAX_CONTENT_BYTES).default(RICH_MAX_CONTENT_BYTES),
@@ -112,16 +120,26 @@ export class RichInline extends TypertRemoteService {
     this.track(this.startup)
     // The Client registers its own theme picker on the bundle's Plugins page instead of a generated form.
     ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
-    ctx.systemPrompt.section({ name: 'rich-inline:authoring', text: RICH_AUTHORING_GUIDANCE + '\n\n' + RICH_APPEARANCE_GUIDANCE,
-      order: ctx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'), interpolate: false })
+    installProjectDefaults(ctx, config.projectDefaults ?? [])
+    ctx.systemPrompt.section({ name: 'rich-inline:authoring', text: context => this.authoringEnabled(context.agent)
+      ? RICH_AUTHORING_GUIDANCE + '\n\n' + RICH_APPEARANCE_GUIDANCE : '',
+    order: ctx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'), interpolate: false })
     ctx.systemPrompt.context({ name: 'rich-inline:output-format',
       order: ctx.systemPrompt.getContextOrder('APPROVAL_POLICY') + 1,
-      text: () => 'Rich inline output is enabled. Substantive final results must be code-only rich-html fenced JSON (key, html, css, js, fallbackText, stateSchemaVersion), with actual styled HTML and suitable local interaction. Do not return a Markdown report or explanatory prose outside the HTML. Only explicit user requests for text/source and brief conversational replies opt out. 只生成 HTML/CSS/JavaScript，渲染由插件完成；无需用户提醒。\n' + richAppearanceReminder(this.appearance()) })
+      text: context => this.authoringEnabled(context.agent)
+        ? 'Rich inline output is enabled. Substantive final results must be code-only rich-html fenced JSON (key, html, css, js, fallbackText, stateSchemaVersion), with actual styled HTML and suitable local interaction. Do not return a Markdown report or explanatory prose outside the HTML. Only explicit user requests for text/source and brief conversational replies opt out. 只生成 HTML/CSS/JavaScript，渲染由插件完成；无需用户提醒。\n' + richAppearanceReminder(this.appearance()) : '' })
     installRichTools(ctx, {
       publish: (sessionId, input) => this.publish(sessionId, input),
       prepareCompletion: (sessionId, actionId, callId) => this.prepareCompletion(sessionId, actionId, callId),
     }, this.config.maxInputBytes)
-    installFormatCheck(ctx, this.config.maxFormatRepairAttempts)
+    ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
+      const assembly = await next()
+      return this.authoringEnabled(context.agent) ? assembly
+        : { ...assembly, tools: assembly.tools.filter(tool => !tool.name.startsWith('rich_inline_')) }
+    })
+    ctx.tools.guard(execution => execution.name.startsWith('rich_inline_') && !this.authoringEnabled(execution.agent)
+      ? 'Rich inline authoring is not enabled for this session mode.' : undefined)
+    installFormatCheck(ctx, this.config.maxFormatRepairAttempts, agent => this.authoringEnabled(agent))
     ctx.on('session/event', (session, event) => {
       if (event.type === 'tool/result' || event.type === 'user/message' || event.type === 'turn/end' || event.type === 'tool/ptc-dispatch') {
         // oxlint-disable-next-line typescript/no-deprecated -- Capture the turn at this event's emission, before queued observer work runs.
@@ -137,6 +155,15 @@ export class RichInline extends TypertRemoteService {
       await Promise.allSettled([...this.tasks, ...this.chains.values(), ...this.dispatching.values()])
       await (await this.domain).close()
     }, 'rich-inline.ledger-lifetime')
+  }
+
+  private authoringEnabled(agent?: Agent): boolean {
+    const presets = this.config.activePresets ?? []
+    if (presets.length === 0) return true
+    const registry = this.ctx.get('agentPresets')
+    if (registry === undefined) throw new Error('rich-inline: activePresets requires agent-preset-registry')
+    const selected = agent === undefined ? undefined : registry.composedPreset(agent.ctx)
+    return selected !== undefined && presets.includes(selected)
   }
 
   /**
@@ -540,6 +567,7 @@ export class RichInline extends TypertRemoteService {
   }
 
   private async publish(sessionId: SessionId, input: RichPublishInput): Promise<RichPublishValue> {
+    if ((this.config.activePresets?.length ?? 0) > 0 && !this.authoringEnabled(await this.resolveAgent(sessionId))) bad('AUTHORING_MODE_DISABLED')
     if (size(input) > this.config.maxContentBytes) bad('BLOCK_PUBLICATION_TOO_LARGE')
     if (input.values !== undefined && (!isRichValues(input.values) || !typedRichValuesValid(input.values))
       || !Number.isSafeInteger(input.stateSchemaVersion) || input.stateSchemaVersion < 1 || input.fallbackText.trim().length === 0) bad('INVALID_BLOCK_PUBLICATION')

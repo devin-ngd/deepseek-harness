@@ -1,0 +1,44 @@
+[
+  {
+    "label": "standard",
+    "mode": "standard",
+    "richGuidance": false,
+    "richContext": false,
+    "richTools": [],
+    "response": "markdown",
+    "requests": 1,
+    "recordedSelection": []
+  },
+  {
+    "label": "project-default",
+    "mode": "lumina",
+    "richGuidance": true,
+    "richContext": true,
+    "richTools": [
+      "rich_inline_complete",
+      "rich_inline_progress",
+      "rich_inline_publish"
+    ],
+    "response": "rich-html",
+    "requests": 1,
+    "recordedSelection": [
+      "lumina"
+    ]
+  },
+  {
+    "label": "manual-lumina",
+    "mode": "lumina",
+    "richGuidance": true,
+    "richContext": true,
+    "richTools": [
+      "rich_inline_complete",
+      "rich_inline_progress",
+      "rich_inline_publish"
+    ],
+    "response": "rich-html",
+    "requests": 1,
+    "recordedSelection": [
+      "lumina"
+    ]
+  }
+]

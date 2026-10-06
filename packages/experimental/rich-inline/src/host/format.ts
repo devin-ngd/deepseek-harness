@@ -72,8 +72,9 @@ export function outputFormatProblem(text: string): string | null {
 /** Install a turn-boundary format check without replaying old results or authoring hidden model input.
  * @param ctx - plugin lifetime and existing Host services.
  * @param maxAttempts - bounded extra model requests for formatting each live turn; zero disables correction.
+ * @param enabled - whether this Agent's selected mode requires rich output; history presentation stays independent.
  */
-export function installFormatCheck(ctx: Context, maxAttempts: number): void {
+export function installFormatCheck(ctx: Context, maxAttempts: number, enabled: (agent: Agent) => boolean = () => true): void {
   const formatting = new Set<Agent>()
   const humanClaimed = new Set<Agent>()
   ctx.effect(() => () => { formatting.clear(); humanClaimed.clear() }, 'rich-inline.format-lifetime')
@@ -96,6 +97,7 @@ export function installFormatCheck(ctx: Context, maxAttempts: number): void {
   ctx.tools.guard(execution => execution.agent !== undefined && formatting.has(execution.agent)
     ? 'Output formatting may only generate code; business tools are disabled. Use the existing transcript without repeating operations.' : undefined)
   ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
+    if (!enabled(agent)) return
     signal.throwIfAborted()
     const { events } = await ctx.sessionController.inspect(agent.id, signal)
     signal.throwIfAborted()

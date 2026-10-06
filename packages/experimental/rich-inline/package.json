@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-rich-inline",
   "description": "Durable message-inline HTML interactions with host-owned authorization",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.1-alpha.1",
   "type": "module",
   "license": "MIT",
   "publishConfig": {
@@ -58,8 +58,7 @@
     "lib/typert.remote-client.d.ts",
     "locale/*.json",
     "cordis.patch.yml",
-    "examples/*.ts",
-    "src/**/*"
+    "examples/*.ts"
   ],
   "dsh": {
     "client": {
@@ -93,6 +92,7 @@
     "micromark-extension-gfm": "^3.0.0"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-agent-preset-registry": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-agent": "workspace:*",
@@ -120,6 +120,7 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:*"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-agent-preset-registry": "workspace:*",
     "@types/mdast": "^4.0.4",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-brand": "workspace:*",

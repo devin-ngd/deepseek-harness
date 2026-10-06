@@ -193,6 +193,8 @@ function Preview({ source, stopped, t, appearance }: { source: string; stopped: 
 /** @param props - scoped owner, parsed markers and private injected verbs. @returns inline content in original order. */
 export function RichMessage(props: RichMessageProps) {
   const { matched, messageId, t } = props
+  const selectedPreset = props.useSessions(state => state.byId[props.sessionId]?.projectionValues?.agentPreset)
+  const legacyEnabled = props.activePresets.length === 0 || typeof selectedPreset === 'string' && props.activePresets.includes(selectedPreset)
   const appearance = props.useAppearance(value => value)
   const labels = useMemo<MarkdownLabels>(() => ({
     code: { copyLabel: t('copy'), copiedLabel: t('copied'), toolbarLabels: { codeLabel: t('code'), wrapLabel: t('wrap'), unwrapLabel: t('unwrap') } },
@@ -202,7 +204,7 @@ export function RichMessage(props: RichMessageProps) {
     if (part.kind === 'text') return <MarkdownText key={`prose-${index}`} text={part.text} labels={labels}/>
     if (part.kind === 'rich') return messageId === undefined ? null
       : <RichBlock key={part.blockId} {...props} appearance={appearance} messageId={messageId} blockId={part.blockId} labels={labels}/>
-    if (part.kind === 'legacy') return messageId === undefined ? <MarkdownText key={index} text={part.text} labels={labels}/>
+    if (part.kind === 'legacy') return messageId === undefined || !legacyEnabled ? <MarkdownText key={index} text={part.text} labels={labels}/>
       : <RichBlock key={`legacy-${index}`} {...props} appearance={appearance} messageId={messageId} blockId={authoredBlockId(messageId, 'legacy')}
         labels={labels} legacyText={part.text}/>
     const code = part.complete ? authoredContent(part.source) : null

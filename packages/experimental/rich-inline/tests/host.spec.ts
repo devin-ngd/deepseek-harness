@@ -44,9 +44,10 @@ const limits: ProfileConfig = { maxContentBytes: 2_097_152, maxInputBytes: 131_0
   maxFormatRepairAttempts: 1, theme: 'cyber', accent: 'blue' }
 
 async function harness(root?: string, seed: readonly SessionEvent[] = [], config: Partial<ProfileConfig> = {},
-  options: { live?: boolean } = {}) {
+  options: { live?: boolean; preset?: string } = {}) {
   const dir = root ?? await mkdtemp(join(tmpdir(), 'dsh-rich-host-'))
   const ctx = new Context()
+  if (options.preset !== undefined) ctx.provide('agentPresets', { composedPreset: () => options.preset } as never)
   resources.push({ ctx, root: dir, remove: root === undefined })
   await ctx.plugin(Storage)
   await ctx.plugin(StorageJson, { root: dir })
@@ -247,6 +248,28 @@ function publicationAtBytes(bytes: number, blockId?: RichBlockId) {
 }
 
 describe('RichInline Host', () => {
+  it('keeps standard coding output unchanged while Lumina exposes rich tools and checks final formatting', async () => {
+    const h = await harness(undefined, [], { activePresets: ['lumina'] }, { preset: 'standard' })
+    const standard = await h.ctx.systemPrompt.assemble({ agent: h.agent })
+    expect(standard.sections.filter(section => section.text.length > 0).some(section => section.name === 'rich-inline:authoring')).toBe(false)
+    expect(standard.contexts.some(context => context.name === 'rich-inline:output-format' && context.text.length > 0)).toBe(false)
+    expect(standard.tools.some(tool => tool.name.startsWith('rich_inline_'))).toBe(false)
+    expect((await h.tool('rich_inline_publish', { html: '<p>x</p>', css: '', js: '', fallbackText: 'x', stateSchemaVersion: 1 })).isError).toBe(true)
+    h.session.append('turn/start', { turn: 1 })
+    const markdown = '# Coding result\n' + 'Keep ordinary source code and Markdown.\n'.repeat(10)
+    h.session.append('assistant/message', { turn: 1, step: 1, message: createAssistantMessage({ content: [{ type: 'text', text: markdown }], source: { provider: 'unit', model: 'unit' } }), stream: [] }, { surfaceOp: 'append' })
+    await h.ctx.serial('agent/turn-stopping', { agent: h.agent, turn: 1, signal: new AbortController().signal })
+    expect(h.agent.inbox.nextStep).toHaveLength(0)
+    const lumina = await harness(undefined, [], { activePresets: ['lumina'] }, { preset: 'lumina' })
+    const active = await lumina.ctx.systemPrompt.assemble({ agent: lumina.agent })
+    expect(active.sections.find(section => section.name === 'rich-inline:authoring')?.text).toContain('You author code')
+    expect(active.tools.some(tool => tool.name === 'rich_inline_publish')).toBe(true)
+    await expect(lumina.publish()).resolves.toBeDefined()
+    lumina.session.append('turn/start', { turn: 1 })
+    lumina.session.append('assistant/message', { turn: 1, step: 1, message: createAssistantMessage({ content: [{ type: 'text', text: markdown }], source: { provider: 'unit', model: 'unit' } }), stream: [] }, { surfaceOp: 'append' })
+    await lumina.ctx.serial('agent/turn-stopping', { agent: lumina.agent, turn: 1, signal: new AbortController().signal })
+    expect(lumina.agent.inbox.nextStep).toHaveLength(1)
+  })
   it('contributes the default authoring contract to existing and new scopes and removes it on disable', async () => {
     const h = await harness()
     for (const scope of [h.ctx, h.ctx.extend({ sessionId: 'another-session' })]) {
