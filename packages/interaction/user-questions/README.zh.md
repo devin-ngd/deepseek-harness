@@ -11,6 +11,8 @@ kind: "package-reference"
 
 当工具或权限流程需要用户提供结构化答案时，使用 `ctx.userQuestions`。`ask()` 会等待回答；`askTimed()` 可以放行 agent 继续独立工作，而问题仍留在会话中供用户回答。
 
+计划审查回答可携带可选 `reviewedPlan`，表示用户批准的完整 Markdown。缺失时批准问题原有的详情。该字段与自由文本反馈 `custom` 分开，延迟回答解码也会保留它。
+
 ## 目录
 
 - [提出问题](#service-userquestionservice-ctx-key-userquestions)

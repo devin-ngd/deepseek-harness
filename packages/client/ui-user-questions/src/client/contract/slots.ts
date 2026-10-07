@@ -17,6 +17,8 @@ declare module '@deepseek-ai/dsh-client-ui-session/client' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
+    /** Alternative question and plan forms; the pending carrier owns answer and cancellation semantics. */
+    'conversation.question.content': { kind: 'chain'; scope: 'session'; owner: { pending: PendingQuestion; card: QuestionCardSnapshot } }
     /** Actions for the exact plan under review; approval remains with the question composer. */
     'conversation.plan-review.actions': { kind: 'list'; scope: 'session'; owner: { review: PlanReview; requestKey: PendingQuestion['key'] } }
   }
@@ -281,15 +283,17 @@ export class PendingQuestion {
   ) {
     this.sessionId = sessionId
     this.questions = questions
-    this.kind = planReviewOf(questions) === undefined ? 'question' : 'plan-review'
+    const reviewPlan = planReviewOf(questions)
+    this.kind = reviewPlan === undefined ? 'question' : 'plan-review'
     this.callId = callId
     this.review = review
     this.dismissal = callId === undefined ? 'cancel' : 'hide'
     this.#siblings = siblings
-    if (callId === undefined) nextQuestionKey += 1
-    this.key = callId === undefined
+    const identity = callId ?? reviewPlan?.callId
+    if (identity === undefined) nextQuestionKey += 1
+    this.key = identity === undefined
       ? `question:${unnamedQuestionPrefix}:${String(nextQuestionKey)}`
-      : PendingQuestion.keyOf(sessionId, callId)
+      : PendingQuestion.keyOf(sessionId, identity)
     this.#snapshot = this.createSnapshot()
   }
 
@@ -568,7 +572,7 @@ export type QuestionWait = PendingQuestion
 export type QuestionComposerProps =
   PropsRuntime<'conversation.composer'>
   & PropsStore<ReturnType<typeof createQuestionDraftStore>>
-  & PropsRenderSlots<'conversation.plan-review.actions'>
+  & PropsRenderSlots<'conversation.plan-review.actions' | 'conversation.question.content'>
   & InjectFace<{ keyedHooks: { questionCard: (key: string) => PendingQuestion | undefined } }>
   & { matched: QuestionWait }
   & PropsLocale<'question'>

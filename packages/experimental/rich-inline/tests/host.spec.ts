@@ -183,6 +183,40 @@ describe('bounded final format correction', () => {
   })
 })
 
+describe('data-only document updates', () => {
+  it('updates confirmed values in place, preserves unsent inputs, and rejects stale writers', async () => {
+    const h = await harness()
+    const blockId = await h.publish(undefined, { progress: 'started' })
+    const mounted = await h.bind(blockId)
+    await h.host.saveDraft({ mountId: mounted.mountId,
+      draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { note: 'still editing' }, dirty: ['note'] } })
+    const before = await h.host.snapshot({ mountId: mounted.mountId })
+    const args = { blockId, expectedRenderRevision: before.manifest.renderRevision,
+      expectedDataRevision: before.dataRevision, values: { progress: 'checked' }, fallbackText: 'Checked one item' }
+    const updated = await h.tool('rich_inline_update', args)
+    expect(updated.isError).toBe(false)
+    expect(updated.meta).toMatchObject({ richInline: { kind: 'data', blockId, dataRevision: before.dataRevision + 1 } })
+    const after = await h.host.snapshot({ mountId: mounted.mountId })
+    expect(after.values).toEqual(args.values)
+    expect(after.dataRevision).toBe(before.dataRevision + 1)
+    expect(after.manifest).toEqual({ ...before.manifest, fallbackText: args.fallbackText })
+    expect(after.pendingManifest).toBeNull()
+    expect(after.draft).toEqual(before.draft)
+    expect((await h.tool('rich_inline_update', args)).isError).toBe(true)
+    expect((await h.tool('rich_inline_update', { ...args, expectedDataRevision: after.dataRevision, expectedRenderRevision: 999 })).isError).toBe(true)
+    expect((await h.tool('rich_inline_update', { ...args, blockId: 'missing' })).isError).toBe(true)
+    expect((await h.tool('rich_inline_update', { ...args, expectedDataRevision: after.dataRevision, fallbackText: ' ' })).isError).toBe(true)
+    expect((await h.tool('rich_inline_update', { ...args, expectedDataRevision: after.dataRevision,
+      values: { large: 'x'.repeat(limits.maxInputBytes + 1) } })).isError).toBe(true)
+    expect(await h.host.snapshot({ mountId: mounted.mountId })).toEqual(after)
+    expect(h.prompts).toEqual([])
+    h.host.dispose({ mountId: mounted.mountId })
+    const reopened = await h.host.mount({ sessionId: h.session.id, messageId: before.scope.messageId, blockId })
+    expect(reopened.snapshot.values).toEqual(after.values)
+    expect(reopened.snapshot.draft).toEqual(after.draft)
+  })
+})
+
 describe('code-only assistant messages', () => {
   const code = { key: 'news', html: '<h1>News</h1>', css: '', js: '', fallbackText: 'News', stateSchemaVersion: 1 }
   it('commits once from settled source and recovers without replaying actions', async () => {

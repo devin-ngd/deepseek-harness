@@ -15,15 +15,16 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
     ? node.location.turn
     : undefined
-  if (turn?.status !== 'closed') return null
-  const canCollapse = turnProcess.foldable && turnProcess.hasContent && !turnProcessAlwaysOpen(node)
+  const live = turn?.status === 'open'
+  if (turn?.status !== 'closed' && !(live && turnProcess.compactLive)) return null
+  const canCollapse = turnProcess.foldable && turnProcess.hasContent && (live || !turnProcessAlwaysOpen(node))
   const reason = turn.end?.data.reason.kind
   const elapsedMs = turn.start === undefined || turn.end === undefined ? undefined
     : Math.max(1000, turn.end.time - turn.start.time)
   const duration = elapsedMs === undefined || reason === 'aborted' || reason === 'error' ? undefined
     : formatRunDuration(elapsedMs, t)
   // Other end reasons retain elapsed time; only cancellation and failure replace it.
-  const label = reason === 'aborted' ? t('message.stopped')
+  const label = live ? t('message.turnProcess.running') : reason === 'aborted' ? t('message.stopped')
     : reason === 'error' ? t('message.turnProcess.failed')
       : duration === undefined ? t('message.turnProcess.worked')
         : t('message.turnProcess.took')
@@ -32,7 +33,7 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
       : t('message.turnProcess.worked')
   return (
     <>
-      <span className={a11yCss.visuallyHidden} role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
+      {!live && <span className={a11yCss.visuallyHidden} role="status" aria-live="polite" aria-atomic="true">{announcement}</span>}
       <button
         type="button"
         className={css.root}
@@ -54,6 +55,11 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
             <span key={index} className={part.numeric ? css.durationNumber : undefined}>{part.text}</span>
           ))}
         </span>
+        {live && <span className={css.progress} data-progress-seq={node.data.progress?.seq}>
+          {node.data.progress?.text ?? t('message.turnProcess.activity', {
+            messages: node.data.messageCount, tools: node.data.toolCallCount,
+          })}
+        </span>}
         {canCollapse && <IconChevronDownOutlineRegular className={css.chevron} />}
       </button>
     </>

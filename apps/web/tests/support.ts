@@ -5,12 +5,21 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
+import { chromium } from 'playwright'
 import { expect, vi, type MockInstance } from 'vitest'
 
 /** The built page under test; `pnpm run test:web` rebuilds it before running. */
 export const DIST_INDEX = fileURLToPath(new URL('../dist/index.html', import.meta.url))
 
 export const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
+
+/** Launch the installed test browser or an explicitly selected local Chromium executable.
+ * @returns browser lifetime owned by the calling fixture.
+ */
+export function launchTestChromium(): Promise<Browser> {
+  const executablePath = process.env.DSH_TEST_CHROMIUM_EXECUTABLE_PATH
+  return chromium.launch(executablePath === undefined ? {} : { executablePath })
+}
 
 const installationRequire = createRequire(join(REPO_ROOT, 'apps/cli/package.json'))
 

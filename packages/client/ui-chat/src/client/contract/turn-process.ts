@@ -2,6 +2,8 @@ import type { ChatNode } from './chat-nodes.ts'
 
 /** Current process range and finalized answer boundary derived from one Turn. */
 export interface TurnProcessSpec {
+  /** Latest settled progress sentence, with its original event position; reasoning is excluded. */
+  readonly progress?: { readonly text: string; readonly seq: number }
   readonly turn: number
   /** Stable control-node anchor source, including currently ineligible evidence. */
   readonly controlAnchorSeq: number
@@ -41,6 +43,8 @@ export const TURN_PROCESS_INDEPENDENT_KINDS: ReadonlySet<string> = new Set(
  */
 export function sameTurnProcessSpec(left: TurnProcessSpec, right: TurnProcessSpec): boolean {
   return left.turn === right.turn
+    && left.progress?.text === right.progress?.text
+    && left.progress?.seq === right.progress?.seq
     && left.controlAnchorSeq === right.controlAnchorSeq
     && left.processStartSeq === right.processStartSeq
     && left.answerAnchorSeq === right.answerAnchorSeq

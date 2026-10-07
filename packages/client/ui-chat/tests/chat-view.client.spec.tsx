@@ -309,6 +309,7 @@ function makeHarness(
   // Rows and the harness must observe the same chat-store instance.
   const chat = createChatStore().create()
   const transcriptView = createSnapshotStore<TranscriptViewMode>('compact')
+  const compactLiveProcess = createSnapshotStore(false)
   const performanceUsage = createSnapshotStore<'compact' | 'detailed'>('detailed')
   const t = makeTranslate(zh, commonZh)
   const toolOwners: Array<{
@@ -443,6 +444,7 @@ function makeHarness(
     useStore: bindSnapshotSelector(chat),
     actions: chat.actions,
     usePresentation: bindSnapshotSelector(derivePresentationPolicy(transcriptView)),
+    useCompactLiveProcess: bindSnapshotSelector(compactLiveProcess),
     renderSlot,
     SessionProvider: SessionProviderStub,
     inspectCall: (callId: string) => { openView('trajectory', callId) },
@@ -490,6 +492,7 @@ function makeHarness(
       conversation.set({ ...conversation.getSnapshot() })
     },
     setTranscriptView: (mode: TranscriptViewMode) => { transcriptView.set(mode) },
+    setCompactLiveProcess: (enabled: boolean) => { compactLiveProcess.set(enabled) },
     setNodeRenderer: (renderer: React.ComponentProps<typeof ChatNodeSeat>['renderSlot']) => {
       nodeSlotOverride = renderer
     },
@@ -2456,6 +2459,30 @@ describe('ChatView', () => {
     expect(answer?.hasAttribute('data-turn-process-answer')).toBe(true)
     fireEvent.click(turnProcessControl(view.container)!)
     expect(answer?.hasAttribute('data-turn-process-answer')).toBe(false)
+  })
+
+  it('compacts a live Turn, keeps its current response visible, and preserves manual expansion through steps', () => {
+    const process = assistant(2, 'inspect the code', 1, 1)
+    const h = makeHarness({ nodes: [user(1, 'question'), process],
+      partial: { turn: 1, step: 2, blocks: [{ kind: 'text', text: 'streaming answer' }] },
+      running: true, turnTimings: new Map([[1, { startTime: 0 }]]) })
+    h.setCompactLiveProcess(true)
+    const view = render(<h.ChatView {...h.props} />)
+    const toggle = turnProcessControl(view.container)!
+    expect(toggle).toBeTruthy()
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    const processRow = view.getByText('inspect the code').closest('[data-chat-flow-kind="assistant-step"]')!
+    expect(processRow.getAttribute('hidden')).toBe('until-found')
+    expect(view.getByText('streaming answer').closest('[data-chat-flow-kind="assistant-step"]')?.getAttribute('hidden')).toBeNull()
+    fireEvent.click(toggle)
+    expect(processRow.getAttribute('hidden')).toBeNull()
+    act(() => { h.set({ nodes: [user(1, 'question'), process, assistant(4, 'second result', 1, 2)],
+      partial: { turn: 1, step: 3, blocks: [{ kind: 'text', text: 'new streaming answer' }] } }) })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(processRow.getAttribute('hidden')).toBeNull()
+    act(() => { h.setCompactLiveProcess(false) })
+    expect(turnProcessControl(view.container)).toBeNull()
+    expect(processRow.getAttribute('hidden')).toBeNull()
   })
 
   it('keeps a live Turn expanded and folds it once at turn/end', withClock(3_000, () => {

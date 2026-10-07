@@ -60,6 +60,8 @@ export interface AskUserQuestionAnswerItem {
   selected: string[]
   /** Optional free-text "Other" answer. */
   custom?: string
+  /** Complete human-approved Markdown for a plan-review decision; absent approves its original detail. */
+  reviewedPlan?: string
 }
 
 /** The human's answer. */

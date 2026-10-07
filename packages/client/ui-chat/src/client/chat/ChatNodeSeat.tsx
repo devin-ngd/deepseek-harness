@@ -11,6 +11,7 @@ import { useSearchableHidden } from './searchable-hidden.ts'
 import css from './ChatView.module.css'
 
 interface ChatNodeSeatProps extends ChatNodeOwnerProps {
+  readonly compactLiveProcess?: boolean
   readonly nodeKey: string
   /** A replaced Builder must rebind keyed hooks even when references and keys survive. */
   readonly nodeStore: ChatNodeStore
@@ -43,7 +44,7 @@ function turnOf(node: ChatNode | undefined): number | undefined {
  * only seats whose visibility actually changes.
  */
 export const ChatNodeSeat = memo(function ChatNodeSeat({
-  nodeKey, groupPart, useChatNode, useChatNodeProcess, usePresentation,
+  nodeKey, groupPart, useChatNode, useChatNodeProcess, usePresentation, compactLiveProcess = false,
   cwd, openFile, openSkill, inspectCall, forkAt,
   loadImage, renderMessageImages, fileMentions, useStore, actions, renderSlot, t,
 }: ChatNodeSeatProps) {
@@ -52,22 +53,24 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
   const turn = turnOf(routedNode)
   const processPresentation = useChatNodeProcess(nodeKey)
   const processSpec = processPresentation?.spec
+  const liveProcess = processPresentation !== undefined && !processPresentation.turnClosed
+  const disclosureStep = liveProcess ? 0 : processSpec?.answerStep ?? 0
   const storedEntry = useStore(state => processSpec === undefined
     ? undefined
     : storedTurnProcessEntry(state, processSpec.turn))
   const processEntry = processSpec !== undefined
-    && storedEntry?.answerStep === (processSpec.answerStep ?? 0)
+    && storedEntry?.answerStep === disclosureStep
     ? storedEntry
     : undefined
-  const liveProcess = processPresentation !== undefined && !processPresentation.turnClosed
   const interleavedInput = processPresentation?.hasInterleavedInput === true
-  const alwaysOpen = liveProcess || interleavedInput || turnProcessAlwaysOpen(routedNode)
+  const compactLive = liveProcess && compactLiveProcess
+  const alwaysOpen = interleavedInput || (turnProcessAlwaysOpen(routedNode) && !compactLive)
   const processOpen = alwaysOpen || processEntry !== undefined
   const setOpen = useCallback((open: boolean) => {
     if (processSpec !== undefined && !alwaysOpen) {
-      actions.setTurnProcessOpen(processSpec.turn, processSpec.answerStep ?? 0, open)
+      actions.setTurnProcessOpen(processSpec.turn, disclosureStep, open)
     }
-  }, [actions, processSpec, alwaysOpen])
+  }, [actions, processSpec, disclosureStep, alwaysOpen])
   const foldCompleted = usePresentation(policy => policy.foldCompletedTurns)
   // A loaded end makes a partial historical Turn eligible without its start.
   const processWindowReady = processSpec !== undefined
@@ -81,6 +84,9 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
     && routedNode.anchorSeq >= processSpec.processStartSeq
     && (liveProcess || processSpec.answerAnchorSeq === null || routedNode.anchorSeq < processSpec.answerAnchorSeq
       || (groupPart === 'reasoning' && routedNode.kind === 'assistant-step' && routedNode.data.step === processSpec.answerStep))
+    && !(compactLive && groupPart !== 'reasoning' && routedNode.kind === 'assistant-step'
+      && !routedNode.data.blocks.some(block => block.kind === 'tool-call')
+      && (routedNode.data.status === 'running' || routedNode.data.step === processSpec.answerStep))
   const processAnswer = routedNode !== undefined
     && processWindowReady
     && !liveProcess
@@ -94,12 +100,13 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
     ? undefined
     : {
       spec: processSpec,
+      compactLive,
       foldable,
       hasContent: !interleavedInput && (processPresentation?.hasExternalProcess === true || processSpec.inlineReasoning),
       open: processOpen,
       setOpen,
     }, [
-    foldable, interleavedInput, processOpen, processSpec, processPresentation?.hasExternalProcess, setOpen,
+    compactLive, foldable, interleavedInput, processOpen, processSpec, processPresentation?.hasExternalProcess, setOpen,
   ])
   const controllerInactive = routedNode?.kind === 'turn-process'
     && foldCompleted && !foldable

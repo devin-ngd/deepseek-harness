@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use `ctx.userQuestions` when a tool or permission flow needs a structured answer from the user. `ask()` waits for that answer; `askTimed()` may release the agent to continue independent work while the question remains answerable in the Session.
 
+Plan-review answers may carry optional `reviewedPlan`, the complete human-approved Markdown. Its absence approves the original question detail. This field is distinct from free-text `custom` feedback and survives late-answer decoding.
+
 ## Table of Contents
 
 - [Ask a question](#service-userquestionservice-ctx-key-userquestions)

@@ -97,6 +97,8 @@ export interface TurnTailChatData {
 
 /** Turn-level process disclosure projected before the finalized answer. */
 export interface TurnProcessChatData {
+  /** Latest settled public progress sentence; reasoning and executable publications are excluded. */
+  readonly progress?: { readonly text: string; readonly seq: number }
   readonly turn: number
   readonly controlAnchorSeq: number
   readonly processStartSeq: number

@@ -3,6 +3,8 @@
   "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo" },
   "include": ["src/client/**/*.ts", "src/client/**/*.tsx", "src/shared/**/*.ts", "src/css-modules.d.ts"],
   "references": [
+    { "path": "../../client/ui-user-questions" },
+    { "path": "../../interaction/user-questions" },
     { "path": "../../../vendor/cordis" }, { "path": "../../../vendor/schemastery" },
     { "path": "../../api/remotes/tsconfig.client.json" }, { "path": "../../api/session-controller/tsconfig.client.json" },
     { "path": "../../client/file-upload/tsconfig.client.json" }, { "path": "../../client/locale/tsconfig.client.json" },

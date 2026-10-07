@@ -11,7 +11,6 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import type { Browser, ConsoleMessage, Page } from 'playwright'
-import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -20,7 +19,7 @@ import {
   compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, launchTestChromium, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/plan-review', import.meta.url))
 const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
@@ -54,7 +53,7 @@ describe('web e2e: plan review takeover round trip', () => {
   beforeAll(async () => {
     scaffold = await launchWebScaffold(MODE === 'record' ? {} : { replayFixture: FIXTURE, paceMs: 15, compareReplaySession: true })
     scaffold.ctx.on('session/event', (_session, event: SessionEvent) => { sessionEvents.push(event) })
-    browser = await chromium.launch()
+    browser = await launchTestChromium()
     // English page: the decision copy is the surface under test, and the
     // golden pins one language.
     page = await newEnglishPage(browser)
@@ -342,7 +341,7 @@ describe.skipIf(MODE === 'record')('web e2e: pending plan review across Sidebar 
     scaffold = await launchWebScaffold({})
     planned = await seedSession(scaffold, await readFile(FIXTURE, 'utf8'), 'plan-review-seat-planned')
     other = await seedSession(scaffold, await readFile(OTHER_FIXTURE, 'utf8'), 'plan-review-seat-other')
-    browser = await chromium.launch()
+    browser = await launchTestChromium()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
     page.on('console', (message: ConsoleMessage) => {
@@ -396,7 +395,7 @@ describe('web e2e: dismissed plan history', () => {
     const events: SessionEvent[] = []
     scaffold.ctx.on('session/event', (_session, event: SessionEvent) => { events.push(event) })
     try {
-      browser = await chromium.launch()
+      browser = await launchTestChromium()
       const page = await newEnglishPage(browser)
       await page.setViewportSize({ width: 620, height: 900 })
       const tripwire = watchConsole(page)

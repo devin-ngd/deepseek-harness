@@ -1,5 +1,13 @@
 /** Trusted toolbar copy, visually separate from generated HTML. */
 export const zh = {
+  questionTitle: '需要你的回答', questionPlanTitle: '审查并编辑计划', questionRecorded: '已记录的回答',
+  questionSending: '正在提交', questionWaiting: '等待你的决定', questionPlanLabel: '确认执行的计划',
+  questionPlanPreview: '预览计划', questionText: '文字回答', questionRecommended: '推荐',
+  questionSubmit: '提交回答', questionApprove: '提交并执行', questionClose: '返回对话',
+  questionTakeTime: '等我回答', questionSkip: '跳过此问题', questionSkipped: '已跳过',
+  questionIncomplete: '请回答或明确跳过每个问题', questionPlanInvalid: '计划需要以 Markdown 一级标题开头',
+  questionResubmit: '等待窗口已结束，输入已保留，请重新提交',
+  questionFeedback: '退回修改的反馈（可选）', questionDecline: '退回修改',
   legacy: '模型输出了 Markdown；此处为兼容阅读，尚未生成交互网页',
   original: '查看原文',
   previewClosed: '预览已关闭；生成代码仍保留',
@@ -29,6 +37,14 @@ export const zh = {
 export type RichLocaleKey = keyof typeof zh
 /** English toolbar dictionary. */
 export const en: Record<RichLocaleKey, string> = {
+  questionTitle: 'Your answer is needed', questionPlanTitle: 'Review and edit the plan', questionRecorded: 'Recorded answer',
+  questionSending: 'Submitting', questionWaiting: 'Awaiting your decision', questionPlanLabel: 'Plan to carry out',
+  questionPlanPreview: 'Preview plan', questionText: 'Written answer', questionRecommended: 'Recommended',
+  questionSubmit: 'Submit answer', questionApprove: 'Submit and carry out', questionClose: 'Return to conversation',
+  questionTakeTime: 'Wait for my answer', questionSkip: 'Skip this question', questionSkipped: 'Skipped',
+  questionIncomplete: 'Answer or explicitly skip each question', questionPlanInvalid: 'Start the plan with a level-one Markdown heading',
+  questionResubmit: 'The wait window ended. Your input is preserved; submit it again.',
+  questionFeedback: 'Feedback when keeping planning (optional)', questionDecline: 'Keep planning',
   legacy: 'The model returned Markdown. This is a compatibility view; an interactive webpage was not generated.',
   original: 'View original text',
   previewClosed: 'Preview closed; generated source is preserved.',

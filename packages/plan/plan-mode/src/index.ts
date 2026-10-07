@@ -286,9 +286,11 @@ export class PlanModeController extends Service {
           additionalProperties: false,
           properties: {
             approved: { type: 'boolean', const: true, required: true },
+            plan: { type: 'string', required: true },
           },
         },
-        render: () => [{ type: 'text', text: 'Plan approved — plan mode exited; carry out the plan starting with your next step.' }],
+        render: (_args, value) => [{ type: 'text', text: `Plan approved — plan mode exited; carry out this human-approved plan starting with your next step:\n${value.plan}` }],
+        presentationMeta: (_args, value) => ({ planMode: value }),
       },
       execute: async (args, exec) => {
         const agent = exec.agent
@@ -345,11 +347,15 @@ export class PlanModeController extends Service {
             ? 'The user chose to keep planning; revise the plan and present it again.'
             : `The user chose to keep planning; their feedback: ${feedback}`)
         }
+        const approvedPlan = item.reviewedPlan ?? args.plan
+        if (!/^#\s+\S/.test(approvedPlan.trim())) {
+          throw new Error('The approved plan must start with a Markdown heading; stay in plan mode and present it again.')
+        }
         // Keep plan guidance for the rest of this assistant tool batch. The
         // silent selection is appended at the next accepted in-turn pre-step,
         // before its request assembly.
         this.pendingIntents.set(agent.session, { active: false, narrate: false })
-        return { approved: true }
+        return { approved: true, plan: approvedPlan }
       },
       presentCall: args => ({
         card: 'generic',

@@ -1,4 +1,4 @@
-/** Read immutable plan arguments from a Session snapshot and earlier history pages. */
+/** Read the latest recorded plan from a Session snapshot and earlier history pages. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { ResourceProvider } from '@deepseek-ai/dsh-client-resources/client'
@@ -21,7 +21,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface ResourceProtocolMap {
-    /** Immutable Markdown from a logged exit_plan_mode invocation. */
+    /** Approved Markdown when available, otherwise the logged invocation arguments. */
     plan: SubmittedPlan
   }
 }
@@ -56,7 +56,7 @@ export function planResourceProvider(remote: Pick<Context['remote']['session'], 
         if (snapshot === undefined) throw new RemoteError('plan/unavailable', 'Session history ended before the plan could be read.', {})
         let page = { records: snapshot.records, hasMore: snapshot.hasMore }
         while (true) {
-          for (const entry of page.records) {
+          for (const entry of [...page.records].reverse()) {
             const plan = submittedPlan(entry.event)
             if (plan?.callId === target.callId) {
               yield { ok: true, value: plan }

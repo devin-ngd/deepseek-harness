@@ -24,15 +24,45 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function planDocument(callId: unknown, markdown: unknown): SubmittedPlan | undefined {
+  if (typeof callId !== 'string' || callId === '' || typeof markdown !== 'string') return undefined
+  const title = /^#\s+(\S[^\r\n]*)/.exec(markdown.trim())?.[1]
+  return title === undefined ? undefined : { callId: callId as ToolCallId, markdown, title }
+}
+
+function ptcApprovedPlan(data: Record<string, unknown>): SubmittedPlan | undefined {
+  if (data.isError !== false || !Array.isArray(data.content)) return undefined
+  for (const part of data.content) {
+    if (!record(part) || part.type !== 'text' || typeof part.text !== 'string') continue
+    // PTC dispatch records retain rendered content, without native presentation metadata.
+    if (!part.text.startsWith('Plan approved')) continue
+    const newline = part.text.indexOf('\n')
+    if (newline < 0) continue
+    const approved = planDocument(data.subCallId, part.text.slice(newline + 1))
+    if (approved !== undefined) return approved
+  }
+  return undefined
+}
+
 /**
- * Read a complete plan from untrusted logged arguments.
- * @param event - Native call or PTC dispatch event from Session history.
- * @returns the submitted plan, or undefined for unrelated or malformed data.
+ * Read submitted arguments or the human-approved plan from Session history.
+ * @param event - Native call, result, or PTC dispatch event from Session history.
+ * @returns the recorded plan, or undefined for unrelated or malformed data.
  */
 export function submittedPlan(event: { readonly type: string; readonly data: unknown }): SubmittedPlan | undefined {
-  if (event.type !== 'tool/call' && event.type !== 'tool/ptc-dispatch-start' && event.type !== 'tool/ptc-dispatch') return undefined
+  if (event.type !== 'tool/call' && event.type !== 'tool/result'
+    && event.type !== 'tool/ptc-dispatch-start' && event.type !== 'tool/ptc-dispatch') return undefined
   const data = event.data
+  if (event.type === 'tool/result') {
+    if (!record(data) || !record(data.message) || data.message.isError !== false || !record(data.meta)) return undefined
+    const approval = data.meta.planMode
+    return record(approval) && approval.approved === true ? planDocument(data.message.toolCallId, approval.plan) : undefined
+  }
   if (!record(data) || data.name !== 'exit_plan_mode') return undefined
+  if (event.type === 'tool/ptc-dispatch') {
+    const approved = ptcApprovedPlan(data)
+    if (approved !== undefined) return approved
+  }
   const callId = event.type === 'tool/call' ? data.callId : data.subCallId
   if (typeof callId !== 'string' || callId === '') return undefined
   let args: unknown = data.arguments
@@ -42,9 +72,7 @@ export function submittedPlan(event: { readonly type: string; readonly data: unk
     catch (_error) { return undefined /* Malformed model JSON remains in the generic tool row. */ }
   }
   if (!record(args) || typeof args.plan !== 'string') return undefined
-  const markdown = args.plan
-  const title = /^#\s+(\S[^\r\n]*)/.exec(markdown.trim())?.[1]
-  return title === undefined ? undefined : { callId: callId as ToolCallId, markdown, title }
+  return planDocument(callId, args.plan)
 }
 
 /**

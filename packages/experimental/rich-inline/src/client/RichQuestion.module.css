@@ -1,0 +1,37 @@
+/* Trusted forms use the profile palette and retain the app's layout and controls. */
+.root {
+  color: var(--rich-text, var(--dsw-alias-label-primary));
+  background: var(--rich-surface, var(--dsw-alias-bg-layer-1));
+  border: 1px solid var(--rich-border, var(--dsw-alias-border-l2));
+  border-radius: var(--dsw-radius-sm);
+  max-height: min(60vh, 560px);
+  overflow: auto;
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.root[data-rich-themed] {
+  --dsw-alias-label-primary: var(--rich-text);
+  --dsw-alias-label-primary-foreground: var(--rich-accent-ink);
+  --dsw-alias-button-primary-fill: var(--rich-accent);
+  --dsw-alias-button-primary-hover: var(--rich-accent-2);
+  --dsw-alias-border-l3: var(--rich-border-strong);
+  --dsw-alias-interactive-bg-hover: var(--rich-surface-raised);
+}
+.header, .footer, .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.header { justify-content: space-between; margin-bottom: 12px; font-weight: 500; }
+.question { margin: 0 0 16px; padding: 0; border: 0; min-width: 0; }
+.question legend { font-weight: 500; }
+.question p { margin: 4px 0 8px; }
+.options, .custom, .plan { display: grid; gap: 8px; }
+.option { display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid var(--rich-border, var(--dsw-alias-border-l2)); border-radius: var(--dsw-radius-sm); cursor: pointer; }
+.option input { margin-top: 5px; accent-color: var(--rich-accent); }
+.option small { margin-inline-start: 8px; }
+.description { display: block; color: var(--rich-muted, var(--dsw-alias-label-secondary)); font-size: 13px; }
+.custom { margin-block: 8px; }
+.root textarea { box-sizing: border-box; width: 100%; min-width: 0; resize: vertical; padding: 8px; color: inherit; background: var(--rich-surface-sunken, var(--dsw-alias-bg-layer-2)); border: 1px solid var(--rich-border, var(--dsw-alias-border-l2)); border-radius: var(--dsw-radius-sm); font: inherit; }
+.root textarea:focus-visible, .option:focus-within { outline: 2px solid var(--rich-accent, var(--dsw-alias-label-primary)); outline-offset: 2px; }
+.plan { margin-bottom: 12px; }
+.footer { justify-content: space-between; position: sticky; bottom: -16px; padding-block: 8px; background: var(--rich-surface, var(--dsw-alias-bg-layer-1)); }
+.error { margin: 0; color: var(--rich-danger, var(--dsw-alias-label-primary)); }
+.actions { margin-inline-start: auto; }

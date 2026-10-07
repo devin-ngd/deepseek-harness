@@ -33,6 +33,8 @@ kind: "package-reference"
 
 ### 查看已提交的计划
 
+成功结果记录了用户批准的计划时，卡片和新打开的侧栏文档使用该版本；拒绝、取消和较早的结果保留原始提交。原生结果提供 `meta.planMode`；PTC 结束记录在 `Plan approved` 确认行之后保留已批准的 Markdown。原始调用参数仍保留在会话历史中。
+
 回合结束后，每次提交的计划都会显示在该回合末尾的产物区域，并采用文件产物卡片的样式，包含 Markdown 图标、标题和“打开”操作。在当前浏览器会话中，每份待审计划自动打开一次；关闭后，重新挂载审批组件不会再次展开，新提交会打开其对应计划。历史卡片仅在点击后打开。通过卡片或审批条带上的“查看全文”链接可阅读完整 Markdown。计划标签页显示纯文本文件图标。不同提交保留独立标签页；是否开始实施仍由审批按钮决定。
 
 没有已记录调用标识的审批也会自动打开。完整正文只保存在标签页的导航内存中，待处理审批卡片可以重新打开它。刷新页面会丢失该正文；失效的预览会提示用户返回待处理审批。在嵌入式子对话中打开计划时，预览使用当前可见的侧栏，读取文档仍保留子会话地址。
@@ -51,7 +53,7 @@ kind: "package-reference"
 
 徽章占据 conversation 声明的 `conversation.input.plan` 单实例座位；node 半部是空 apply（roster 行）。读取经 standard-kit 的 `useProjection` 走通用投影对：有效目标是 `pending ? !active : active`——折叠的宿主值而非客户端乐观态，因此到达的帧无论哪个方向都会纠正徽章。座位注入面携带一个动词 `exitPlanMode`，经 `ctx.remote.commands.execute` 执行 `/plan off`，并把准入失败映射为一行内联错误。placeholder 与提示文案位于 ui-conversation 的 `conversation` locale 命名空间，与已认领 `/plan` 命令的提示逐字共用。
 
-计划卡片通过 Conversation Definition 从原生 `tool/call` 或 PTC dispatch 参数派生，并使用每次调用已解析的回合位置。它们与文件产物一起贡献到可追加的 `conversation.chat.turnTail` 列表。计划资源地址标识调用及完整的普通会话地址或子会话直接父级地址；provider 读取已有会话历史及较早分页，不把正文存入侧边栏布局。提问插件拥有审批操作插槽，并提供请求键、完整正文和可选的调用标识。自动打开通过绑定的 hook 读取 `ctx.sidebarRight.mounted`，在有会话出现在屏幕上后才执行：Sidebar 在挂载审批的那次提交渲染之前就已给出返回的会话，因此在全局面板或其他会话占据屏幕期间到达的审批，会在那次提交的 effect 里打开。[历史决策记录](../../../.agents/notes/archived/feature/2026-09-17-persistent-plan-cards.md)说明审批与文档为何保持独立生命周期。 子代理计划地址也保留未知模式，以便历史读取解析子 descriptor。
+计划卡片通过 Conversation Definition 从原生 `tool/call` 或 PTC dispatch 参数派生，并从成功的审批结果更新，同时保留每次调用已解析的回合位置。它们与文件产物一起贡献到可追加的 `conversation.chat.turnTail` 列表。计划资源地址标识调用及完整的普通会话地址或子会话直接父级地址；provider 读取已有会话历史及较早分页，不把正文存入侧边栏布局。提问插件拥有审批操作插槽，并提供请求键、完整正文和可选的调用标识。自动打开通过绑定的 hook 读取 `ctx.sidebarRight.mounted`，在有会话出现在屏幕上后才执行：Sidebar 在挂载审批的那次提交渲染之前就已给出返回的会话，因此在全局面板或其他会话占据屏幕期间到达的审批，会在那次提交的 effect 里打开。[历史决策记录](../../../.agents/notes/archived/feature/2026-09-17-persistent-plan-cards.md)说明审批与文档为何保持独立生命周期。子代理计划地址也保留未知模式，以便历史读取解析子 descriptor。
 
 框架绑定的 `usePlans(turn)` 只提供该回合的已提交计划数据。Chat 随节点更新维护成员索引，并在读取时排列该集合；卡片渲染不扫描整段对话，也不订阅其他回合或节点类型。
 

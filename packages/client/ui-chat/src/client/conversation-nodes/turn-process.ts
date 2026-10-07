@@ -28,6 +28,7 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
 }
 
 interface TurnProcessState {
+  readonly progress?: TurnProcessSpec['progress']
   readonly turn: number
   readonly assistantStartByStep: ReadonlyMap<number, number>
   readonly messageCountByStep: ReadonlyMap<number, number>
@@ -126,6 +127,7 @@ function processSpec(state: TurnProcessState, turn: TurnLocation): TurnProcessSp
   if (controlAnchorSeq === undefined) return null
   const answer = latestAnswer(turn)
   const counts = {
+    ...(state.progress === undefined ? {} : { progress: state.progress }),
     messageCount: answer === null
       ? state.messageCount
       : [...state.messageCountByStep]
@@ -169,6 +171,11 @@ function processSpec(state: TurnProcessState, turn: TurnLocation): TurnProcessSp
 
 function updateProcessState(state: TurnProcessState, event: ConversationEvent): TurnProcessState {
   let current = state
+  if (event.type === 'assistant/message' && event.surfaceOp === 'append'
+    && event.data.message.content.some(block => block.type === 'tool-call')) {
+    const text = event.data.message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n').trim()
+    if (text !== '' && !text.includes('```')) current = { ...current, progress: { text, seq: event.seq } }
+  }
   if (event.type === 'assistant/message'
     && event.surfaceOp === 'append'
     && hasAssistantReplyContent(toAssistantBlocks(event.data.message.content))) {
@@ -260,6 +267,7 @@ export const turnProcessDefinition: ConversationNodeDefinition<TurnProcessState>
       && current.data.messageCount === state.messageCount
       && current.data.toolCallCount === state.toolCallCount
       && current.data.subagentCount === state.subagentCount
+      && current.data.progress === state.progress
       && turn.status !== 'closed'
       && latestStep?.status !== 'closed') return previous
     const spec = processSpec(state, turn)

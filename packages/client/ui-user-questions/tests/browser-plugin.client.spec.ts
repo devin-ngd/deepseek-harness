@@ -709,6 +709,22 @@ describe('apply', () => {
     await expect(result).resolves.toBe(ANSWER)
   })
 
+  it('keeps a plan intent render key stable across reload without changing blocking cancellation', async () => {
+    const b = await bench()
+    const questions = PLAN_QUESTIONS.map(question => ({ ...question,
+      intent: { kind: 'plan-review' as const, approve: 'Approve', callId: CALL } }))
+    const result = b.invoke(b.agent, { questions }, async () => ANSWER)
+    void result.catch(() => {})
+    await Promise.resolve()
+    const pending = b.pending.getSnapshot()[0]!
+    expect(pending.key).toBe(PendingQuestion.keyOf(SESSION_ID, CALL))
+    expect(new PendingQuestion(SESSION_ID, questions).key).toBe(pending.key)
+    expect(pending.dismissal).toBe('cancel')
+    await pending.dismiss()
+    await expect(result).rejects.toMatchObject({ code: 'ASK_CANCELLED' })
+    expect(b.pending.getSnapshot()).toEqual([])
+  })
+
   it('closing a continued panel keeps the question answerable from its tool call', async () => {
     const b = await bench()
     b.projection.set(view([CONTINUED]))

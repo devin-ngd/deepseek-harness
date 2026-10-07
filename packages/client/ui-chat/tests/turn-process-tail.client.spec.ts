@@ -56,6 +56,22 @@ function harness(entries: readonly SessionEventLikeEntry[], hasMore = true) {
 }
 
 describe('Turn nodes in partial windows', () => {
+  it('projects public progress without reasoning or authored HTML and replays it from persisted events', () => {
+    const progress: SessionLiveEventEntry = entry({ type: 'assistant/message', seq: SessionSeq(3), time: 3_000,
+      surfaceOp: 'append', data: { turn: 1, step: 1, stream: [],
+        message: createAssistantMessage({ source: { provider: 'test', model: 'test' }, content: [
+          { type: 'reasoning', text: 'private analysis' }, { type: 'text', text: 'Checked the source; running verification.' }, toolBlock,
+        ] }) } })
+    const value = harness([...opening, progress], false)
+    const read = () => value.read().nodes.values().find(node => node.kind === 'turn-process')?.data
+    expect(read()).toMatchObject({ progress: { text: 'Checked the source; running verification.', seq: 3 } })
+    const code = entry({ type: 'assistant/message', seq: SessionSeq(5), time: 5_000, surfaceOp: 'append',
+      data: { turn: 1, step: 2, stream: [], message: createAssistantMessage({ source: { provider: 'test', model: 'test' },
+        content: [{ type: 'text', text: '```rich-html\n{"html":"<h1>Result</h1>"}\n```' }, toolBlock] }) } })
+    value.assembler.append(code)
+    expect(read()).toMatchObject({ progress: { text: 'Checked the source; running verification.', seq: 3 } })
+    expect(harness([...opening, progress, code], false).read().nodes.values().find(node => node.kind === 'turn-process')?.data).toEqual(read())
+  })
   it('retains Step Locations and first-token timing through message settlement, replay, and prepend', () => {
     const value = harness(deltas)
     const committed: SessionAssistantSettlementEntry = { type: 'event', event: {

@@ -58,3 +58,11 @@
     transition: none;
   }
 }
+.progress {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-inline-start: 8px;
+  color: var(--dsw-alias-label-secondary);
+}

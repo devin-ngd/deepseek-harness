@@ -25,7 +25,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { UserQuestionPanels, UserQuestionRecord } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { createWaterfallRequest, PendingQuestion, type QuestionRpcChannel } from './contract/slots.ts'
+import { createWaterfallRequest, PendingQuestion, planReviewOf, type QuestionRpcChannel } from './contract/slots.ts'
 import { createQuestionDraftStore } from './draft-store.ts'
 import { QuestionComposer } from './QuestionComposer.tsx'
 import { questionReplyDefinition } from './question-reply.ts'
@@ -36,6 +36,8 @@ export type {
   PendingQuestion, PlanReview, QuestionAnswer, QuestionComposerProps, QuestionWait,
 } from './contract/slots.ts'
 export type { QuestionKey } from './locales.ts'
+export { planReviewOf } from './contract/slots.ts'
+export { parseRecommendedLabel } from './QuestionComposer.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -104,11 +106,12 @@ class QuestionCards {
 
   /**
    * Return the card of a tool call, creating and publishing it when absent.
-   * A request without a call id always gets a fresh card.
+   * A plan-review intent also supplies a stable render identity; an unnamed request gets a fresh card.
    */
   ensure(sessionId: SessionId, questions: readonly AskUserQuestionItem[], callId: ToolCallId | undefined): QuestionCard {
-    if (callId !== undefined) {
-      const existing = this.byCallId(sessionId, callId)
+    const identity = callId ?? planReviewOf(questions)?.callId
+    if (identity !== undefined) {
+      const existing = this.byCallId(sessionId, identity)
       if (existing !== undefined) return existing
     }
     return this.#create(new PendingQuestion(sessionId, questions, callId, () => this.keysFor(sessionId)))
@@ -387,7 +390,10 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
       store: questionDraftStore,
       inject: () => ({ keyedHooks: { questionCard: (key: string) => cards.source(key) } }),
-      children: { 'conversation.plan-review.actions': { kind: 'list', scope: 'session' } },
+      children: {
+        'conversation.plan-review.actions': { kind: 'list', scope: 'session' },
+        'conversation.question.content': { kind: 'chain', scope: 'session' },
+      },
     },
     QuestionComposer,
   ))

@@ -84,10 +84,27 @@ describe('submitted plan identity', () => {
     expect(planDefinition.match({ type: 'user/message', data: {} } as never)).toBeNull()
     const state = planDefinition.start({} as never, { event: call } as never, {} as never)
     expect(state).toEqual(plan)
-    expect(planDefinition.update({ state } as never, {} as never)).toBe(state)
+    expect(planDefinition.update({ state } as never, { event: { type: 'user/message', data: {} } } as never)).toBe(state)
     const settled = { event: { type: 'tool/ptc-dispatch', seq: 21, data: { name: 'exit_plan_mode', subCallId: plan.callId, arguments: { plan: markdown } } }, location: { kind: 'unresolved' } }
     expect(planDefinition.buildViewNode!({ key: 'plan', id: plan.callId, matches: [settled] } as never)).toMatchObject({ anchorSeq: 21, data: plan })
   })
+})
+
+it('updates native and PTC plan artifacts to the approved version while preserving their position', () => {
+  const markdown = '# Human-approved plan\n\nUse the reviewed implementation steps.'
+  const native = { type: 'tool/result', data: { message: { toolCallId: plan.callId, isError: false },
+    meta: { planMode: { approved: true, plan: markdown } } } }
+  const ptc = { type: 'tool/ptc-dispatch', data: { name: 'exit_plan_mode', subCallId: plan.callId,
+    arguments: { plan: plan.markdown }, isError: false, content: [{ type: 'text', text: 'Plan approved — carry out this plan:\n' + markdown }] } }
+  for (const event of [native, ptc]) {
+    expect(planDefinition.match(event as never)).toEqual({ id: plan.callId, role: 'update' })
+    const state = planDefinition.update({ state: plan } as never, { event } as never)
+    expect(state).toMatchObject({ markdown, title: 'Human-approved plan', callId: plan.callId })
+    expect(planDefinition.buildViewNode!({ state, key: 'plan', id: plan.callId,
+      start: { event: { seq: 12 }, location: { kind: 'unresolved' } } } as never)).toMatchObject({ anchorSeq: 12, data: state })
+  }
+  expect(submittedPlan({ ...native, data: { ...native.data, message: { ...native.data.message, isError: true } } })).toBeUndefined()
+  expect(submittedPlan({ ...native, data: { ...native.data, meta: { planMode: { approved: true, plan: 'invalid' } } } })).toBeUndefined()
 })
 
 it('projects native and PTC submissions into their resolved turns without duplicate cards', () => {

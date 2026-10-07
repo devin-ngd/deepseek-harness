@@ -164,7 +164,7 @@ The user block is append-only conversation growth. Entering or leaving plan mode
 
 #### What the model sees
 
-The [`exit_plan_mode` schema](../../../docs/tool-catalog.md#deepseek-aidsh-plan-mode) remains available in both states; execution outside plan mode fails, while an approved in-mode review returns the canonical `{ approved: true }` value and renders the existing confirmation text. Rejection remains a failed call carrying review feedback, and a dismissed review a failed call naming the user's takeover.
+The [`exit_plan_mode` schema](../../../docs/tool-catalog.md#deepseek-aidsh-plan-mode) remains available in both states; execution outside plan mode fails, while an approved in-mode review returns `{ approved: true, plan }` and includes the complete human-approved plan in its confirmation text. An optional `reviewedPlan` answer replaces the submitted original after heading validation; absence preserves the original. Rejection remains a failed call carrying review feedback, and a dismissed review a failed call naming the user's takeover.
 
 #### Token effect
 

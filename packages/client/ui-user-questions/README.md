@@ -25,6 +25,8 @@ The Web client shows an agent's question beside the chat input. Users choose opt
 <a id="use-this-package"></a>
 ## Use this package
 
+The Session-scoped `conversation.question.content` chain receives `{ pending, card }` and lets an extension replace the question presentation while using the same answer, focus, wait and dismissal operations. If no entry selects the request, the ordinary composer remains the fallback. Plan-review intents with a tool-call ID retain the same draft key across reload while preserving blocking cancellation. A plan-review provider can include optional `reviewedPlan` in its approval answer; `custom` remains review feedback.
+
 When the agent asks a question, the attached card temporarily occupies the composer seat: answer each question, navigate with the pager, or skip it. A first choice marked “Recommended” starts selected, but remains an unsubmitted draft and does not pause a timed countdown. Clicking a single-select choice advances immediately. Enter on a focused option attempts to submit the batch without selecting that option; missing answers return to the first incomplete question. Enter in a text answer continues the flow, while Shift+Enter breaks a line instead (during IME composition Enter only confirms the input candidate without advancing).
 
 ### Answering

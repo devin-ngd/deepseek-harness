@@ -24,6 +24,16 @@ async function read(provider: ReturnType<typeof planResourceProvider>, url = add
 }
 
 describe('plan history resource', () => {
+  it('reopens the approved plan rather than its original arguments after reload', async () => {
+    const approved = { type: 'event', event: { type: 'tool/result', seq: 2, data: {
+      message: { toolCallId: 'call', isError: false }, meta: { planMode: { approved: true, plan: '# Reviewed plan\n\nApproved steps.' } },
+    } } }
+    const b = setup([entry, approved])
+    expect(await read(b.provider)).toEqual([{ ok: true, value: { callId: 'call', markdown: '# Reviewed plan\n\nApproved steps.', title: 'Reviewed plan' } }])
+    const paged = setup([approved], true)
+    expect((await read(paged.provider))[0]).toMatchObject({ ok: true, value: { title: 'Reviewed plan' } })
+    expect(paged.page).not.toHaveBeenCalled()
+  })
   it('restores the exact invocation and releases its snapshot stream', async () => {
     const b = setup([entry])
     expect(await read(b.provider)).toEqual([{ ok: true, value: { callId: 'call', markdown: '# Saved plan', title: 'Saved plan' } }])

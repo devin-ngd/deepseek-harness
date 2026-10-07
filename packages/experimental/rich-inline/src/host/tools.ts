@@ -19,10 +19,24 @@ export interface RichPublishInput {
   readonly expectedRenderRevision?: number
 }
 /** Publication identity and the marker the model places in its assistant reply. */
-export interface RichPublishValue { readonly blockId: RichBlockId; readonly renderRevision: number; readonly marker: string }
+export interface RichPublishValue {
+  readonly blockId: RichBlockId
+  readonly renderRevision: number
+  readonly dataRevision: number
+  readonly marker: string
+}
+/** State replacement keeps the executable document and every unsent draft unchanged. */
+export interface RichDataInput {
+  readonly blockId: string
+  readonly expectedRenderRevision: number
+  readonly expectedDataRevision: number
+  readonly values: RichValues
+  readonly fallbackText: string
+}
 /** Capabilities captured by the owning Host; no ambient tool runtime reaches content. */
 export interface RichToolOwner {
   publish(sessionId: SessionId, input: RichPublishInput): Promise<RichPublishValue>
+  updateData(sessionId: SessionId, input: RichDataInput): Promise<{ blockId: RichBlockId; dataRevision: number }>
   prepareCompletion(sessionId: SessionId, actionId: RichActionId, callId: ToolCallId): Promise<void>
 }
 
@@ -51,9 +65,9 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: {
-        blockId: { type: 'string', required: true }, renderRevision: { type: 'integer', required: true }, marker: { type: 'string', required: true },
+        blockId: { type: 'string', required: true }, renderRevision: { type: 'integer', required: true }, dataRevision: { type: 'integer', required: true }, marker: { type: 'string', required: true },
       } },
-      render: (args, value) => [{ type: 'text', text: `Interactive block ${value.blockId}, revision ${value.renderRevision}. Stored; the plugin executes and checks rendering. ${args.blockId === undefined ? 'Final visual result: return only this marker, unless explanation was requested:' : 'Existing block updated; no duplicate marker or explanatory reply is needed:'}\n${value.marker}` }],
+      render: (args, value) => [{ type: 'text', text: `Interactive block ${value.blockId}, render revision ${value.renderRevision}, data revision ${value.dataRevision}. Stored; the plugin executes and checks rendering. ${args.blockId === undefined ? 'Final visual result: return only this marker, unless explanation was requested:' : 'Existing block updated; no duplicate marker or explanatory reply is needed:'}\n${value.marker}` }],
     },
     async execute(args, exec) {
       exec.signal.throwIfAborted()
@@ -62,6 +76,29 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
         values: args.values === undefined ? undefined : parsedValues(args.values, maxValueBytes) })
     },
   })), 'rich-inline.publish-tool')
+  ctx.effect(() => ctx.tools.register(defineTool({
+    name: 'rich_inline_update',
+    description: 'Replace confirmed state and readable fallback of an existing interactive block without changing HTML/CSS/JavaScript or unsent inputs. Use window.rich.onState in the published page to render values. Supply the current render and data revisions from publication or interactive input; a stale revision is rejected. Progress in an ordinary task may use this tool without an actionId. Tool or task completion must still come from its actual outcome. No new marker is needed.',
+    parameters: {
+      blockId: { type: 'string', required: true },
+      expectedRenderRevision: { type: 'integer', required: true },
+      expectedDataRevision: { type: 'integer', required: true },
+      values: { type: 'json', required: true },
+      fallbackText: { type: 'string', required: true },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: {
+        blockId: { type: 'string', required: true }, dataRevision: { type: 'integer', required: true },
+      } },
+      render: (_args, value) => [{ type: 'text', text: `Interactive state updated: ${JSON.stringify(value)}` }],
+      presentationMeta: (_args, value) => ({ richInline: { kind: 'data', ...value } }),
+    },
+    async execute(args, exec) {
+      exec.signal.throwIfAborted()
+      if (exec.agent === undefined) throw new Error('Rich state update requires an owning Agent')
+      return owner.updateData(exec.agent.id, { ...args, values: parsedValues(args.values, maxValueBytes) })
+    },
+  })), 'rich-inline.update-tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_complete',
     description: 'Settle the exact actionId supplied in an interactive user input after its requested work is complete. Completed means the work succeeded; failed means its failure is known. This does not promise exactly-once external effects. Return structured values for the block. Do not settle another session or infer completion from being idle.',

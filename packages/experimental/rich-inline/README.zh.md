@@ -71,6 +71,14 @@ projectDefaults:
 
 流式预览在独立的只读原生容器中解码 HTML/CSS，不安装生成的 JS 或业务 SDK。更新最多每 34 ms 合并一次。已完成的同级片段保留 DOM；未完成尾部最多解析 32 KiB，因此较大的未闭合章节可能到最终提交时才完整显示。取消或 JSON 无效时保留源码，不发布内容块。可信控件可以终止预览。最终提交释放预览，再挂载完整校验后的文档。条件轮询覆盖草稿、动作、附件、修复和待应用代码；状态不变时不传输 manifest。渲染器没有固定组件目录。
 
+### 任务进度、问答与可编辑计划
+
+在启用的模式中，`compactLiveProcess: true`（默认）显示一条可展开的实时任务状态行，包含最近一条已入档的公开进度文本和工具计数。已有过程行保留父节点，仍可搜索；思考内容保留在过程折叠区和轨迹中。正在流式生成的回答和最终文档继续显示。中断、失败和夹有用户输入的轮次继续展开；完全展开模式保留所有过程行。停用插件或设置 `compactLiveProcess: false` 可恢复普通实时显示。
+
+`htmlQuestions: true`（默认）通过原有问答通道，在 Desktop 和 Web 展示可信 HTML 表单。表单支持单选、多选、文字、明确跳过，以及按会话保存并恢复浏览器草稿。计划审查保留规范 Markdown，提供编辑框和预览：可以直接提交原计划，也可以修改后批准；选择退回修改可提交反馈。提交的 `reviewedPlan` 成为 `exit_plan_mode` 返回的 `plan`。关闭调用原有的问题关闭操作。生成文档中的脚本不能完成这些请求。设置 `htmlQuestions: false` 可使用普通问答面板。
+
+持续更新的文档只发布一次代码，通过 `window.rich.onState` 渲染数据。`rich_inline_update` 接收 `blockId`、`expectedRenderRevision`、`expectedDataRevision`、完整 `values` 和可读 `fallbackText`；它拒绝过期写入，只替换已确认数据，不替换代码、不重新挂载原生页面，也不改变未提交草稿。代码替换使用 `rich_inline_publish`。更新结果提供新的 `dataRevision`；提交交互时也携带页面和数据版本。普通进度不需要新增页面或业务动作 ID。
+
 ### 内置暗色样式
 
 默认的 `theme: cyber`、`accent: auto` 为每个原生预览和最终内容块安装同一份基础 CSS，重新打开历史内容块时也会应用。[样式配置](src/shared/theme.ts) 来自 Host profile，模型规则和 Client 使用相同设置。即使 `css` 为空，语义化标题、列表、表格、代码、折叠内容及控件也有统一的间距、对比度和焦点提示。外层聊天主题保持原设置。

@@ -164,7 +164,7 @@ function expectPlanPtcSdkBindings(sdk: string): void {
   expect(sdk).toContain('read: Record<string, JsonValue>;')
   expect(sdk).toContain('write: Record<string, JsonValue>;')
   expect(sdk).toContain('interface ToolOutputMap {')
-  expect(sdk).toContain('exit_plan_mode: {\n    approved: true;\n  };')
+  expect(sdk).toContain('exit_plan_mode: {\n    approved: true;\n    plan: string;\n  };')
   expect(sdk).toContain('[K in ToolName]: (args: ToolArgsMap[K]) => Promise<ToolOutputMap[K]>;')
 }
 
@@ -810,7 +810,7 @@ describe('/plan', () => {
 })
 
 describe('exit_plan_mode', () => {
-  async function setupWithReview(answer?: { selected: string[]; custom?: string }) {
+  async function setupWithReview(answer?: { selected: string[]; custom?: string; reviewedPlan?: string }) {
     const ctx = await setup()
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(UserQuestionService)
@@ -915,8 +915,8 @@ describe('exit_plan_mode', () => {
     const result = await callExit(ctx, agent)
     expect(result.isError).toBe(false)
     if (result.isError) throw new Error('expected approved plan result')
-    expect(result.value).toEqual({ approved: true })
-    expect(result.content).toEqual([{ type: 'text', text: 'Plan approved — plan mode exited; carry out the plan starting with your next step.' }])
+    expect(result.value).toEqual({ approved: true, plan: '# The plan\n\ndo things' })
+    expect(result.content).toEqual([{ type: 'text', text: 'Plan approved — plan mode exited; carry out this human-approved plan starting with your next step:\n# The plan\n\ndo things' }])
     // Boundary-applied, not a direct append: the fold stays plan until the
     // step's end, so the plan policy covers any remaining call of the SAME batch.
     expect(foldPlanMode(agent.session.snapshotEvents())).toBe(true)
@@ -927,6 +927,19 @@ describe('exit_plan_mode', () => {
     expect(asked[0]?.agent).toBe(agent)
     expect(asked[0]?.questions[0]?.detail).toBe('# The plan\n\ndo things')
     expect(asked[0]?.questions[0]?.options?.map(option => option.label)).toEqual(['Approve', 'Keep planning'])
+  })
+
+  it('returns the human-edited plan and refuses an empty approved plan', async () => {
+    const plan = '# Revised plan\n\nStart with the focused regression.'
+    const approved = await setupWithReview({ selected: ['Approve'], reviewedPlan: plan })
+    const result = await callExit(approved.ctx, approved.agent)
+    expect(result.isError).toBe(false)
+    if (result.isError) throw new Error('expected approved plan')
+    expect(result.value).toEqual({ approved: true, plan })
+    expect(result.content).toEqual([{ type: 'text', text: `Plan approved — plan mode exited; carry out this human-approved plan starting with your next step:\n${plan}` }])
+    const invalid = await setupWithReview({ selected: ['Approve'], reviewedPlan: '' })
+    expect((await callExit(invalid.ctx, invalid.agent)).isError).toBe(true)
+    expect(foldPlanMode(invalid.agent.session.snapshotEvents())).toBe(true)
   })
 
   it('carries the exact plan through a PTC mode review and logs the nested dispatch', async () => {

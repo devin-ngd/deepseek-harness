@@ -78,6 +78,8 @@ The completed-turn action footer follows the recorded Turn end. Its action row s
 <a id="turn-process-folding"></a>
 ## Turn Process Folding
 
+`ctx.chatLiveProcess.register` contributes a reversible, Session-specific live folding policy. Contributions use `enabled(sessionId)` and a change subscription. Eligible live Turns show an expandable status row; current response fragments stay visible, process members stay mounted, and an open disclosure survives step changes. The last settled public text accompanying tool calls supplies progress; reasoning and fenced publications are excluded. Errors, cancellation, interleaved input and Verbose keep their normal open behavior.
+
 During uninterrupted following, local transcript and steering echoes remain mounted through Inbox acceptance and claim until the durable message arrives, without triggering tail following twice. Pending steering follows Inbox order across clients, using matching local echoes in place. Admitted local steering also suppresses matching stale Inbox rows until the claim projection arrives; steering without a locally tracked submission continues to follow the Inbox projection. After reconnect, Host-owned rows replace receipt-confirmed local echoes; a claim awaiting admission may briefly have no bubble.
 
 When Chat ends with an open Turn control and that Turn has no visible input, the first local transcript echo precedes the control. Other echoes remain at the flow tail. The control and echoes share one keyed list, so arrival of the control preserves the echo's mounted identity. Durable inputs replace their matching echoes in the same render.

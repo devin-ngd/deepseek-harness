@@ -90,10 +90,12 @@ const answerSchema = z.object({
   id: z.string(),
   selected: z.array(z.string()),
   custom: z.string().optional(),
+  reviewedPlan: z.string().optional(),
 }).strict().transform((answer): AskUserQuestionAnswerItem => ({
   id: answer.id,
   selected: answer.selected,
   ...(answer.custom === undefined ? {} : { custom: answer.custom }),
+  ...(answer.reviewedPlan === undefined ? {} : { reviewedPlan: answer.reviewedPlan }),
 }))
 
 const settledQuestionsSchema: z.ZodType<readonly SettledUserQuestion[]> = z.array(z.object({

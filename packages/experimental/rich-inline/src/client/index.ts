@@ -22,13 +22,23 @@ import type { RichInjected } from './slots.ts'
 import { RICH_SETTINGS_ENTRY, RichAppearanceSource, RichThemeChoice } from './appearance.ts'
 import type { RichThemeSettings } from './appearance.ts'
 import { ThemeSettings, ThemeToast } from './ThemeSettings.tsx'
+import { RichQuestion } from './RichQuestion.tsx'
+import { createRichQuestionDraftStore } from './question-drafts.ts'
 import type { ThemeSettingsInjected } from './ThemeSettings.tsx'
 
 /** Deployment-configurable durable status refresh cadence. */
-export interface Config { readonly pollIntervalMs: number; readonly activePresets?: readonly string[] }
+export interface Config {
+  readonly pollIntervalMs: number
+  readonly activePresets?: readonly string[]
+  /** Compact live process records without changing the user's work-details preference. */
+  readonly compactLiveProcess?: boolean
+  /** Present questions and plan reviews with the plugin's trusted HTML forms. */
+  readonly htmlQuestions?: boolean
+}
 /** Validated polling bounds avoid hidden per-deployment timers. */
 export const Config = z.object({
   pollIntervalMs: z.number().min(250).max(60000).default(1000), activePresets: z.array(z.string().min(1)).default([]),
+  compactLiveProcess: z.boolean().default(true), htmlQuestions: z.boolean().default(true),
 })
 /** Client integration waits on the generated Host namespace and trusted UI services. */
 export const inject = ['slots', 'locale', 'remote', 'fileUpload']
@@ -78,6 +88,20 @@ function followSettings(ctx: Context, appearance: RichAppearanceSource): void {
 async function activate(ctx: Context, config: Config): Promise<void> {
   const remote = ctx.remote.richInline
   const appearance = new RichAppearanceSource(unwrap(await remote.appearance()))
+  const enabled = (sessionId: SessionId): boolean => {
+    if ((config.activePresets?.length ?? 0) === 0) return true
+    const selected = ctx.sessions.list.getSnapshot().byId[sessionId]?.projectionValues?.agentPreset
+    return typeof selected === 'string' && config.activePresets?.includes(selected) === true
+  }
+  if (config.compactLiveProcess !== false) ctx.inject(['chatLiveProcess', 'sessions'], (scope) => {
+    scope.effect(() => scope.chatLiveProcess.register({ enabled, subscribe: listener => scope.sessions.list.subscribe(listener) }),
+      'rich-inline: compact live process')
+  })
+  if (config.htmlQuestions !== false) ctx.slots.inject('conversation.question.content', () => ctx.slots.register({
+    name: 'conversation.question.content', locale: 'richInline',
+    select: owner => enabled(owner.pending.sessionId) ? owner.pending : null,
+    store: createRichQuestionDraftStore(), inject: () => ({ hooks: { appearance } }),
+  }, RichQuestion))
   const rpc: RichRpc = {
     mount: async request => unwrap(await remote.mount(request)),
     snapshot: async request => unwrap(await remote.snapshot(request)),

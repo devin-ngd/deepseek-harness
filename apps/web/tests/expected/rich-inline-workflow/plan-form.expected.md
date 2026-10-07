@@ -1,0 +1,9 @@
+- text: Review and edit the plan Awaiting your decision Plan to carry out
+- textbox "Plan to carry out": "# Original plan Inspect the implementation."
+- group: Preview plan
+- text: Feedback when keeping planning (optional)
+- textbox "Feedback when keeping planning (optional)"
+- alert
+- button "Return to conversation"
+- button "Submit and carry out"
+- button "Keep planning"

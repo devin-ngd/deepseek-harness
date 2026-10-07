@@ -5,6 +5,8 @@ export const NS = 'chat'
 
 /** Simplified Chinese dictionary and key-set source of truth. */
 export const zh = {
+  'message.turnProcess.running': '任务进行中',
+  'message.turnProcess.activity': '{messages} 条进度 · {tools} 次工具调用',
   'message.stepProcess.thinking': '正在分析请求',
   'message.stepProcess.read': '正在读取文件',
   'message.stepProcess.readImage': '正在读取图片',
@@ -198,6 +200,8 @@ export type ChatKey = keyof typeof zh
 
 /** English dictionary, checked against the Chinese key set. */
 export const en = {
+  'message.turnProcess.running': 'Task in progress',
+  'message.turnProcess.activity': '{messages} updates · {tools} tool calls',
   'message.stepProcess.thinking': 'Analyzing the request',
   'message.stepProcess.read': 'Reading files',
   'message.stepProcess.readImage': 'Reading images',

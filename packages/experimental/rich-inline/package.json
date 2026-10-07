@@ -62,6 +62,7 @@
   ],
   "dsh": {
     "client": {
+      "external": ["@deepseek-ai/dsh-client-ui-user-questions/client"],
       "inject": [
         "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-api-session-controller",
@@ -72,7 +73,8 @@
         "@deepseek-ai/dsh-client-file-upload",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-layout",
-        "@deepseek-ai/dsh-client-ui-plugin-manager"
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-user-questions"
       ],
       "platform": "web"
     },
@@ -92,6 +94,8 @@
     "micromark-extension-gfm": "^3.0.0"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-user-questions": "workspace:*",
+    "@deepseek-ai/dsh-user-questions": "workspace:*",
     "@deepseek-ai/dsh-agent-preset-registry": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-brand": "workspace:*",
@@ -120,6 +124,8 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:*"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-client-ui-user-questions": "workspace:*",
+    "@deepseek-ai/dsh-user-questions": "workspace:*",
     "@deepseek-ai/dsh-agent-preset-registry": "workspace:*",
     "@types/mdast": "^4.0.4",
     "@deepseek-ai/cordis": "workspace:~",

@@ -194,6 +194,8 @@ export interface ChatNodeOwnerProps {
 
 /** Shared presentation state for one Turn-process answer generation. */
 export interface TurnProcessOwnerProps {
+  /** Compact live execution requested by a Session presentation contribution. */
+  readonly compactLive?: boolean
   /** Process content eligible to share one Turn-level disclosure. */
   readonly hasContent: boolean
   readonly spec: TurnProcessSpec
@@ -244,6 +246,8 @@ export interface PerformanceUsageInjected {
 /** Business callbacks injected into the Chat view. */
 export interface ChatViewInjected {
   hooks: {
+    /** Whether a presentation extension requests compact live execution for this Session. */
+    compactLiveProcess: ObservableSnapshot<boolean>
     /** Live presentation policy derived from the accepted work-details mode. */
     presentation: ObservableSnapshot<ChatPresentationPolicy>
   }

@@ -143,17 +143,18 @@ export const ChatGroupSeat = memo(function ChatGroupSeat({ groupKey, useChatGrou
   const grouped = props.usePresentation(policy => policy.stepGrouping === 'collapsed'
     || (policy.stepGrouping === 'history' && turnLocation?.status !== 'open'))
   const reason = turnLocation?.end?.data.reason.kind
-  const alwaysOpen = presentation?.turnClosed === false || presentation?.hasInterleavedInput === true
+  const alwaysOpen = (presentation?.turnClosed === false && props.compactLiveProcess !== true) || presentation?.hasInterleavedInput === true
     || reason === 'aborted' || reason === 'error'
   const spec = presentation?.spec
+  const disclosureStep = presentation?.turnClosed === false ? 0 : spec?.answerStep ?? 0
   const selectStored = useCallback((state: Readonly<ChatStoreState>) => turn === undefined
     ? undefined : storedTurnProcessEntry(state, turn), [turn])
   const stored = props.useStore(selectStored)
-  const outerHidden = foldCompleted && presentation?.turnClosed === true && spec !== undefined
-    && !alwaysOpen && stored?.answerStep !== (spec.answerStep ?? 0)
+  const outerHidden = foldCompleted && (presentation?.turnClosed === true || props.compactLiveProcess === true) && spec !== undefined
+    && !alwaysOpen && stored?.answerStep !== disclosureStep
   const revealOuter = useCallback(() => {
-    if (spec !== undefined && !alwaysOpen) props.actions.setTurnProcessOpen(spec.turn, spec.answerStep ?? 0, true)
-  }, [props.actions, spec, alwaysOpen])
+    if (spec !== undefined && !alwaysOpen) props.actions.setTurnProcessOpen(spec.turn, disclosureStep, true)
+  }, [props.actions, spec, disclosureStep, alwaysOpen])
   const rootRef = useSearchableHidden(outerHidden, revealOuter)
   useEffect(() => {
     if (outerHidden && rootRef.current?.hasAttribute('hidden')) setOpen(false)

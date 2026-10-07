@@ -71,6 +71,27 @@ beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('real rich controller async lifetimes', () => {
+  it('delivers data refresh to the current guest without replacing its code or unsent draft', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    vi.stubGlobal('getComputedStyle', () => ({ colorScheme: 'light', getPropertyValue: () => '' }))
+    vi.stubGlobal('document', { documentElement: {} })
+    const h = harness()
+    const initial = snapshot()
+    const current = { ...initial, draft: { ...initial.draft, fields: { note: 'unsent' }, dirty: ['note'] } }
+    vi.mocked(h.rpc.mount).mockResolvedValue({ mountId: 'mount-1' as RichMountId, snapshot: current })
+    const updated = { ...current, dataRevision: 1, values: { progress: 'checked' },
+      manifest: { ...current.manifest, fallbackText: 'Checked one item' } }
+    vi.mocked(h.rpc.snapshot).mockResolvedValue(updated)
+    h.controller.open(messageId, blockId); await settle()
+    h.emit('lease-mount-1', 'mount-1', 1, 'ready', { sdkVersion: '1' }); await settle()
+    await vi.advanceTimersByTimeAsync(250); await settle()
+    expect(h.native.acquire).toHaveBeenCalledTimes(1)
+    expect(h.native.release).not.toHaveBeenCalled()
+    expect(h.rpc.applyUpdate).not.toHaveBeenCalled()
+    expect(h.controller.getSnapshot().snapshot).toEqual(updated)
+    expect(lastPacket(h.native).payload).toMatchObject({ snapshot: { dataRevision: 1, values: updated.values, draft: current.draft } })
+    await h.controller.close()
+  })
   it('applies Host cyber appearance before authored CSS and includes it in the native document budget', async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: false }))
     const h = harness()
