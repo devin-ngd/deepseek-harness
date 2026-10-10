@@ -15,7 +15,20 @@ export interface DesktopRichRequest {
   readonly js: string
   /** Separate SDK script so a syntax error in authored code cannot suppress diagnostics. */
   readonly sdk?: string
+  /** Localized copy UI, absent for inert streaming previews. */
+  readonly copy?: DesktopRichCopyLabels
 }
+
+/** Copy controls receive their complete localized wording from the owning client plugin. */
+export interface DesktopRichCopyLabels {
+  readonly text: string
+  readonly image: string
+  readonly copied: string
+  readonly failed: string
+}
+
+/** Only a trusted activation in the isolated preload can submit these clipboard bytes. */
+export type DesktopRichCopyValue = { readonly kind: 'text'; readonly text: string } | { readonly kind: 'image'; readonly data: string }
 
 /** One disposable native guest; its source is fixed by the main process. */
 export interface DesktopRichReservation {
@@ -37,4 +50,5 @@ export interface DesktopRichBridge {
 export interface DesktopRichBootstrap {
   readonly mountId: string
   readonly mountNonce: string
+  readonly copy?: DesktopRichCopyLabels
 }

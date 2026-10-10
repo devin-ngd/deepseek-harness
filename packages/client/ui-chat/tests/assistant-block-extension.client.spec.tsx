@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { ChainRenderOpts } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ReactNode } from 'react'
+import { useRef } from 'react'
 import type { AssistantBlockOwnerProps } from '../src/client/contract/slots.ts'
 import { AssistantMarkdown, type AssistantMarkdownProps } from '../src/client/chat/AssistantMarkdown.tsx'
 import { useDetailedPresentation } from './presentation-fixture.client.ts'
@@ -13,6 +14,8 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 const props: AssistantMarkdownProps = {
   blocks: [], streaming: false, useDisclosure, usePresentation: useDetailedPresentation,
+  useGroupAction: () => useRef<HTMLDivElement>(null),
+  renderSlot: (_key, _owner, options) => options?.fallback,
   renderMessageImages: () => <div>image gallery</div>,
   t: () => 'fallback',
 }

@@ -29,6 +29,8 @@ This package gives a keyless test a real agent with a fixed model transcript: mo
 
 ### Mounting it
 
+Prepared callers require the routed adapter mode. Configure `models[].reasoningEfforts` from least to greatest selectable effort. Configuration functions receive that order during preparation; `defaultReasoningEffort` remains independent of the first entry.
+
 With `providers` configured, the plugin registers a replay-only adapter whose catalog is available to scenarios that exercise model discovery; without `providers`, it installs the catch-all `llm/stream` waterfall used by tests that do not need discovery:
 
 ```yaml
@@ -84,6 +86,14 @@ Two failure modes are not reconstructable from a durable Assistant settlement al
 - **A scripted placeholder matches nothing** — `{{fromRequest:<regex>}}` resolution validates the pattern and the request corpus and fails loud on no match, an invalid pattern, or an unterminated placeholder.
 
 Isolated transcript extraction supplies an explicit empty child-fact set to V3→V4. It retains recorded catalog entries but does not discover related files. Complete historical parent catalog migration belongs to JSONL persistence.
+
+### Offline isolation
+
+`offline: true` requires explicit non-empty provider/model routes and at least one validated scripted call. Installation registers a finite counter and requires replay-only dispatch until disposal. This mode skips all DeepSeek request-extension preparation and acceptance, even for the `deepseek-official` route. `assertConsumed()` checks the exact counter, zero non-replay dispatches, and every script cursor. Missing input, undeclared routes, excess calls, and incomplete consumption fail instead of selecting a live provider.
+
+Offline mode does not unload unrelated plugins. Its composition must disable `session-log-deepseek` and any other network contribution; ordinary replay retains request-extension acceptance simulation.
+
+`llm-replay/request` synchronously exposes the actual request received by replay, including messages after the LLM runtime's adapter projections. An observer failure fails that scripted call without selecting a real provider. Request assertions use independent expected values; refreshing a transcript does not update those assertions.
 
 -----
 

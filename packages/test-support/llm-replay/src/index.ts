@@ -34,8 +34,19 @@ import type {
   TokenUsage,
   ToolUpdate,
 } from '@deepseek-ai/dsh-llm'
-import { LlmAdapter, LlmError, ReasoningEffortId, expandAssistantStream, offloadedImageText, requestImageHandleText, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter, LlmError, OfflineReplayCounter, ReasoningEffortId, expandAssistantStream, offloadedImageText, requestImageHandleText, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Observe the actual adapter request before consuming its scripted response.
+     * Observer failures fail that replay call without a real-provider fallback.
+     * @mode emit
+     * @param options - final model request after LLM adapter projections.
+     */
+    'llm-replay/request'(options: GenerateOptions): void
+  }
+}
 
 const PACKED_CHUNK_ROW_TYPES = new Set(['text-chunks', 'reasoning-chunks', 'tool-call-chunks'])
 
@@ -96,7 +107,7 @@ export interface ReplayModelConfig {
    * no image pricing.
    */
   imageRequestTokens?: number
-  /** Optional reasoning-effort ids the replay route accepts, in display order. */
+  /** Optional reasoning-effort ids from least to greatest selectable effort. */
   reasoningEfforts?: string[]
   /**
    * Optional effort materialized when callers omit one; must appear in
@@ -123,6 +134,8 @@ export interface ReplayProviderConfig {
 
 /** Resolved plugin configuration. */
 export interface ReplayConfig {
+  /** Require routed finite replay counters and skip every provider request extension. */
+  offline?: boolean
   /**
    * Path to the selected PRIMARY fixture (`session.jsonl` for v0 or
    * `session.vN.jsonl` for vN). For a single-session scenario this is the only
@@ -853,12 +866,15 @@ export function loadSessionScripts(config: ReplayConfig): SessionScript[] {
 /** Replay adapter that makes a configured provider catalog discoverable without provider I/O. */
 class ReplayAdapter extends LlmAdapter {
   private readonly providers: ReadonlyMap<string, ReplayProviderConfig>
+  override readonly offlineReplayCounter: OfflineReplayCounter | undefined = undefined
 
   constructor(
     providers: readonly ReplayProviderConfig[],
     private readonly replay: (options: GenerateOptions) => AsyncIterable<StreamChunk>,
+    counter?: OfflineReplayCounter,
   ) {
     super()
+    if (counter !== undefined) this.offlineReplayCounter = counter
     this.providers = new Map(providers.map(provider => [provider.id, provider]))
   }
 
@@ -1042,6 +1058,7 @@ export function installLlmReplay(ctx: Context, config: ReplayConfig): ReplayHand
   let nextScript = 0
   const ANON = '\0anon\0' // the key for a call that carries no sessionId
   const replay = (options: GenerateOptions): AsyncIterable<StreamChunk> => {
+    ctx.emit('llm-replay/request', options)
     const key = options.sessionId ?? ANON
     let state = bound.get(key)
     let unrecorded = false
@@ -1081,7 +1098,7 @@ export function installLlmReplay(ctx: Context, config: ReplayConfig): ReplayHand
       }
       inferStartedSubagents(options.messages, liveSessionIds)
       const resolved = resolveScriptedEntry(materializeSessionTokens(entry, liveSessionIds), options.messages)
-      if (options.provider === 'deepseek-official' && providerAccepted(resolved)) {
+      if (config.offline !== true && options.provider === 'deepseek-official' && providerAccepted(resolved)) {
         const extensions = ctx.get('deepseekLlmApiExtensions')
         if (extensions !== undefined) {
           const signal = options.signal ?? new AbortController().signal
@@ -1098,26 +1115,46 @@ export function installLlmReplay(ctx: Context, config: ReplayConfig): ReplayHand
       yield* replayEntry(resolved, options.signal, paceMs)
     })()
   }
+  const assertScriptsConsumed = (): void => {
+    const problems: string[] = []
+    if (nextScript < scripts.length) {
+      problems.push(`${scripts.length - nextScript} recorded script(s) never bound to a live session`)
+    }
+    for (const [key, state] of bound) {
+      if (state.cursor < state.entries.length) {
+        const who = key === ANON ? 'the anonymous session' : `session ${key}`
+        problems.push(`${who} consumed ${state.cursor}/${state.entries.length} recorded call(s)`)
+      }
+    }
+    if (problems.length > 0) {
+      throw new Error(`llm-replay: fixture not fully consumed — ${problems.join('; ')}; the scenario drove fewer model calls than recorded`)
+    }
+  }
   const providers = config.providers ?? []
-  const dispose = providers.length > 0
-    ? ctx.llm.registerAdapter(providers.map(provider => provider.id), new ReplayAdapter(providers, replay))
-    : ctx.on('llm/stream', (options: GenerateOptions, _next) => replay(options))
+  const counter = config.offline === true
+    ? new OfflineReplayCounter(providers.flatMap(provider => (provider.models ?? [])
+      .map(model => ({ provider: provider.id, model: model.id }))),
+    scripts.reduce((sum, script) => sum + script.entries.length, 0), assertScriptsConsumed)
+    : undefined
+  const releaseOffline = config.offline === true ? ctx.llm.requireOfflineReplay() : undefined
+  let releaseAdapter: () => void
+  try {
+    releaseAdapter = providers.length > 0
+      ? ctx.llm.registerAdapter(providers.map(provider => provider.id), new ReplayAdapter(providers, replay, counter))
+      : ctx.on('llm/stream', (options: GenerateOptions, _next) => replay(options))
+  } catch (error) {
+    releaseOffline?.()
+    throw error
+  }
+  const dispose = (): void => { releaseAdapter(); releaseOffline?.() }
   return {
     dispose,
     assertConsumed(): void {
-      const problems: string[] = []
-      if (nextScript < scripts.length) {
-        problems.push(`${scripts.length - nextScript} recorded script(s) never bound to a live session`)
-      }
-      for (const [key, state] of bound) {
-        if (state.cursor < state.entries.length) {
-          const who = key === ANON ? 'the anonymous session' : `session ${key}`
-          problems.push(`${who} consumed ${state.cursor}/${state.entries.length} recorded call(s)`)
-        }
-      }
-      if (problems.length > 0) {
-        throw new Error(`llm-replay: fixture not fully consumed — ${problems.join('; ')}; the scenario drove fewer model calls than recorded`)
-      }
+      if (config.offline === true) {
+        if (counter === undefined) throw new Error('offline replay call counter is missing')
+        ctx.llm.assertZeroRealCalls()
+        counter.assertConsumed()
+      } else assertScriptsConsumed()
     },
   }
 }
@@ -1127,6 +1164,8 @@ export const inject = ['llm']
 
 /** Plugin config: the {@link ReplayConfig} inputs, each defaulting to its `DSH_SNAPSHOT_*` env var in `apply`. */
 export interface Config {
+  /** Explicit local-only mode: finite routed counters, no request extensions or real adapters. */
+  offline?: boolean
   /** Override the fixture path; defaults to `$DSH_SNAPSHOT_FILE`. */
   file?: string
   /** Override the sidecar path; defaults to `$DSH_SNAPSHOT_OVERRIDE`. */
@@ -1190,6 +1229,7 @@ function validateConfiguredModels(providers: ReplayProviderConfig[] | undefined)
 }
 
 export function apply(ctx: Context, config: Config = {}): void {
+  if (config.offline !== undefined && typeof config.offline !== 'boolean') throw new Error('llm-replay: offline must be boolean')
   const file = config.file ?? process.env.DSH_SNAPSHOT_FILE
   if (file === undefined || file.length === 0) {
     throw new Error('llm-replay: a fixture path is required (Config.file or $DSH_SNAPSHOT_FILE)')
@@ -1201,6 +1241,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     ?? (childEnv !== undefined && childEnv.length > 0 ? childEnv.split(pathDelimiter) : [])
   installLlmReplay(ctx, {
     file,
+    ...config.offline === undefined ? {} : { offline: config.offline },
     ...overrideFile !== undefined && overrideFile.length > 0 ? { overrideFile } : {},
     ...childFiles.length > 0 ? { childFiles } : {},
     ...config.providers !== undefined ? { providers: config.providers } : {},

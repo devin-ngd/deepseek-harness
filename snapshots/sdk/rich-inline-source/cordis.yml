@@ -1,0 +1,25 @@
+- id: skill-filesystem
+  config:
+    includeDefaultRoots: false
+- id: session-persistence-jsonl
+  config:
+    root: !!js dshHomePath('sessions')
+    compression: none
+- id: session-title-llm
+  disabled: true
+- id: system-prompt
+  config:
+    personaPrefix: 'Synthetic rich-inline source projection verification.'
+    includeRuntimeContext: false
+- id: llm-deepseek
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- id: session-log-deepseek
+  disabled: true
+- id: sdk-jsonrpc-server
+  config:
+    offlineReplay: true
+- insert:
+    - id: rich-source-snapshot
+      name: '../../../packages/experimental/rich-inline/tests/fixtures/source-snapshot.ts'

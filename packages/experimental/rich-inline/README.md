@@ -71,6 +71,15 @@ New results use `rich-html` fenced JSON with `key`, `html`, `css`, `js`, `fallba
 
 Streaming previews decode HTML/CSS in a separate read-only native guest, without generated JS or the business SDK. Updates coalesce at most once per 34 ms. Completed sibling fragments keep their DOM; unfinished-tail parsing is bounded to 32 KiB, so a large unfinished section may remain partly hidden until final commit. Cancellation or invalid JSON retains source without publishing a block. Trusted controls terminate previews. Final commit releases the preview and mounts the validated document. Conditional polling covers drafts, actions, files, repair and staged code; unchanged state transfers no manifest. The renderer has no fixed component catalog.
 
+<a id="copy-parts-of-a-block"></a>
+### Copy parts of a block
+
+Desktop reveals a small copy icon when a marked region is hovered or its action receives keyboard focus. Touch layouts keep a compact action visible. Copying is local and does not send an Agent request. Ordinary selection and keyboard copying remain available; selected text and images also have native context-menu actions. Streaming previews have no copy controls.
+
+Mark each reusable section with `data-rich-copy`: a review finding includes its title, location, explanation and suggested fix, while a prompt or rewritten passage contains only the desired output. A `pre` element gets its own action automatically. Text copying preserves code indentation and rendered paragraph breaks, omitting controls and hidden content. Mark decorations or line numbers with `data-rich-copy-ignore`; `data-rich-copy="off"` disables actions in that subtree. Nested regions use the innermost hovered action. Leave room at the upper right; do not generate clipboard scripts or duplicate buttons.
+
+Use `data-rich-copy="image"` on an `img` or its `figure` to copy an inline PNG, JPEG or WebP as image pixels. Failed copies show a localized message and leave the content available for retry. [Desktop's native clipboard limits](../../../apps/desktop/README.md#message-rich-guests) apply.
+
 ### Task progress, questions and editable plans
 
 In enabled modes, `compactLiveProcess: true` (default) shows one expandable live task row with the latest settled public progress text and tool counts. Existing process rows retain their parents and remain searchable; reasoning stays inside the process disclosure and Trajectory. The streaming response and final document remain visible. Interrupted, failed and interleaved-input turns retain their open presentation; Verbose retains all process rows. Disable the plugin or set `compactLiveProcess: false` to restore ordinary live rendering.
@@ -162,7 +171,7 @@ The Agent authors complete code and returns the publication or legacy marker; th
 
 One authoritative record per Session atomically saves draft, original receipt and outbox. Dispatch uses a stable Session request ID and existing persistence. Identical action retries return the original receipt; changed content under the same action ID conflicts. Completion requires the owning Session's successful tool result and matching turn. Admission, completion and external effects remain separate facts.
 
-Replacement is staged while mounted or dirty. The trusted update button flushes current input before retiring the old lease. Compatible schemas preserve edits; incompatible schemas require trusted archive confirmation. Archived drafts are readable and copyable outside generated content. Temporary DOM state stays local unless saved explicitly. History does not replay actions. A Session fork restores only publication facts from its inherited prefix, with no parent actions, drafts or grants; inherited blocks are read-only.
+Replacement is staged while mounted or dirty. The trusted update button flushes current input before retiring the old lease. Compatible schemas preserve edits; incompatible schemas require trusted archive confirmation. Archived drafts are readable and copyable outside generated content. Temporary DOM state stays local unless saved explicitly. History does not replay actions. A Session fork restores only publication facts from its inherited prefix, with no parent actions, drafts or grants; inherited blocks are read-only. Restoration preserves separate render and data revisions in current results; older revision-only results use that revision for both counters.
 
 Each block has a fresh nonpersistent partition and separate native process. `sandbox`, `contextIsolation` and `webSecurity` stay enabled, with Node disabled. The preload exposes bounded JSON transport; main binds packets to the actual owner and lease. Network, WebRTC, navigation, windows, downloads, permissions, guest file picking and drag/drop are denied. A looping guest can be closed and reloaded while chat stays responsive. DOM, inline CSS, data images/media and the separate `js` field are supported. HTML event attributes, external dependencies, workers and dynamic evaluation are restricted.
 
@@ -185,6 +194,18 @@ The real Electron fixture checks hostile behavior and process settings. The nati
 </details>
 
 -----
+
+## Usage and immutable source references
+
+<a id="usage-source"></a>
+
+The trusted `richInline.taskUsage(sessionId)` reads the Session without waking an Agent. `deriveRichTaskUsage(inspections)` combines task Sessions and deduplicates each Session ID and settlement sequence; inherited fork events remain billed to their original Session. Assistant message usage takes precedence over its embedded stream; otherwise the last usage chunk supplies the sample, including failed or cancelled attempts. Uncached input, cache read, cache write, output and reasoning have separate reported subtotals and missing counts. Reasoning is an output subset. Missing prices, total tokens and quality scores remain unknown; the API does not estimate them.
+
+Before a subsequent admitted step, complete settled `rich-html` sources of at least `sourceOffloadMinBytes` bytes (default 4096) receive durable `rich-inline/source-offload` decisions. Successful `rich_inline_publish` and `rich_inline_update` calls above that limit receive `rich-inline/tool-offload` decisions after their correlated successful result. Only model-request messages receive short references; full source, original tool arguments and audit streams remain unchanged for native presentation, mount recovery, history and forks. Interrupted messages, duplicate keys, adapter replay state and failed or unsettled calls retain their original model input.
+
+Each tool reference identifies one publication or confirmed full-state replacement by source hash and render/data revisions. It exposes only fields present in that original call; omitted publication values remain unavailable. References never read live drafts. Read the latest successful replacement reference for its confirmed values. Read-only forks copy successful state replacements up to the fork point, preserving the code and render revision and keeping drafts and grants empty; stale or failed updates are omitted.
+
+`rich_inline_read` reads `html`, `css`, `js`, `fallbackText` or JSON `values` from a reference declared in the calling Agent's Session, including inherited immutable sources. This read tool remains available outside `activePresets`; authoring tools retain their mode restrictions. Offsets and lengths count JavaScript string units; `sourceReadMaxChars` bounds each read (default 8192). Responses include the original SHA-256, total length and continuation offset. Reading never mounts code, accesses files, grants authority or replays actions. Source positions, hashes, block identities and revision counters are validated during replay. Another projection cannot overwrite the selected occurrence. Sessions containing these decisions require the plugin interpreter even after reopening; see the [upgrade guide](../../../docs/upgrade-guide/v0.2.1-alpha.2/rich-inline-source-offload/guide.md).
 
 <a id="further-exploration"></a>
 ## Further Exploration

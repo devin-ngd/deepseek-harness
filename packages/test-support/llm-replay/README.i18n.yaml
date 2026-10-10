@@ -18,8 +18,8 @@
   en: e2116be9c7a5c18f
   zh: dc89da423decf4aa
 /deepseek-ai-dsh-llm-replay/use-this-package/mounting-it:
-  en: 8885809b3bc7da3e
-  zh: cb3f1a3268164d11
+  en: 0630839689756cf5
+  zh: f2ed5bf5110088a7
 /deepseek-ai-dsh-llm-replay/use-this-package/how-the-fixture-works:
   en: d7dd048cd69e723d
   zh: 9f5dfa5186549cd0
@@ -30,8 +30,11 @@
   en: 319e95521a4a06fe
   zh: 884c8299028df8a3
 /deepseek-ai-dsh-llm-replay/use-this-package/what-can-go-wrong:
-  en: 965da31d63ec88fe
-  zh: 8ca1428daae5d583
+  en: abba9b17280de5d9
+  zh: 053fd2f54efa74b4
+/deepseek-ai-dsh-llm-replay/use-this-package/offline-isolation:
+  en: 791790ceacaac1db
+  zh: e7fb72719b404615
 /deepseek-ai-dsh-llm-replay/understand-the-implementation:
   en: 1d2dbd8b50da6f22
   zh: ab738914c74212ff

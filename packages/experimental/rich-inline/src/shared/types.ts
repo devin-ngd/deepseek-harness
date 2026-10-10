@@ -3,6 +3,7 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+export type { RichTaskUsage, RichUsageCount, RichUsageSession } from './usage.ts'
 
 /** Stable identity of one published rich block. */
 export type RichBlockId = Branded<'rich-inline-block'>

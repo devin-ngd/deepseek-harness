@@ -32,10 +32,11 @@ import { resolveRetryPolicy } from './retry-policy.ts'
 import type { ResolvedRetryPolicy } from './retry-policy.ts'
 import type { ProviderRequestId } from './brand.ts'
 import { callConfigEquals } from './call-config.ts'
-import type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
+import type { ConfigureCall, LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
 import { HarnessError, INVALID_CREDENTIAL_CODE } from './error.ts'
 import { normalizeLlmFailure } from './adapter-failure.ts'
 import { normalizeApiKey } from './api-key.ts'
+import type { OfflineReplayCounter, OfflineReplayCounts } from './offline-replay.ts'
 import {
   contentHasFile, contentHasImage, fileHandleText, projectFilesToText, projectImagesForTextModel, projectToolUpdates,
 } from './content.ts'
@@ -45,6 +46,7 @@ export * from './attribution.ts'
 export * from './brand.ts'
 export * from './error.ts'
 export * from './api-key.ts'
+export * from './offline-replay.ts'
 export * from './types.ts'
 export * from './content.ts'
 export * from './assistant-stream.ts'
@@ -52,7 +54,7 @@ export * from './message.ts'
 export * from './retry-policy.ts'
 export { BlockAssembler } from './assembler.ts'
 export { callConfigEquals, isAgentLoopRequest, markAgentLoopRequest } from './call-config.ts'
-export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
+export type { ConfigureCall, LlmCallConfig, LlmCallConfigAdapterDefaults, LlmCallControls } from './call-config.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -206,6 +208,8 @@ export interface PreparedAdapterCall {
  * DeepSeek and library-backed pi-ai adapters meet this contract through different internals.
  */
 export abstract class LlmAdapter {
+  /** Present only for a local scripted adapter with explicit routes and a finite call budget. */
+  readonly offlineReplayCounter?: OfflineReplayCounter | undefined
   /**
    * Describe one provider route owned by this adapter.
    * @param provider - a route passed to `registerAdapter()` for this instance.
@@ -341,6 +345,9 @@ export interface DirectoryRegistrationHandle {
  */
 export class LlmRuntime extends TypertRemoteService {
   private adapters = new Map<string, AdapterRegistration>()
+  private offlineReplayOwners = 0
+  private readonly snapshotReplayOnly = process.env.DSH_SNAPSHOT_REPLAY_ONLY === '1'
+  private realDispatches = 0
   private directory = new Map<string, LlmConfigurableProvider>()
   private discoveries = new Map<
     string,
@@ -349,6 +356,59 @@ export class LlmRuntime extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
+  }
+
+  private get requiresOfflineReplay(): boolean {
+    return this.snapshotReplayOnly || this.offlineReplayOwners > 0
+  }
+
+  /**
+   * Require counted replay routes throughout this service's offline owner lifetime.
+   * @returns disposer that releases this owner's requirement.
+   */
+  requireOfflineReplay(): () => void {
+    const dispose = this.ctx.effect(() => {
+      this.offlineReplayOwners++
+      return () => { this.offlineReplayOwners-- }
+    }, 'llm.offline-replay')
+    return () => { void dispose() }
+  }
+
+  /**
+   * Check the currently registered adapter's receipt before Session creation or model resolution.
+   * @param provider - explicitly selected provider id.
+   * @param model - explicitly selected model id.
+   * @returns the currently registered replay counter.
+   */
+  assertOfflineReplayReady(provider: string, model: string): OfflineReplayCounter {
+    const counter = this.adapters.get(provider)?.adapter.offlineReplayCounter
+    if (counter === undefined) throw new LlmError('offline replay adapter and call counter are required', 'OFFLINE_REPLAY_REQUIRED')
+    counter.assertReady(provider, model)
+    this.assertZeroRealCalls()
+    return counter
+  }
+
+  /** Reject any adapter dispatch outside a scripted replay in this runtime. */
+  assertZeroRealCalls(): void {
+    if (this.realDispatches !== 0) throw new LlmError('offline runtime has real adapter dispatches', 'OFFLINE_REAL_CALL')
+  }
+
+  /** Read observed non-replay dispatches and each distinct installed replay budget.
+   * @returns copied runtime dispatch counts and adapter-owned replay counters.
+   */
+  getOfflineReplayCounts(): { realCalls: number; replay: OfflineReplayCounts[] } {
+    const counters = new Set([...this.adapters.values()].flatMap(({ adapter }) =>
+      adapter.offlineReplayCounter === undefined ? [] : [adapter.offlineReplayCounter]))
+    return { realCalls: this.realDispatches, replay: [...counters].map(counter => counter.snapshot()) }
+  }
+
+  /** Require every currently registered replay counter to finish its exact budget, with no real dispatches. */
+  assertOfflineReplayConsumed(): void {
+    this.assertZeroRealCalls()
+    const counters = new Set([...this.adapters.values()].flatMap(({ adapter }) =>
+      adapter.offlineReplayCounter === undefined ? [] : [adapter.offlineReplayCounter]))
+    if (counters.size === 0) throw new LlmError('offline replay call counter is missing', 'OFFLINE_REPLAY_REQUIRED')
+    for (const counter of counters) counter.assertConsumed()
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */
@@ -743,6 +803,12 @@ export class LlmRuntime extends TypertRemoteService {
     model: string,
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
+    if (this.requiresOfflineReplay) {
+      const counter = registration.adapter.offlineReplayCounter
+      if (counter === undefined) throw new LlmError('offline replay call counter is missing', 'OFFLINE_REPLAY_REQUIRED')
+      counter.assertRoute(registration.provider.id, model)
+      this.assertZeroRealCalls()
+    }
     const resolved = await registration.adapter.resolveModel(registration.provider.id, model, signal)
     return this.normalizeModelInfo(registration, model, resolved)
   }
@@ -922,24 +988,40 @@ export class LlmRuntime extends TypertRemoteService {
    * Resolve one call under its current adapter registration. The returned
    * one-shot handle keeps that registration across header logging and dispatch,
    * so HMR cannot combine one adapter's capability result with another adapter.
-   * @param config - provider/model route and optional request controls.
+   * An optional synchronous callback selects concrete controls using captured
+   * model metadata. Defaults and validation apply to its result. Callback
+   * failures and cancellation reject preparation before dispatch.
+   * @param config - provider/model route and optional concrete request controls.
    * @param signal - optional cancellation for adapter-owned capability lookup.
+   * @param configure - pure control selection, called once before defaults and validation.
    * @returns a prepared config and its registration-bound stream entry point.
    */
-  async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall> {
-    const registration = this.registration(config.provider)
-    const adapterCall = await registration.adapter.prepareCall(config.provider, config.model, signal)
-    const modelInfo = this.normalizeModelInfo(registration, config.model, adapterCall.model)
-    const resolved = this.resolveCallWithInfo(config, modelInfo)
+  async prepareCall(
+    config: LlmCallConfig,
+    signal?: AbortSignal,
+    configure?: ConfigureCall,
+  ): Promise<PreparedLlmCall> {
+    signal?.throwIfAborted()
+    const { provider, model, ...controls } = config
+    const registration = this.registration(provider)
+    if (this.requiresOfflineReplay) registration.adapter.offlineReplayCounter?.assertRoute(provider, model)
+    const adapterCall = await registration.adapter.prepareCall(provider, model, signal)
+    signal?.throwIfAborted()
+    const modelInfo = this.normalizeModelInfo(registration, model, adapterCall.model)
+    const proposed = configure === undefined
+      ? config
+      : { ...configure(deepFreeze(structuredClone(controls)), deepFreeze(modelInfo)), provider, model }
+    signal?.throwIfAborted()
+    const resolved = this.resolveCallWithInfo(proposed, modelInfo)
     const resolvedConfig = deepFreeze(structuredClone(resolved.config))
     const context = resolved.context === undefined
       ? undefined
       : deepFreeze(structuredClone(resolved.context))
     const adapterDefaults = deepFreeze<LlmCallConfigAdapterDefaults>({
-      ...config.reasoningEffort === undefined && resolvedConfig.reasoningEffort !== undefined
+      ...proposed.reasoningEffort === undefined && resolvedConfig.reasoningEffort !== undefined
         ? { reasoningEffort: true }
         : {},
-      ...config.maxTokens === undefined && resolvedConfig.maxTokens !== undefined
+      ...proposed.maxTokens === undefined && resolvedConfig.maxTokens !== undefined
         ? { maxTokens: true }
         : {},
     })
@@ -978,6 +1060,9 @@ export class LlmRuntime extends TypertRemoteService {
   private registration(provider: string): AdapterRegistration {
     const registration = this.adapters.get(provider)
     if (!registration) throw new LlmError(`no adapter registered for provider "${provider}"`, 'NO_ADAPTER')
+    if (this.requiresOfflineReplay && registration.adapter.offlineReplayCounter === undefined) {
+      throw new LlmError('offline runtime refuses a non-replay adapter', 'OFFLINE_REPLAY_REQUIRED')
+    }
     return registration
   }
 
@@ -1077,6 +1162,10 @@ export class LlmRuntime extends TypertRemoteService {
         }
         if (Object.isFrozen(resolvedOptions)) deepFreeze(projectedOptions)
       }
+      if (this.requiresOfflineReplay && this.registration(options.provider).adapter !== adapter) {
+        throw new LlmError('offline replay adapter changed before dispatch', 'OFFLINE_REPLAY_REQUIRED')
+      }
+      if (adapter.offlineReplayCounter === undefined) this.realDispatches++
       const stream = dispatch(this.forAdapter(projectedOptions, adapter))
       iterator = stream[Symbol.asyncIterator]()
     } catch (error: unknown) {
@@ -1133,6 +1222,9 @@ export class LlmRuntime extends TypertRemoteService {
     options: GenerateOptions,
     prepared?: PreparedDispatch,
   ): AsyncIterable<StreamChunk> {
+    if (this.requiresOfflineReplay) {
+      this.assertOfflineReplayReady(options.provider, options.model).enter(options.provider, options.model)
+    }
     return this.ctx.waterfall(
       this,
       'llm/stream',

@@ -99,6 +99,8 @@ describe.skipIf(MODE === 'record')('rich-inline selected mode and project defaul
       const text = answer.data.message.content.flatMap(part => part.type === 'text' ? [part.text] : []).join('')
       summary.push({ label, mode: ctx.agentPresets.composedPreset(agent.ctx),
         richGuidance: assembly.sections.some(section => section.name === 'rich-inline:authoring' && section.text.length > 0),
+        copyGuidance: adapter.requests.slice(count).flatMap(request => request.messages.flatMap(message => message.content
+          .flatMap(part => part.type === 'text' ? part.text.split('\n').filter(line => line.startsWith('Mark reusable text with data-rich-copy')) : []))),
         richContext: assembly.contexts.some(context => context.name === 'rich-inline:output-format' && context.text.length > 0),
         richTools: assembly.tools.filter(tool => tool.name.startsWith('rich_inline_')).map(tool => tool.name).sort(),
         response: text.includes('```rich-html') ? 'rich-html' : 'markdown', requests: adapter.requests.length - count,

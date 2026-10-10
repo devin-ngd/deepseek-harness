@@ -1,9 +1,9 @@
 /** Disposable native renderers for untrusted rich documents, with main-owned transport and revocation. */
 import { randomUUID } from 'node:crypto'
-import { session, type IpcMainEvent, type Session, type WebContents } from 'electron'
+import { clipboard, ClipboardItem, Menu, nativeImage, session, type IpcMainEvent, type Session, type WebContents } from 'electron'
 import { DESKTOP_IPC, SCHEME } from './ipc.ts'
 import { readRichPacket, readRichRequest, richDocument } from './rich-document.ts'
-import type { DesktopRichBootstrap, DesktopRichReservation } from './rich-types.ts'
+import type { DesktopRichBootstrap, DesktopRichCopyLabels, DesktopRichReservation } from './rich-types.ts'
 
 interface RichLease {
   readonly id: string
@@ -13,6 +13,7 @@ interface RichLease {
   readonly mountId: string
   readonly mountNonce: string
   readonly documentUrl: string
+  readonly copy?: DesktopRichCopyLabels
   attached: boolean
   ready: boolean
   guest?: WebContents
@@ -45,7 +46,8 @@ export class DesktopRichGuests {
     const document = richDocument(request)
     const documentUrl = `${SCHEME}://${id}/`
     const lease: RichLease = { id, owner, browserSession, partition, mountId: request.mountId, mountNonce: request.mountNonce,
-      documentUrl, attached: false, ready: false, packetWindow: 0, packetCount: 0 }
+      documentUrl, ...request.copy === undefined ? {} : { copy: request.copy },
+      attached: false, ready: false, packetWindow: 0, packetCount: 0 }
     this.leases.set(id, lease)
     this.bySession.set(browserSession, lease)
     browserSession.enableNetworkEmulation({ offline: true })
@@ -99,6 +101,14 @@ export class DesktopRichGuests {
     lease.guest = guest
     this.byGuest.set(guest, lease)
     guest.setWindowOpenHandler(() => ({ action: 'deny' }))
+    guest.on('context-menu', (_event, params) => {
+      if (lease.copy === undefined || !lease.ready || !this.leases.has(lease.id)) return
+      const items: Electron.MenuItemConstructorOptions[] = []
+      if (params.selectionText.length > 0) items.push({ label: lease.copy.text, click: () => { if (!guest.isDestroyed()) guest.copy() } })
+      if (params.mediaType === 'image' && params.hasImageContents) items.push({ label: lease.copy.image,
+        click: () => { if (!guest.isDestroyed()) guest.copyImageAt(params.x, params.y) } })
+      if (items.length > 0) Menu.buildFromTemplate(items).popup()
+    })
     guest.on('will-frame-navigate', (event) => { event.preventDefault() })
     guest.on('will-redirect', (event) => { event.preventDefault() })
     guest.on('will-attach-webview', (event) => { event.preventDefault() })
@@ -153,7 +163,36 @@ export class DesktopRichGuests {
   bootstrap(event: Pick<IpcMainEvent, 'sender' | 'senderFrame'>): DesktopRichBootstrap | undefined {
     const lease = this.leaseForEvent(event)
     if (lease === undefined) return undefined
-    return { mountId: lease.mountId, mountNonce: lease.mountNonce }
+    return { mountId: lease.mountId, mountNonce: lease.mountNonce, ...lease.copy === undefined ? {} : { copy: lease.copy } }
+  }
+
+  /**
+   * Write bounded clipboard content submitted by the isolated preload's trusted click handler.
+   * @param event - native sender, bound to a live document with copy controls enabled.
+   * @param value - text or an inline raster image; URLs and file paths are not accepted.
+   * @returns whether the system clipboard accepted the write.
+   */
+  async copy(event: Pick<IpcMainEvent, 'sender' | 'senderFrame'>, value: unknown): Promise<boolean> {
+    const lease = this.leaseForEvent(event)
+    if (lease?.copy === undefined || typeof value !== 'object' || value === null || !('kind' in value)) return false
+    try {
+      if (value.kind === 'text' && 'text' in value && typeof value.text === 'string' && value.text.length > 0
+        && Buffer.byteLength(value.text, 'utf8') <= 2 * 1024 * 1024 && Object.keys(value).length === 2) {
+        await clipboard.writeText(value.text)
+        return true
+      }
+      if (value.kind === 'image' && 'data' in value && typeof value.data === 'string' && Object.keys(value).length === 2
+        && value.data.length <= 10 * 1024 * 1024 && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/u.test(value.data)) {
+        const image = nativeImage.createFromDataURL(value.data)
+        const { width, height } = image.getSize()
+        if (image.isEmpty() || width * height > 16 * 1024 * 1024) return false
+        await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(image.toPNG())], { type: 'image/png' }) })])
+        return true
+      }
+    } catch (error) {
+      console.error('Rich clipboard write failed', error)
+    }
+    return false
   }
 
   /** @param event - native caller. @param value - mount identity and JSON packet. */

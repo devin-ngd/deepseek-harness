@@ -3,8 +3,11 @@
     "label": "standard",
     "mode": "standard",
     "richGuidance": false,
+    "copyGuidance": [],
     "richContext": false,
-    "richTools": [],
+    "richTools": [
+      "rich_inline_read"
+    ],
     "response": "markdown",
     "requests": 1,
     "recordedSelection": []
@@ -13,11 +16,16 @@
     "label": "project-default",
     "mode": "lumina",
     "richGuidance": true,
+    "copyGuidance": [
+      "Mark reusable text with data-rich-copy on its section: each review finding includes its title, file location, explanation and suggested fix; prompts and rewritten text contain only the requested output. Code in pre elements gets a copy action automatically. Mark an inline raster img, or its figure, with data-rich-copy=\"image\" to copy the image. Keep a little room at the upper right for the hover/focus copy icon; do not add your own copy buttons or clipboard scripts. Use data-rich-copy-ignore for decorations or line numbers and data-rich-copy=\"off\" to disable copying within a region. Preserve ordinary text selection. Copying is local and does not submit an Agent action."
+    ],
     "richContext": true,
     "richTools": [
       "rich_inline_complete",
       "rich_inline_progress",
-      "rich_inline_publish"
+      "rich_inline_publish",
+      "rich_inline_read",
+      "rich_inline_update"
     ],
     "response": "rich-html",
     "requests": 1,
@@ -29,11 +37,16 @@
     "label": "manual-lumina",
     "mode": "lumina",
     "richGuidance": true,
+    "copyGuidance": [
+      "Mark reusable text with data-rich-copy on its section: each review finding includes its title, file location, explanation and suggested fix; prompts and rewritten text contain only the requested output. Code in pre elements gets a copy action automatically. Mark an inline raster img, or its figure, with data-rich-copy=\"image\" to copy the image. Keep a little room at the upper right for the hover/focus copy icon; do not add your own copy buttons or clipboard scripts. Use data-rich-copy-ignore for decorations or line numbers and data-rich-copy=\"off\" to disable copying within a region. Preserve ordinary text selection. Copying is local and does not submit an Agent action."
+    ],
     "richContext": true,
     "richTools": [
       "rich_inline_complete",
       "rich_inline_progress",
-      "rich_inline_publish"
+      "rich_inline_publish",
+      "rich_inline_read",
+      "rich_inline_update"
     ],
     "response": "rich-html",
     "requests": 1,

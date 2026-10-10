@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+`session/working-directory/get` accepts `{ sessionId }`; `session/working-directory/set` accepts `{ sessionId, path }`. Both return `{ cwd }` and create an unknown Session without starting a model turn. Reads recover missing directories through the working-directory service; changes preserve origin metadata and permissions, and reach the model through logged user context.
+
 Mount this plugin when a runtime must serve SDK clients: add it to a `cordis.yml` that composes the agent service, boot the runtime, and clients connect over stdio. The common path is explicit — the plugin needs the `agents` service; every other capability comes from the surrounding tree.
 
 ### Wiring
@@ -47,9 +49,17 @@ Stdout carries only JSON-RPC frames, so clients can parse every byte; diagnostic
 
 `initialize` is the runtime-readiness boundary: when the server is mounted by a Loader composition, it waits for the current plugin tree to settle before replying, so async sibling capabilities such as initial MCP tool discovery are visible to the first prompt. The handshake returns the wire-stable identity `deepseek-harness-sdk-runtime`. The server validates the provider/model route and optional non-empty `reasoningEffort` through the selected adapter before it stores them; omission stores no effort, so the model retains its own default. An optional positive `maxTokens` becomes the request output cap of each SDK-created agent and its in-process descendants, while omission applies the selected adapter or provider route default. JSON-RPC requests may dispatch concurrently, so `session/prompt` rejects until one `initialize` has completed successfully; clients must await the handshake before sending prompts. An accepted prompt queues one identified user message and immediately returns `{ messageId }`; the server then streams every durable fact as `session.event` and every whole-agent lifecycle transition as `session.status`. It does not assign an assistant message or `turn/end` to a prompt, and independent requests may enqueue more work on the same session. Persistence roots and persona come from the surrounding composition.
 
+`session/wait` observes an existing SDK-owned session through managed descendant completion and any resulting root turns. It rejects unknown or retired roots, never creates a session, and responds after the root stays idle across the descendant check. Idle children with parked inbox messages remain resident but do not delay this response; later waking input can resume them. Session notifications emitted before completion precede the response on the stdio transport. A live Agent failure remains associated with that exact session until a later committed `turn/end` accounts for the outcome; otherwise the wait rejects, including when the failure preceded the wait request. Errors already represented by a terminal remain in Session events, and later successful activity clears an earlier live failure.
+
 ### Shutdown and exit
 
 The plugin answers `shutdown`, flushes the response, disposes the root context so SDK-owned agents, subscriptions, and persistence reach quiescence, then exits 0. EOF and signal exits belong to the app bin, which also disposes the root context. Unloading only this plugin stops serving without exiting the process.
+
+### Offline initialization
+
+`offlineReplay: true` requires an installed replay adapter with an explicit finite counter before `initialize` resolves model metadata or creates a Session. Missing counters and routes fail initialization, including an unowned `deepseek-official` route; this mode cannot mount the fallback adapter. The LLM runtime rejects non-replay and excess dispatches throughout the server's lifetime. Shutdown checks the complete budgets and zero real dispatches after disposing owned agents, and retains the requirement when agent teardown fails. Omission or `false` keeps ordinary SDK routing, including the existing official-route fallback when no adapter owns that route.
+
+The composition also owns network plugins. Offline SDK tests disable the Session-log uploader and use the [replay plugin's offline mode](../../test-support/llm-replay/README.md#use-this-package), which skips request-extension acceptance callbacks. The SDK option governs model dispatch; it does not veto arbitrary sibling plugin imports or I/O. The [snapshot preflight](../../test-support/session-snapshot/README.md#use-this-package) requires a reviewed module allowlist before its runner factory can construct the application.
 
 -----
 
@@ -78,7 +88,7 @@ Each protocol method validates its inputs and resolves the owning state before a
 
 ### Teardown
 
-`server.shutdown()` disposes only what the server owns — the surrounding context stays running when just this plugin is unloaded. Protocol `shutdown` instead disposes the root fiber so persistence and the whole runtime reach quiescence before the process exits.
+`server.shutdown()` closes descendant admission below its exact root Agents and drains their managed descendants child-first before releasing the root handles and adapter. It removes its subscriptions while unrelated parent trees and the surrounding context stay running when just this plugin is unloaded. A descendant drain failure is reported after the remaining root and adapter teardown completes. Protocol `shutdown` instead disposes the root fiber so persistence and the whole runtime reach quiescence before the process exits.
 
 </details>
 

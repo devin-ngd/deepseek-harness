@@ -2,6 +2,8 @@
 
 /** One main-process authorized, non-persistent guest reservation. */
 export interface RichReservation { readonly lease: string; readonly partition: string; readonly src: string }
+/** Localized labels for isolated, user-activated copy controls. */
+export interface RichCopyLabels { readonly text: string; readonly image: string; readonly copied: string; readonly failed: string }
 /** Main-owned directional byte budgets, not generated-content permission declarations. */
 export interface NativeRichLimits {
   readonly documentBytes: number
@@ -21,6 +23,7 @@ export interface NativeRichBridge {
     css: string
     js: string
     sdk?: string
+    copy?: RichCopyLabels
   }): Promise<RichReservation>
   /** @param lease - registered lease. @param packet - protocol envelope. */
   send(this: void, lease: string, packet: Record<string, unknown>): Promise<void>

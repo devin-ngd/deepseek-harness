@@ -1,0 +1,8 @@
+version: 1
+scenario: rich-inline-source
+profile: sdk
+composition: sdk-rich-inline-source
+recording: authored
+header:
+  class: sdk-rich-inline-source
+  pin: true

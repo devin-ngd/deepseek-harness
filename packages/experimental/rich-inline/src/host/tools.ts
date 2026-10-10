@@ -6,6 +6,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { RichBlockId, RichActionId, RichValues } from '../shared/types.ts'
 import { isRichValues, typedRichValuesValid } from '../shared/validate.ts'
+import type { RichSourceRead, RichSourceValue } from './source.ts'
 
 /** Fully assembled publication; incomplete streamed arguments never execute this callback. */
 export interface RichPublishInput {
@@ -38,6 +39,7 @@ export interface RichToolOwner {
   publish(sessionId: SessionId, input: RichPublishInput): Promise<RichPublishValue>
   updateData(sessionId: SessionId, input: RichDataInput): Promise<{ blockId: RichBlockId; dataRevision: number }>
   prepareCompletion(sessionId: SessionId, actionId: RichActionId, callId: ToolCallId): Promise<void>
+  readSource(sessionId: SessionId, request: RichSourceRead): Promise<RichSourceValue>
 }
 
 function parsedValues(value: JsonValue | undefined, maxBytes: number): RichValues {
@@ -54,6 +56,22 @@ function parsedValues(value: JsonValue | undefined, maxBytes: number): RichValue
  */
 export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueBytes: number): void {
   ctx.effect(() => ctx.tools.register(defineTool({
+    name: 'rich_inline_read',
+    description: 'Read a bounded immutable HTML/CSS/JS or values fragment using a sourceRef from prior Rich artifact context. References are scoped to your current Session, including inherited sources. Read only needed fields and ranges; this never mounts content or runs actions. Original full source remains in the audit log.',
+    parameters: { sourceRef: { type: 'string', required: true }, field: { type: 'string', required: true, description: 'Declared html, css, js, fallbackText or values (JSON) from this immutable authored or confirmed replacement snapshot.' },
+      offset: { type: 'integer', required: true }, length: { type: 'integer', required: true } },
+    output: { schema: { type: 'object', additionalProperties: false, properties: {
+      sourceRef: { type: 'string', required: true }, sourceHash: { type: 'string', required: true }, field: { type: 'string', required: true },
+      offset: { type: 'integer', required: true }, totalChars: { type: 'integer', required: true }, text: { type: 'string', required: true },
+      nextOffset: { oneOf: [{ type: 'integer' }, { type: 'null' }], required: true },
+    } }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    async execute(args, exec) {
+      exec.signal.throwIfAborted()
+      if (exec.agent === undefined) throw new Error('Rich source reading requires an owning Agent')
+      return owner.readSource(exec.agent.id, args)
+    },
+  })), 'rich-inline.read-tool')
+  ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_publish',
     description: 'Author complete HTML/CSS/JavaScript for an interactive block inside chat. The plugin owns validation, isolated execution, rendering, and bounded error feedback; publication is not runtime success. Do not render with browser/shell tools or deliver screenshots/files unless explicitly requested. For visual tasks, your final reply contains only the exact returned rich-inline marker(s), with essential instructions inside the HTML; no explanatory prose unless requested. The isolated SDK is window.rich: onState(callback), getState(), getDraft(), setDraft(fields), submit(values,{actionId,fileGrants}), status(actionId), cancel(actionId), bindForm(form). onState fires after initialization and updates. Keep filters, tabs, and animation local. Never access host files, credentials, or network. For render feedback, repair the existing blockId and preserve stateSchemaVersion and confirmed values. Existing block updates need no additional marker. Use rich_inline_complete only after processing a submitted business interaction.',
     parameters: {
@@ -68,6 +86,7 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
         blockId: { type: 'string', required: true }, renderRevision: { type: 'integer', required: true }, dataRevision: { type: 'integer', required: true }, marker: { type: 'string', required: true },
       } },
       render: (args, value) => [{ type: 'text', text: `Interactive block ${value.blockId}, render revision ${value.renderRevision}, data revision ${value.dataRevision}. Stored; the plugin executes and checks rendering. ${args.blockId === undefined ? 'Final visual result: return only this marker, unless explanation was requested:' : 'Existing block updated; no duplicate marker or explanatory reply is needed:'}\n${value.marker}` }],
+      presentationMeta: (_args, value) => ({ richInline: { kind: 'publish', ...value } }),
     },
     async execute(args, exec) {
       exec.signal.throwIfAborted()

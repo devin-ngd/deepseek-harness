@@ -41,6 +41,9 @@ import { legacyContent } from './legacy.ts'
 import { legacyEligible } from '../shared/legacy.ts'
 import { installFormatCheck, explicitTextRequested } from './format.ts'
 import { installProjectDefaults } from './project-defaults.ts'
+import { deriveRichTaskUsage } from '../shared/usage.ts'
+import type { RichTaskUsage } from '../shared/usage.ts'
+import { installRichSourceOffload, readRichSource } from './source.ts'
 
 /** Deployment bounds; protocols and required authorization rules are fixed. */
 export interface Config {
@@ -63,6 +66,8 @@ export interface Config {
   readonly maxDispatchAttempts: number
   readonly maxAutoRepairAttempts: number
   readonly maxFormatRepairAttempts: number
+  readonly sourceOffloadMinBytes: number
+  readonly sourceReadMaxChars: number
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -86,7 +91,7 @@ function savedDraft(draft: RichDraft, revision: number): RichBlockRecord['draft'
 /** Host authority and generated Remote namespace. It exposes no shell, credentials, or file paths. */
 export class RichInline extends TypertRemoteService {
   static inject = [
-    'typert', 'storage', 'storageDomain', 'sessionController', 'sessionPersistence', 'tools', 'attachments', 'fileUploads', 'agents', 'systemPrompt',
+    'typert', 'storage', 'storageDomain', 'sessionController', 'sessionPersistence', 'tools', 'attachments', 'fileUploads', 'agents', 'systemPrompt', 'sessions',
   ]
   static Config = z.object({
     activePresets: z.array(z.string().min(1)).default([]),
@@ -101,6 +106,8 @@ export class RichInline extends TypertRemoteService {
     dispatchRetryDelayMs: z.natural().min(1).default(1_000), maxDispatchAttempts: z.natural().min(1).default(3),
     maxAutoRepairAttempts: z.natural().max(5).default(2),
     maxFormatRepairAttempts: z.natural().max(2).default(1),
+    sourceOffloadMinBytes: z.natural().min(1).default(4_096),
+    sourceReadMaxChars: z.natural().min(1).max(RICH_MAX_CONTENT_BYTES).default(8_192),
   })
   private readonly config: Config
   private readonly domain: Promise<RichLedgerDomain>
@@ -125,6 +132,8 @@ export class RichInline extends TypertRemoteService {
     // The Client registers its own theme picker on the bundle's Plugins page instead of a generated form.
     ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
     installProjectDefaults(ctx, config.projectDefaults ?? [])
+    installRichSourceOffload(ctx, config.sourceOffloadMinBytes,
+      async (sessionId, signal) => (await ctx.sessionController.inspect(sessionId, signal)).events)
     ctx.systemPrompt.section({ name: 'rich-inline:authoring', text: context => this.authoringEnabled(context.agent)
       ? RICH_AUTHORING_GUIDANCE + '\n\n' + RICH_APPEARANCE_GUIDANCE : '',
     order: ctx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'), interpolate: false })
@@ -136,13 +145,15 @@ export class RichInline extends TypertRemoteService {
       publish: (sessionId, input) => this.publish(sessionId, input),
       updateData: (sessionId, input) => this.updateData(sessionId, input),
       prepareCompletion: (sessionId, actionId, callId) => this.prepareCompletion(sessionId, actionId, callId),
+      readSource: async (sessionId, request) => readRichSource((await ctx.sessionController.inspect(sessionId)).events,
+        request, config.sourceReadMaxChars),
     }, this.config.maxInputBytes)
     ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
       const assembly = await next()
       return this.authoringEnabled(context.agent) ? assembly
-        : { ...assembly, tools: assembly.tools.filter(tool => !tool.name.startsWith('rich_inline_')) }
+        : { ...assembly, tools: assembly.tools.filter(tool => tool.name === 'rich_inline_read' || !tool.name.startsWith('rich_inline_')) }
     })
-    ctx.tools.guard(execution => execution.name.startsWith('rich_inline_') && !this.authoringEnabled(execution.agent)
+    ctx.tools.guard(execution => execution.name !== 'rich_inline_read' && execution.name.startsWith('rich_inline_') && !this.authoringEnabled(execution.agent)
       ? 'Rich inline authoring is not enabled for this session mode.' : undefined)
     installFormatCheck(ctx, this.config.maxFormatRepairAttempts, agent => this.authoringEnabled(agent))
     ctx.on('session/event', (session, event) => {
@@ -179,6 +190,16 @@ export class RichInline extends TypertRemoteService {
   @Remote
   appearance(): RichAppearance {
     return { theme: this.config.theme.get(), accent: this.config.accent }
+  }
+
+  /** Read reported usage without waking an Agent or replaying an action.
+   * @param sessionId - Session inspected through the existing trusted controller.
+   * @returns deduplicated settlement accounting; unknown prices and quality remain null.
+   */
+  @Remote
+  async taskUsage(sessionId: SessionId): Promise<RichTaskUsage> {
+    const inspection = await this.ctx.sessionController.inspect(sessionId)
+    return deriveRichTaskUsage([{ sessionId, events: inspection.events, inheritedEventCount: inspection.inheritedEventCount }])
   }
 
   private track(task: Promise<void>): void {

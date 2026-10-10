@@ -53,7 +53,8 @@ function harness(initial: RichAppearance = { theme: 'cyber', accent: 'auto' }) {
     subscribe: vi.fn<NativeRichBridge['subscribe']>((lease, listener) => { listeners.set(lease, listener); return () => { listeners.delete(lease) } }),
     send: vi.fn(async () => {}), release: vi.fn(async () => {}),
   }
-  const controller = new RichBlockController(sessionId, rpc, native, 250, () => appearance)
+  const copy = { text: '复制这部分', image: '复制图片', copied: '已复制', failed: '复制失败' }
+  const controller = new RichBlockController(sessionId, rpc, native, 250, () => appearance, () => copy)
   const emit = (lease: string, mountId: string, seq: number, type: string, payload: Record<string, unknown>) => listeners.get(lease)?.({
     protocol: 'lumina-rich/1', mountId, renderRevision: 1, packetId: `${mountId}-packet-${seq}`, seq, type, payload,
   })
@@ -86,6 +87,7 @@ describe('real rich controller async lifetimes', () => {
     h.emit('lease-mount-1', 'mount-1', 1, 'ready', { sdkVersion: '1' }); await settle()
     await vi.advanceTimersByTimeAsync(250); await settle()
     expect(h.native.acquire).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(h.native.acquire).mock.calls[0]?.[0].copy).toEqual({ text: '复制这部分', image: '复制图片', copied: '已复制', failed: '复制失败' })
     expect(h.native.release).not.toHaveBeenCalled()
     expect(h.rpc.applyUpdate).not.toHaveBeenCalled()
     expect(h.controller.getSnapshot().snapshot).toEqual(updated)

@@ -60,7 +60,7 @@ kind: "package-reference"
 
 agent 完成计划后，会以 markdown 形式、从标题开头书写计划并调用 `exit_plan_mode`。你评审该计划的原文，选择 `Approve` 离开计划模式，或选择 `Keep planning` 带反馈把 agent 送回去。
 
-选择 `Keep planning`（可附自由文本反馈）会让 agent 回去修订计划；关闭评审改为发言，则告知 agent 等待你的下一条消息。若没有可用的交互评审，`exit_plan_mode` 无法运行，你仍可用 `/plan off` 离开计划模式。
+选择 `Keep planning`（可附自由文本反馈）会让 agent 回去修订计划；关闭评审改为发言，则结束 agent 当前轮次，你的下一条消息开始下一次请求。若没有可用的交互评审，`exit_plan_mode` 无法运行，你仍可用 `/plan off` 离开计划模式。
 
 ### 观察计划状态
 
@@ -164,7 +164,7 @@ You are in plan mode. Explore and design before presenting the complete plan thr
 
 #### 模型看到什么
 
-[`exit_plan_mode` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-plan-mode) 在两种状态下均可用；在计划模式之外执行会失败，而计划模式内经批准的评审返回 `{ approved: true, plan }`，并在确认文本中包含用户批准的完整计划。回答中的可选 `reviewedPlan` 通过标题校验后替换原计划；缺失时保留原计划。拒绝仍是携带评审反馈的失败调用，放弃评审则是一次指明用户接手的失败调用。
+[`exit_plan_mode` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-plan-mode) 在两种状态下均可用；在计划模式之外执行会失败，而计划模式内经批准的评审返回 `{ approved: true, plan }`，并在确认文本中包含用户批准的完整计划。回答中的可选 `reviewedPlan` 通过标题校验后替换原计划；缺失时保留原计划。拒绝仍是携带评审反馈的失败调用。放弃评审返回 `{ approved: false }`，提示用户将自行回复，并结束当前轮次，不再请求模型。
 
 #### Token 影响
 

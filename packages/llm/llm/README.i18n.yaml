@@ -21,14 +21,17 @@
   en: c3ecb5a1421f27db
   zh: 4bbd3c0e513845e1
 /deepseek-ai-dsh-llm/use-this-package/minimal-composition:
-  en: 7550d716b90fcb09
-  zh: 77891a44ee623c7a
+  en: 9d481d19dc52e404
+  zh: aa09cf4462e93ba6
 /deepseek-ai-dsh-llm/use-this-package/what-you-can-do:
   en: b45d7a414141734e
   zh: a641c8ea3827cee6
 /deepseek-ai-dsh-llm/use-this-package/failures-and-recovery:
-  en: 311d8c92447b7094
-  zh: 68cf5cb1c3853cc1
+  en: 2963b6d63c487a50
+  zh: 32577e95580465d0
+/deepseek-ai-dsh-llm/use-this-package/finite-offline-replay:
+  en: 67d96240ae87ecfb
+  zh: a35332b47f0f77eb
 /deepseek-ai-dsh-llm/understand-the-implementation:
   en: 9630d7e26193a512
   zh: 94222c2a487c4b8c

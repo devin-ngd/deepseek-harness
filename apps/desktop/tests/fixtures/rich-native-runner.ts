@@ -6,6 +6,7 @@ import { isAbsolute, join } from 'node:path'
 import { DesktopRichGuests } from '../../src/rich-guests.ts'
 import { DesktopBrowserGuests } from '../../src/browser-guests.ts'
 import { DESKTOP_IPC } from '../../src/ipc.ts'
+import { runRichCopyChecks } from './rich-copy-checks.ts'
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'dsh-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } }])
 
@@ -61,6 +62,7 @@ async function run(): Promise<void> {
     ipcMain.handle(DESKTOP_IPC.richSend, (event, id: unknown, value: unknown) => { trusted(event); return manager?.send(owner, id, value) })
     ipcMain.handle(DESKTOP_IPC.richRelease, (event, id: unknown) => { trusted(event); return manager?.release(owner, id) })
     ipcMain.on(DESKTOP_IPC.richBootstrap, (event) => { event.returnValue = manager?.bootstrap(event) })
+    ipcMain.handle(DESKTOP_IPC.richCopy, (event, value: unknown) => manager?.copy(event, value))
     ipcMain.on(DESKTOP_IPC.richFromGuest, (event, value: unknown) => { manager?.receive(event, value) })
     await deadline(window.loadURL('data:text/html,' + encodeURIComponent('<!doctype html><body><section id="messages"></section><script>window.packets=[];window.reservations=[];window.ticks=0;setInterval(()=>ticks++,40);window.mount=async request=>{const r=await testRich.acquire(request);reservations.push(r);testRich.subscribe(r.lease,packet=>packets.push({lease:r.lease,packet}));const message=document.createElement("section");message.dataset.chatMessage="assistant";const view=document.createElement("webview");view.setAttribute("name",r.lease);view.setAttribute("partition",r.partition);view.setAttribute("src",r.src);view.style.cssText="width:600px;height:450px";message.append(view);messages.append(message);return r};</script>')))
     console.log('native fixture stage: owner loaded')
@@ -71,10 +73,11 @@ async function run(): Promise<void> {
         if (values.length > 0) return values
         await delay(50)
       }
-      throw new Error('no native packet: ' + type)
+      throw new Error('no native packet: ' + type + ' ' + JSON.stringify({ guests: guests.map(item => ({ destroyed: item.isDestroyed(), url: item.isDestroyed() ? '' : item.getURL() })), owner: await evalOwner('({scrollY, packets, count:document.querySelectorAll("webview").length})') }))
     }
     const normalJs = `const send=packet=>richGuest.send(packet);richGuest.subscribe(packet=>{if(packet.type==='ping')send({type:'pong',token:packet.token});if(packet.type==='loop'){send({type:'loopStarted'});while(true){}}});let storage;try{storage=localStorage.getItem('native-test')}catch{storage='denied'}send({type:'ready',node:typeof require,process:typeof process,host:typeof dshDesktop,storage,randomUUID:typeof crypto.randomUUID,rtc:typeof RTCPeerConnection});document.getElementById('submit').addEventListener('click',()=>send({type:'submitted',value:document.getElementById('entry').value}));window.dropSeen=false;window.addEventListener('drop',()=>{dropSeen=true});fetch(${JSON.stringify(destination + '?fetch')}).catch(()=>{});const image=new Image();image.src=${JSON.stringify(destination + '?image')};document.body.append(image);try{new WebSocket(${JSON.stringify(destination.replace('http:', 'ws:') + '?ws')})}catch{};try{window.open(${JSON.stringify(destination + '?popup')})}catch{};try{navigator.mediaDevices.getUserMedia({audio:true}).catch(()=>{})}catch{};setTimeout(()=>location.assign(${JSON.stringify(destination + '?navigation')}),150);`
     const request = { mountId: 'native-one', mountNonce: 'native-test-nonce-0000000000001',
+      copy: { text: 'Copy this section', image: 'Copy image', copied: 'Copied', failed: 'Could not copy' },
       html: '<div class="card"><h2>Rich native fixture</h2><svg width="200" height="60"><path d="M0 50L80 20L160 40" stroke="blue" fill="none"/></svg><input id="entry" value="last character"><button id="submit">Submit</button><input id="file" type="file"></div>',
       css: '.card{padding:24px;border-radius:16px;background:linear-gradient(120deg,#eef,#efe)}', js: normalJs }
     const reservation = await evalOwner<{ lease: string; partition: string; src: string }>(`mount(${JSON.stringify(request)})`)
@@ -104,6 +107,10 @@ async function run(): Promise<void> {
     await guest.debugger.sendCommand('Input.dispatchDragEvent', { type: 'dragOver', x: 100, y: 100, data: { items: [], files: [ownFile], dragOperationsMask: 1 } })
     await guest.debugger.sendCommand('Input.dispatchDragEvent', { type: 'drop', x: 100, y: 100, data: { items: [], files: [ownFile], dragOperationsMask: 1 } })
     check('isolated guard prevents generated drop handler receiving a file', await guest.executeJavaScript('dropSeen===false') as boolean, {})
+    // Chromium routes native Tab and Enter through the active visible widget.
+    window.show()
+    window.focus()
+    await runRichCopyChecks(guest, check)
     const secondReservation = await evalOwner<{ lease: string; partition: string }>(`mount(${JSON.stringify({ ...request, mountId: 'native-two', js: "richGuest.send({type:'secondReady'})" })})`)
     await waitPackets('secondReady')
     const second = guests[1]

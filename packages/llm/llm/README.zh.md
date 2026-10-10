@@ -60,6 +60,25 @@ for await (const chunk of ctx.llm.stream({
 
 `GenerateOptions.messages` 接受持久 `Message` 值和仅供请求使用的 `RequestUserInput` 值。仅供请求使用的输入包含 user-role 内容，不含 `id` 或 `source`；Session 写入和 Agent 投递仍然要求持久消息。调用方必须在流结束前保持辅助输入不变。会记录完整请求的调用方（例如会话标题生成）必须使用持久消息。
 
+`prepareCall(config, signal, configure?)` 接受具体的 `LlmCallConfig` 值。可选的同步纯函数 `ConfigureCall` 接收已分离且深度冻结的 `LlmCallControls`，以及捕获的适配器代次所提供的模型元数据。调用方可组合普通函数来选择具体控制项；后执行的写入替换先前的值。准备操作保留捕获的路由，为省略的控制项应用默认值，校验结果，再返回用于记录与分发的冻结配置。回调失败或取消会在分发前拒绝。准备操作要求注册适配器。
+
+配置函数在适配器默认值物化之前选择控制项。例如，将最低强度选择与显式输出上限组合，再将 `configure(maxTokens)` 作为第三个参数传入：
+
+```ts
+import type { ConfigureCall } from '@deepseek-ai/dsh-llm'
+
+const leastReasoning: ConfigureCall = (controls, model) => {
+  const first = model.reasoning?.efforts[0]
+  return first === undefined ? controls : { ...controls, reasoningEffort: first.id }
+}
+
+const outputLimit = (maxTokens: number): ConfigureCall =>
+  controls => ({ ...controls, maxTokens })
+
+const configure = (maxTokens: number): ConfigureCall =>
+  (controls, model) => outputLimit(maxTokens)(leastReasoning(controls, model), model)
+```
+
 ### 你可以做什么
 
 - **流式发起一次模型调用**——`ctx.llm.stream(options)` 为任何已注册提供方与模型产出原始分片（token 级增量）；消费方用 `BlockAssembler` 组装。
@@ -72,6 +91,12 @@ for await (const chunk of ctx.llm.stream({
 ### 失败与恢复
 
 每个流都恰好以一个终止 `finish` 分片结束：失败为 `{ kind: 'error', failure }`，取消为 `{ kind: 'aborted', failure }`。失败携带稳定 code，如 `NO_ADAPTER`、`MISSING_CREDENTIAL`、`AUTH`、`RATE_LIMIT` 与 `CONTEXT_WINDOW_EXCEEDED`；消费方依据 code 路由，绝不解析消息文本。`QUOTA` 表示提供方中立的额度耗尽，`ACCOUNT_QUOTA` 专用于当前产品能够充值的第一方账号余额不足。点名未注册提供方的请求会以 `NO_ADAPTER` 失败，格式错误的凭据会以 `INVALID_CREDENTIAL` 失败，而不是表现为不透明的 fetch 错误。本服务从不自行重跑请求：重试是 `dsh-llm-retry` 在 agent 失败步骤扩展点上的职责。
+
+### 有限离线回放
+
+专用快照进程在加载 profile 前设置 `DSH_SNAPSHOT_REPLAY_ONLY=1`。该进程中创建的每个 LLM 实例，包含标题和子任务实例，在整个生命周期内都要求适配器提供覆盖确切 provider/model 对的 `OfflineReplayCounter`。其他测试拥有方调用 `requireOfflineReplay()`，并在其工作达到静止状态后释放返回的 disposer。运行时在 stream waterfall 前消耗有限调用预算，并拒绝不存在的路由、已撤销的适配器及超额调用。`getOfflineReplayCounts()` 返回实际观测的非回放派发次数及各个已注册回放预算；`assertZeroRealCalls()` 拒绝同一运行时此前发生的非回放派发。`assertOfflineReplayConsumed()` 还要求所有已注册计数器完整消耗确切预算，且没有被拒绝的调用。[回放插件](../../test-support/llm-replay/README.zh.md) 根据已校验的本地脚本提供这些计数器。
+
+这些检查覆盖已注册适配器的派发，不限制任意插件的 I/O；离线测试组合还必须禁用事件上传及其他联网插件。
 
 -----
 

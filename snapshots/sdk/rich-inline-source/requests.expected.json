@@ -1,0 +1,27 @@
+[
+  { "calls": [], "results": [], "tools": ["rich_inline_complete", "rich_inline_progress", "rich_inline_publish", "rich_inline_read", "rich_inline_update"] },
+  {
+    "calls": [
+      { "id": "call_rich_0", "name": "rich_inline_publish", "arguments": { "stateSchemaVersion": 1, "richSource": { "sourceRef": "{{source:1}}", "blockId": "rich-synthetic", "renderRevision": 1, "dataRevision": 1, "fields": ["html", "css", "js", "fallbackText", "values"] } } }
+    ],
+    "results": [{ "callId": "call_rich_0", "isError": false }],
+    "tools": ["rich_inline_complete", "rich_inline_progress", "rich_inline_publish", "rich_inline_read", "rich_inline_update"]
+  },
+  {
+    "calls": [
+      { "id": "call_rich_0", "name": "rich_inline_publish", "arguments": { "stateSchemaVersion": 1, "richSource": { "sourceRef": "{{source:1}}", "blockId": "rich-synthetic", "renderRevision": 1, "dataRevision": 1, "fields": ["html", "css", "js", "fallbackText", "values"] } } },
+      { "id": "call_rich_1", "name": "rich_inline_update", "arguments": { "blockId": "rich-synthetic", "expectedRenderRevision": 1, "expectedDataRevision": 1, "richSource": { "sourceRef": "{{source:2}}", "blockId": "rich-synthetic", "renderRevision": 1, "dataRevision": 2, "fields": ["fallbackText", "values"] } } }
+    ],
+    "results": [{ "callId": "call_rich_0", "isError": false }, { "callId": "call_rich_1", "isError": false }],
+    "tools": ["rich_inline_complete", "rich_inline_progress", "rich_inline_publish", "rich_inline_read", "rich_inline_update"]
+  },
+  {
+    "calls": [
+      { "id": "call_rich_0", "name": "rich_inline_publish", "arguments": { "stateSchemaVersion": 1, "richSource": { "sourceRef": "{{source:1}}", "blockId": "rich-synthetic", "renderRevision": 1, "dataRevision": 1, "fields": ["html", "css", "js", "fallbackText", "values"] } } },
+      { "id": "call_rich_1", "name": "rich_inline_update", "arguments": { "blockId": "rich-synthetic", "expectedRenderRevision": 1, "expectedDataRevision": 1, "richSource": { "sourceRef": "{{source:2}}", "blockId": "rich-synthetic", "renderRevision": 1, "dataRevision": 2, "fields": ["fallbackText", "values"] } } },
+      { "id": "call_rich_2", "name": "rich_inline_update", "arguments": { "blockId": "rich-synthetic", "expectedRenderRevision": 1, "expectedDataRevision": 1, "values": { "rows": ["new state"], "roi": { "x": 2, "y": 3, "width": 10, "height": 8 } }, "fallbackText": "Synthetic confirmed rows and image ROI" } }
+    ],
+    "results": [{ "callId": "call_rich_0", "isError": false }, { "callId": "call_rich_1", "isError": false }, { "callId": "call_rich_2", "isError": true }],
+    "tools": ["rich_inline_complete", "rich_inline_progress", "rich_inline_publish", "rich_inline_read", "rich_inline_update"]
+  }
+]

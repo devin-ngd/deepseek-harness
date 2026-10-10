@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-alpha.2/rich-inline-source-offload/guide.md
+/:
+  en: 229d612f659bf40d
+  zh: 0ba37c9a087f33dd
+/keep-rich-inline-available-for-projected-sessions:
+  en: c29462dac46e9acd
+  zh: c317fac684e50145
+/keep-rich-inline-available-for-projected-sessions/change:
+  en: 445b3822d6025ea9
+  zh: 052adc81fafaaa60
+/keep-rich-inline-available-for-projected-sessions/migration:
+  en: 98cd02beb1846d1d
+  zh: d977a949a4f4542d

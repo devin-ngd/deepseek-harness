@@ -115,6 +115,7 @@ async function activate(ctx: Context, config: Config): Promise<void> {
     dispose: async (request) => { unwrap(await remote.dispose(request)) },
   }
   const native = nativeRich()
+  const copyText = ctx.locale.bind('richInline')
   const sessions = new Map<SessionId, Map<string, RichBlockController>>()
   const controllers = (sessionId: SessionId): Map<string, RichBlockController> => {
     let existing = sessions.get(sessionId)
@@ -125,7 +126,8 @@ async function activate(ctx: Context, config: Config): Promise<void> {
     const items = controllers(sessionId)
     let existing = items.get(key)
     if (existing === undefined) {
-      existing = new RichBlockController(sessionId, rpc, native, config.pollIntervalMs, appearance.getSnapshot)
+      existing = new RichBlockController(sessionId, rpc, native, config.pollIntervalMs, appearance.getSnapshot,
+        () => ({ text: copyText('copyPart'), image: copyText('copyImage'), copied: copyText('copied'), failed: copyText('copyFailed') }))
       items.set(key, existing)
     }
     return existing

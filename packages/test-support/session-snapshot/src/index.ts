@@ -117,3 +117,5 @@ export {
   type WorkspaceSymlinkSnapshot,
   type WorkspaceTextFileSnapshot,
 } from './workspace.ts'
+export * from './offline.ts'
+export * from './offline-entry.ts'

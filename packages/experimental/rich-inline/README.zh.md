@@ -71,6 +71,15 @@ projectDefaults:
 
 流式预览在独立的只读原生容器中解码 HTML/CSS，不安装生成的 JS 或业务 SDK。更新最多每 34 ms 合并一次。已完成的同级片段保留 DOM；未完成尾部最多解析 32 KiB，因此较大的未闭合章节可能到最终提交时才完整显示。取消或 JSON 无效时保留源码，不发布内容块。可信控件可以终止预览。最终提交释放预览，再挂载完整校验后的文档。条件轮询覆盖草稿、动作、附件、修复和待应用代码；状态不变时不传输 manifest。渲染器没有固定组件目录。
 
+<a id="copy-parts-of-a-block"></a>
+### 复制块中的部分内容
+
+桌面端在鼠标悬停于标记区域、或复制动作获得键盘焦点时显示小复制图标；触控布局保留紧凑入口。复制在本地完成，不发送 Agent 请求。普通选区和键盘复制保持可用，选中的文字及图片也有原生右键菜单动作。流式预览不提供复制控件。
+
+用 `data-rich-copy` 标记每个可复用区域：审查问题包含标题、位置、说明和修改建议，提示词或改写文本只包含所需输出。`pre` 元素自动获得独立复制动作。文本复制保留代码缩进和显示的段落换行，排除控件及隐藏内容。装饰和行号用 `data-rich-copy-ignore` 标记；`data-rich-copy="off"` 禁用该子树的复制动作。嵌套区域显示鼠标所在的最内层动作。右上角应留出空间，不生成剪贴板脚本或重复按钮。
+
+在 `img` 或其 `figure` 上使用 `data-rich-copy="image"`，可将内联 PNG、JPEG 或 WebP 复制为图片像素。复制失败会显示本地化提示，内容保留以便重试。适用[桌面端原生剪贴板限制](../../../apps/desktop/README.zh.md#message-rich-guests)。
+
 ### 任务进度、问答与可编辑计划
 
 在启用的模式中，`compactLiveProcess: true`（默认）显示一条可展开的实时任务状态行，包含最近一条已入档的公开进度文本和工具计数。已有过程行保留父节点，仍可搜索；思考内容保留在过程折叠区和轨迹中。正在流式生成的回答和最终文档继续显示。中断、失败和夹有用户输入的轮次继续展开；完全展开模式保留所有过程行。停用插件或设置 `compactLiveProcess: false` 可恢复普通实时显示。
@@ -162,7 +171,7 @@ Agent 生成完整代码并返回发布对象或旧格式标记，插件负责�
 
 每个 Session 的权威记录原子保存草稿、原始回执和发件箱。派发使用稳定的 Session 请求 ID 与既有持久化机制。相同动作重试返回原始回执，同一 ID 改变内容会冲突。完成必须来自所属 Session 的成功工具结果和对应回合。接收、完成和外部副作用是不同事实。
 
-已挂载或存在草稿时，代码替换进入待更新。可信按钮先同步当前输入，再撤销旧 lease。兼容格式保留编辑，不兼容格式要求可信归档确认。归档草稿可在生成内容之外查看和复制。临时 DOM 状态留在本地，除非显式保存。历史查看不重放动作。Session 分支只恢复继承前缀的发布事实，不继承父会话动作、草稿或授权；继承块只读。
+已挂载或存在草稿时，代码替换进入待更新。可信按钮先同步当前输入，再撤销旧 lease。兼容格式保留编辑，不兼容格式要求可信归档确认。归档草稿可在生成内容之外查看和复制。临时 DOM 状态留在本地，除非显式保存。历史查看不重放动作。Session 分支只恢复继承前缀的发布事实，不继承父会话动作、草稿或授权；继承块只读。恢复时保留当前结果中独立的渲染和数据版本；仅有单一版本的旧结果将该版本用于两个计数。
 
 每块使用新的非持久分区和独立原生进程，保留 `sandbox`、`contextIsolation`、`webSecurity`，禁用 Node。preload 只提供有界 JSON 通道，主进程绑定真实所属窗口及 lease。网络、WebRTC、导航、弹窗、下载、权限、页面文件选择和拖放均阻断。死循环块可关闭、重载，聊天仍响应。支持 DOM、内联 CSS、data 图片/媒体和单独的 `js` 字段；HTML 事件属性、外部依赖、worker 和动态求值受限。
 
@@ -185,6 +194,18 @@ pnpm exec vitest run --config vitest.web.config.ts apps/web/tests/rich-inline.e2
 </details>
 
 -----
+
+## 用量与不可变源码引用
+
+<a id="usage-source"></a>
+
+可信接口 `richInline.taskUsage(sessionId)` 读取 Session，不唤醒 Agent。`deriveRichTaskUsage(inspections)` 合并任务涉及的 Session，按 Session ID 和结算序号去重；分支继承事件仍归原 Session 计费。Assistant 消息的 usage 优先于内嵌流，否则取最后一个 usage chunk，包括失败或取消的尝试。未缓存输入、缓存读取、缓存写入、输出和 reasoning 分别返回已报告小计及缺失次数。Reasoning 属于输出的子集。缺失的价格、总 token 和质量评分保持未知，接口不估算这些字段。
+
+在后续步骤获准进入前，至少包含 `sourceOffloadMinBytes` 字节（默认 4096）的完整已结算 `rich-html` 源码会记录持久的 `rich-inline/source-offload` 决策。超过该限制的成功 `rich_inline_publish` 和 `rich_inline_update` 调用，在匹配到成功结果后记录 `rich-inline/tool-offload` 决策。仅模型请求中的消息替换为短引用；完整源码、原始工具参数和审计流保持原样，供原生显示、挂载恢复、历史和分支使用。中断消息、重复 key、adapter replay state、失败或未结算调用保留原始模型输入。
+
+每个工具引用通过源码 hash 和 render/data 版本标识一次发布或已确认的完整状态替换，只提供原始调用中存在的字段；发布时省略的 values 仍不可读取。引用不读取实时草稿。读取最新成功替换的引用可取得该次确认值。只读分支复制分支点之前成功的状态替换，保留代码及 render 版本，草稿和授权保持为空；忽略过期或失败更新。
+
+`rich_inline_read` 从调用 Agent 所属 Session 已声明的引用中读取 `html`、`css`、`js`、`fallbackText` 或 JSON `values`，包括继承的不可变源码。偏移和长度按 JavaScript 字符串单元计数；`sourceReadMaxChars` 限制单次读取（默认 8192）。响应包含原始 SHA-256、总长度和续读偏移。读取不挂载代码、不访问文件、不授予权限，也不重放动作。重放时校验源码位置、hash、块身份及版本计数。其他投影不能覆盖已选择的片段。包含这些决策的 Session 在重开后仍需要插件解释器，参见[升级说明](../../../docs/upgrade-guide/v0.2.1-alpha.2/rich-inline-source-offload/guide.zh.md)。 该只读工具在 `activePresets` 之外也保持可用；创作工具仍受会话模式限制。
 
 <a id="further-exploration"></a>
 ## 进一步探索

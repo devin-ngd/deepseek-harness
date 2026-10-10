@@ -26,6 +26,7 @@ export const DESKTOP_IPC = {
   richSend: 'dsh-desktop:rich-send',
   richPacket: 'dsh-desktop:rich-packet',
   richBootstrap: 'dsh-desktop:rich-bootstrap',
+  richCopy: 'dsh-desktop:rich-copy',
   richFromGuest: 'dsh-desktop:rich-from-guest',
   richToGuest: 'dsh-desktop:rich-to-guest',
   directoryPick: 'dsh-desktop:directory-pick',

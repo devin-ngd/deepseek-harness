@@ -12,17 +12,26 @@ export function readRichRequest(value: unknown): DesktopRichRequest {
     || !('html' in value) || !('css' in value) || !('js' in value)) throw new Error('desktop rich: invalid request')
   const { mountId, mountNonce, html, css, js } = value
   const sdk = 'sdk' in value ? value.sdk : undefined
+  const copy = 'copy' in value ? value.copy : undefined
   if (typeof mountId !== 'string' || !/^[A-Za-z][A-Za-z0-9_.:-]{1,95}$/.test(mountId)
     || typeof mountNonce !== 'string' || mountNonce.length < 16 || mountNonce.length > 128
     || typeof html !== 'string' || typeof css !== 'string' || typeof js !== 'string'
     || sdk !== undefined && typeof sdk !== 'string'
-    || Object.keys(value).some(key => !['mountId', 'mountNonce', 'html', 'css', 'js', 'sdk'].includes(key))) {
+    || Object.keys(value).some(key => !['mountId', 'mountNonce', 'html', 'css', 'js', 'sdk', 'copy'].includes(key))) {
     throw new Error('desktop rich: invalid request')
   }
   if (sdk !== undefined && Buffer.byteLength(sdk, 'utf8') > RICH_NATIVE_LIMITS.sdkBytes) throw new Error('RICH_SDK_TOO_LARGE')
   const bytes = Buffer.byteLength(html, 'utf8') + Buffer.byteLength(css, 'utf8') + Buffer.byteLength(js, 'utf8') + Buffer.byteLength(sdk ?? '', 'utf8')
   if (bytes > RICH_NATIVE_LIMITS.documentBytes) throw new Error('RICH_DOCUMENT_TOO_LARGE')
-  return { mountId, mountNonce, html, css, js, ...sdk === undefined ? {} : { sdk } }
+  if (copy !== undefined && (typeof copy !== 'object' || copy === null
+    || !('text' in copy) || typeof copy.text !== 'string' || !('image' in copy) || typeof copy.image !== 'string'
+    || !('copied' in copy) || typeof copy.copied !== 'string' || !('failed' in copy) || typeof copy.failed !== 'string'
+    || Object.keys(copy).length !== 4 || Object.values(copy).some(label => typeof label !== 'string' || label.length === 0 || label.length > 256))) {
+    throw new Error('desktop rich: invalid copy labels')
+  }
+  return { mountId, mountNonce, html, css, js, ...sdk === undefined ? {} : { sdk }, ...copy === undefined ? {} : {
+    copy: copy as { text: string; image: string; copied: string; failed: string },
+  } }
 }
 
 /** @param value - incoming IPC JSON. @param direction - trusted call-site direction, never read from payload. @returns bounded JSON. */

@@ -21,7 +21,7 @@ import { connectFreshWorkspace, writeComposerDraft } from './support.ts'
 const root = fileURLToPath(new URL('../../..', import.meta.url))
 const provider = 'rich-native-deterministic'
 const model = 'rich-native-scripted'
-const samples = [formExample, chartExample, animationExample, independentExample('Independent A'), independentExample('Independent B')]
+const samples = [{ ...formExample, html: formExample.html.replace('<h2>', '<h2 id="copy-title" data-rich-copy style="padding-right:36px">') }, chartExample, animationExample, independentExample('Independent A'), independentExample('Independent B')]
 const streamCode = { ...formExample, key: 'stream-report', html: '<h1 id="stream-title">AI news — deterministic acceptance sample</h1>'
   + formExample.html + '<section><p>Second streamed section</p><span id="moving">●</span></section>',
 css: formExample.css + 'section+section{margin-top:12px}@keyframes travel{to{transform:translateX(80px)}}#moving{display:inline-block;color:var(--rich-accent);animation:travel 1s linear infinite alternate}',
@@ -204,8 +204,9 @@ async function remote<T>(scaffold: WebScaffold, method: string, request: object)
   return value.value
 }
 
-it.skipIf(process.platform !== 'win32')('accepts rich content in the actual Electron chat and preserves isolated interaction lifetimes', async () => {
-  const output = process.env.DSH_RICH_EVIDENCE_DIR ?? join('D:\\Temp', `dsh-rich-chat-${Date.now()}`)
+async function runNativeChat(copyOnly: boolean): Promise<void> {
+  const evidence = process.env.DSH_RICH_EVIDENCE_DIR ?? join('D:\\Temp', `dsh-rich-chat-${Date.now()}`)
+  const output = copyOnly ? join(evidence, 'copy') : evidence
   await mkdir(output, { recursive: true })
   const world = { workspaceCwd: join(output, 'world', 'workspace'), persistenceRoot: join(output, 'world', 'sessions') }
   for (const directory of Object.values(world)) await mkdir(directory, { recursive: true })
@@ -273,7 +274,8 @@ it.skipIf(process.platform !== 'win32')('accepts rich content in the actual Elec
       return application!.evaluate(async ({ webContents }, args): Promise<unknown> => {
         const target = webContents.getAllWebContents().find(contents => contents.getURL().startsWith(`dsh-app://${args.lease}/`))
         if (target === undefined) throw new Error('Native guest not found')
-        return await target.executeJavaScript(args.source) as unknown
+        const value: unknown = await target.executeJavaScript(args.source)
+        return value
       }, { lease, source }) as Promise<T>
     }
     const input = async (index: number, selector: string, value: string): Promise<void> => {
@@ -330,13 +332,40 @@ it.skipIf(process.platform !== 'win32')('accepts rich content in the actual Elec
     await application!.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.setSize(1280, 900) })
     checks.push('Native Tab focus, narrow-window layout, content height and chat scrolling remain usable')
     await block(0).scrollIntoViewIfNeeded(); await screenshot('01-form')
+    const callsBeforeCopy = adapter.calls
+    const copyLease = await block(0).locator('webview').getAttribute('partition')
+    await application!.evaluate(async ({ webContents, clipboard, ClipboardItem }, lease) => {
+      const previous = await Promise.all((await clipboard.read()).filter(item => item.types.length > 0).map(async item =>
+        new ClipboardItem(Object.fromEntries(await Promise.all(item.types.map(async type => [type, await item.getType(type)] as const))))))
+      try {
+        const target = webContents.getAllWebContents().find(contents => contents.getURL().startsWith(`dsh-app://${lease}/`))!
+        const position = await target.executeJavaScript('(()=>{const r=document.getElementById("copy-title").getBoundingClientRect();return {x:Math.round(r.right-18),y:Math.round(r.top+18)}})()') as { x: number; y: number }
+        await clipboard.writeText('native-chat-copy-sentinel')
+        target.sendInputEvent({ type: 'mouseMove', ...position })
+        await target.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        target.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...position })
+        target.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...position })
+        const deadline = Date.now() + 5000
+        while (await clipboard.readText() !== 'Trip form') {
+          if (Date.now() >= deadline) throw new Error('chat copy did not write the selected title')
+          await new Promise<void>(resolve => setTimeout(resolve, 20))
+        }
+      } finally {
+        if (previous.length > 0) await clipboard.write(previous)
+        else clipboard.clear()
+      }
+    }, copyLease)
+    expect(adapter.calls).toBe(callsBeforeCopy)
+    checks.push('Model-authored region copies through the real Client and native clipboard without an Agent request')
+    await screenshot('01-copy-region')
+    if (copyOnly) { passed = true; return }
     const initialCalls = adapter.calls
     await guest(1, 'document.querySelector("select").value="travel";document.querySelector("select").dispatchEvent(new Event("change"))')
     expect(await guest(1, 'document.querySelector("output").textContent')).toBe('1 categories')
     await block(1).evaluate((element) => { element.scrollIntoView({ block: 'start' }) }); await screenshot('02-local-chart')
     await click(2, 'button')
     await expect.poll(() => guest(2, 'document.querySelector("output").textContent')).toBe('Step 2')
-    expect(await guest(2, 'document.getAnimations().length')).toBe(1)
+    expect(await guest(2, 'document.getElementById("dot").getAnimations().length')).toBe(1)
     await block(2).scrollIntoViewIfNeeded()
     const firstFrame = await guest<number>(2, 'document.querySelector("#dot").getBoundingClientRect().x')
     await screenshot('08-animation-frame-a')
@@ -378,8 +407,8 @@ it.skipIf(process.platform !== 'win32')('accepts rich content in the actual Elec
     const callsAfterAction = adapter.calls
     await page!.reload({ waitUntil: 'load' })
     await expect.poll(() => guest(3, 'document.querySelector("input").value'), { timeout: 20_000 }).toBe('Draft A')
-    expect(await guest(4, 'document.querySelector("input").value')).toBe('Draft B')
-    expect(await guest(0, 'document.querySelector("input").value')).toBe('unsubmitted newest draft')
+    await expect.poll(() => guest(4, 'document.querySelector("input").value'), { timeout: 20_000 }).toBe('Draft B')
+    await expect.poll(() => guest(0, 'document.querySelector("input").value'), { timeout: 20_000 }).toBe('unsubmitted newest draft')
     expect(adapter.calls).toBe(callsAfterAction)
     checks.push('Refresh restores independent durable drafts and does not replay completed actions')
     await application!.close()
@@ -445,11 +474,14 @@ it.skipIf(process.platform !== 'win32')('accepts rich content in the actual Elec
     await expect.poll(() => adapter.submitted.length).toBe(2)
     await block(0).getByRole('button', { name: 'Request cancellation' }).waitFor({ state: 'visible' })
     await block(0).getByRole('button', { name: 'Request cancellation' }).click()
+    await block(0).getByText('Cancellation requested; awaiting outcome', { exact: true }).waitFor()
     adapter.release(); await settled
     const active = await remote<RichMountValue>(scaffold, 'mount', scopes[0]!)
-    expect(active.snapshot.actions.find(action => action.actionId === adapter.submitted[1]!.actionId)?.lateAfterCancel).toBe(true)
+    await expect.poll(async () => (await remote<RichSnapshot>(scaffold!, 'snapshot', { mountId: active.mountId }))
+      .actions.find(action => action.actionId === adapter.submitted[1]!.actionId)).toMatchObject({ state: 'completed', lateAfterCancel: true })
+    await expect.poll(() => scaffold!.ctx.agents.get(sessionId)?.status).toBe('idle')
     checks.push('Cancellation is an intent; a late known result is retained and labelled without promising rollback')
-    const repeatSnapshot = active.snapshot
+    const repeatSnapshot = await remote<RichSnapshot>(scaffold, 'snapshot', { mountId: active.mountId })
     const retryRequest: RichInvokeRequest = { mountId: active.mountId, actionId: `accept-${randomUUID()}` as RichInvokeRequest['actionId'], actionName: 'submit', targetActionId: null,
       expectedDataRevision: repeatSnapshot.dataRevision, values: { destination: 'retry' }, fileGrants: [],
       draft: { baseRevision: repeatSnapshot.draft.draftRevision, stateSchemaVersion: 1, fields: { destination: 'retry' }, dirty: ['destination'] } }
@@ -459,7 +491,8 @@ it.skipIf(process.platform !== 'win32')('accepts rich content in the actual Elec
     expect(await remote(scaffold, 'invoke', retryRequest)).toEqual(receipt)
     expect(await remote(scaffold, 'invoke', { ...retryRequest, values: { destination: 'conflicting' } })).toMatchObject({ accepted: false, code: 'ACTION_ID_CONFLICT' })
     await settled
-    expect(adapter.submitted).toHaveLength(3)
+    await expect.poll(() => adapter.submitted.length).toBe(3)
+    await expect.poll(() => scaffold!.ctx.agents.get(sessionId)?.status).toBe('idle')
     checks.push('Network retry returns original accepted receipt; conflicting payload under one action ID is refused')
     const events = await readPersistedEvents(scaffold, sessionId)
     await writeFile(join(output, 'session-events.json'), JSON.stringify(events, null, 2))
@@ -749,4 +782,10 @@ it.skipIf(process.platform !== 'win32')('accepts rich content in the actual Elec
     await writeFile(join(output, 'launch.json'), JSON.stringify({ url: 'redacted after run' }))
     await scaffold?.close()
   }
-}, 180_000)
+}
+
+it.skipIf(process.platform !== 'win32')('copies a selected region in the actual Electron chat without invoking the Agent',
+  async () => { await runNativeChat(true) }, 60_000)
+
+it.skipIf(process.platform !== 'win32')('accepts rich content in the actual Electron chat and preserves isolated interaction lifetimes',
+  async () => { await runNativeChat(false) }, 180_000)

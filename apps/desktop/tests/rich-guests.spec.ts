@@ -5,19 +5,22 @@ import { DESKTOP_IPC } from '../src/ipc.ts'
 import { RICH_NATIVE_LIMITS, readRichPacket, readRichRequest, richDocumentUrl } from '../src/rich-document.ts'
 import type { DesktopRichBootstrap, DesktopRichReservation } from '../src/rich-types.ts'
 
-const native = vi.hoisted(() => ({ sessions: new Map<string, Record<string, unknown>>() }))
-vi.mock('electron', () => ({ session: { fromPartition: (partition: string) => {
-  const value = { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(),
-    setDevicePermissionHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn(), on: vi.fn(),
-    clearStorageData: vi.fn(async () => {}), webRequest: { onBeforeRequest: vi.fn() } }
-  Object.assign(value, { enableNetworkEmulation: vi.fn(), protocol: { handle: vi.fn(), unhandle: vi.fn() } })
-  native.sessions.set(partition, value)
-  return value
-} } }))
+const native = vi.hoisted(() => ({ sessions: new Map<string, Record<string, unknown>>(), writeText: vi.fn(async (_text: string) => {}),
+  write: vi.fn(async (_items: object[]) => {}), image: vi.fn(), menu: vi.fn(() => ({ popup: vi.fn() })) }))
+vi.mock('electron', () => ({ clipboard: { writeText: native.writeText, write: native.write },
+  nativeImage: { createFromDataURL: native.image }, ClipboardItem: class { constructor(readonly items: object) {} },
+  Menu: { buildFromTemplate: native.menu }, session: { fromPartition: (partition: string) => {
+    const value = { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(),
+      setDevicePermissionHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn(), on: vi.fn(),
+      clearStorageData: vi.fn(async () => {}), webRequest: { onBeforeRequest: vi.fn() } }
+    Object.assign(value, { enableNetworkEmulation: vi.fn(), protocol: { handle: vi.fn(), unhandle: vi.fn() } })
+    native.sessions.set(partition, value)
+    return value
+  } } }))
 const { DesktopRichGuests } = await import('../src/rich-guests.ts')
 const request = { mountId: 'mount-one', mountNonce: 'a-nonce-at-least-16-characters', html: '<div>arbitrary</div>', css: 'div{color:red}', js: 'window.answer=42' }
 
-afterEach(() => { native.sessions.clear(); vi.restoreAllMocks() })
+afterEach(() => { native.sessions.clear(); vi.clearAllMocks(); vi.restoreAllMocks() })
 
 function contents(pid: number, browserSession?: object) {
   const emitter = new EventEmitter()
@@ -51,6 +54,7 @@ interface FixtureManager {
   bindGuest(owner: ContentsFace, guest: ContentsFace): boolean
   bootstrap(event: { sender: ContentsFace; senderFrame: ContentsFace['mainFrame'] | null }): DesktopRichBootstrap | undefined
   receive(event: { sender: ContentsFace; senderFrame: ContentsFace['mainFrame'] | null }, value: unknown): void
+  copy(event: { sender: ContentsFace; senderFrame: ContentsFace['mainFrame'] | null }, value: unknown): Promise<boolean>
   send(owner: ContentsFace, id: unknown, value: unknown): void
   release(owner: ContentsFace, id: unknown): Promise<void>
   releaseAll(owner: ContentsFace): void
@@ -59,10 +63,12 @@ interface FixtureManager {
 const fixtureManager = (manager: InstanceType<typeof DesktopRichGuests>): FixtureManager => manager
 const fixtureOwner = (value: Fixture): ContentsFace => value
 
-async function mounted(pid = 2) {
+async function mounted(pid = 2, copying = false) {
   const manager = fixtureManager(new DesktopRichGuests('/trusted/preload-rich.cjs'))
   const owner = contents(1)
-  const reservation = manager.acquire(fixtureOwner(owner), request)
+  const reservation = manager.acquire(fixtureOwner(owner), { ...request, ...copying ? {
+    copy: { text: 'Copy this section', image: 'Copy image', copied: 'Copied', failed: 'Could not copy' },
+  } : {} })
   const browserSession = native.sessions.get(reservation.partition)
   const guest = contents(pid, browserSession)
   const preventDefault = vi.fn()
@@ -84,6 +90,55 @@ it('rejects non-JSON, deeply nested and oversized native packets', () => {
   let nested: Record<string, unknown> = {}
   for (let i = 0; i < 18; i++) nested = { child: nested }
   expect(() => readRichPacket(nested)).toThrow('nesting')
+})
+
+it('validates copy labels before reserving a guest', () => {
+  for (const copy of [null, {}, { text: 'Copy', image: 'Image', copied: 'Done', failed: '' },
+    { text: 'x'.repeat(257), image: 'Image', copied: 'Done', failed: 'Failed' }]) {
+    expect(() => readRichRequest({ ...request, copy })).toThrow('invalid copy labels')
+  }
+})
+
+it('accepts bounded text only from the registered copy-enabled document', async () => {
+  const { manager, owner, guest, reservation } = await mounted(2, true)
+  const event = { sender: fixtureOwner(guest), senderFrame: guest.mainFrame }
+  try {
+    expect(await manager.copy(event, { kind: 'text', text: 'Review\n\nFix' })).toBe(true)
+    expect(native.writeText).toHaveBeenLastCalledWith('Review\n\nFix')
+    expect(await manager.copy({ sender: fixtureOwner(owner), senderFrame: owner.mainFrame }, { kind: 'text', text: 'other owner' })).toBe(false)
+    expect(await manager.copy({ ...event, senderFrame: { url: guest.mainFrame.url } }, { kind: 'text', text: 'other frame' })).toBe(false)
+    for (const value of [null, { kind: 'text', text: '' }, { kind: 'text', text: 'x', read: true },
+      { kind: 'text', text: '中'.repeat(700000) }, { kind: 'image', data: 'https://example.com/image.png' },
+      { kind: 'image', data: 'data:image/svg+xml;base64,PHN2Zy8+' }]) expect(await manager.copy(event, value)).toBe(false)
+    expect(native.writeText).toHaveBeenCalledOnce()
+    native.writeText.mockRejectedValueOnce(new Error('clipboard unavailable'))
+    expect(await manager.copy(event, { kind: 'text', text: 'retry' })).toBe(false)
+  } finally { await manager.release(fixtureOwner(owner), reservation.lease) }
+  expect(await manager.copy(event, { kind: 'text', text: 'stale' })).toBe(false)
+})
+
+it('keeps previews without copy controls away from the clipboard', async () => {
+  const { manager, owner, guest, reservation } = await mounted()
+  try {
+    expect(await manager.copy({ sender: fixtureOwner(guest), senderFrame: guest.mainFrame }, { kind: 'text', text: 'preview' })).toBe(false)
+    expect(native.writeText).not.toHaveBeenCalled()
+  } finally { await manager.release(fixtureOwner(owner), reservation.lease) }
+})
+
+it('rejects undecodable and oversized images and writes valid image bytes', async () => {
+  const { manager, owner, guest, reservation } = await mounted(2, true)
+  const event = { sender: fixtureOwner(guest), senderFrame: guest.mainFrame }
+  const value = { kind: 'image', data: 'data:image/png;base64,YQ==' }
+  try {
+    native.image.mockReturnValueOnce({ isEmpty: () => true, getSize: () => ({ width: 0, height: 0 }) })
+    expect(await manager.copy(event, value)).toBe(false)
+    native.image.mockReturnValueOnce({ isEmpty: () => false, getSize: () => ({ width: 8192, height: 8192 }) })
+    expect(await manager.copy(event, value)).toBe(false)
+    native.image.mockReturnValueOnce({ isEmpty: () => false, getSize: () => ({ width: 2, height: 1 }), toPNG: () => Buffer.from('png') })
+    expect(await manager.copy(event, value)).toBe(true)
+    expect(native.write).toHaveBeenCalledOnce()
+    expect(native.writeText).not.toHaveBeenCalled()
+  } finally { await manager.release(fixtureOwner(owner), reservation.lease) }
 })
 
 it('validates complete requests and embeds source as inert base64 payload', () => {

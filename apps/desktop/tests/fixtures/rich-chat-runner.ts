@@ -33,6 +33,7 @@ async function run(): Promise<void> {
   ipcMain.handle(DESKTOP_IPC.richSend, (event, lease: unknown, packet: unknown) => { trusted(event); manager.send(owner, lease, packet) })
   ipcMain.handle(DESKTOP_IPC.richRelease, (event, lease: unknown) => { trusted(event); return manager.release(owner, lease) })
   ipcMain.on(DESKTOP_IPC.richBootstrap, (event) => { event.returnValue = manager.bootstrap(event) })
+  ipcMain.handle(DESKTOP_IPC.richCopy, (event, value: unknown) => manager.copy(event, value))
   ipcMain.on(DESKTOP_IPC.richFromGuest, (event, value: unknown) => {
     try { manager.receive(event, value) } catch (error) { console.error('Rejected rich fixture packet', error) }
   })

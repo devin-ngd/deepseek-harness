@@ -25,6 +25,7 @@ import { richMarkerIds } from '../src/shared/validate.ts'
 import { RICH_MAX_CONTENT_BYTES, RICH_MAX_INPUT_BYTES } from '../src/shared/limits.ts'
 import { authoredBlockId } from '../src/shared/authored.ts'
 import { legacyContent } from '../src/host/legacy.ts'
+import { offloadRichSources } from '../src/host/source.ts'
 import type { SessionPromptRequest } from '@deepseek-ai/dsh-api-session-controller/types'
 
 const resources: { ctx: Context; root: string; remove: boolean }[] = []
@@ -41,7 +42,7 @@ afterEach(async () => {
 type ProfileConfig = Omit<Config, 'theme'> & { theme: RichAppearance['theme'] }
 const limits: ProfileConfig = { maxContentBytes: 2_097_152, maxInputBytes: 131_072, maxFileBytes: 10_485_760,
   maxBlocksPerSession: 128, maxActionsPerSession: 2_000, dispatchRetryDelayMs: 20, maxDispatchAttempts: 3, maxAutoRepairAttempts: 2,
-  maxFormatRepairAttempts: 1, theme: 'cyber', accent: 'blue' }
+  maxFormatRepairAttempts: 1, sourceOffloadMinBytes: 4_096, sourceReadMaxChars: 8_192, theme: 'cyber', accent: 'blue' }
 
 async function harness(root?: string, seed: readonly SessionEvent[] = [], config: Partial<ProfileConfig> = {},
   options: { live?: boolean; preset?: string } = {}) {
@@ -126,6 +127,29 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
   }
   return { ctx, dir, session, agent, host, prompts, prompt, resolved, flush, owner, live, tool, publish, bind, claim }
 }
+
+describe('task usage and scoped source reads', () => {
+  it('reads historical source outside authoring modes before mount and preserves audit-only usage', async () => {
+    const h = await harness(undefined, [], { sourceOffloadMinBytes: 1, sourceReadMaxChars: 20, activePresets: ['lumina'] }, { preset: 'standard' })
+    const code = { key: 'source', html: '<p>Synthetic KWS waveform</p>', css: '', js: 'window.localThreshold = 0.5',
+      fallbackText: 'KWS waveform', stateSchemaVersion: 1, values: { threshold: 0.5 } }
+    const message = createAssistantMessage({ content: [{ type: 'text', text: '```rich-html\n' + JSON.stringify(code) + '\n```' }],
+      source: { provider: 'fixed', model: 'fixed' } })
+    h.session.append('assistant/message', { turn: 1, step: 1, message, stream: [], usage: { inputTokens: 10, outputTokens: 5 } }, { surfaceOp: 'append' })
+    expect(offloadRichSources(h.session, h.session.snapshotEvents(), 1)).toBe(1)
+    const event = h.session.snapshotEvents().findLast(item => item.type === 'rich-inline/source-offload')
+    if (event?.type !== 'rich-inline/source-offload' || event.data.targets[0] === undefined) throw new Error('missing declaration')
+    const request = { sourceRef: event.data.targets[0].sourceRef, field: 'js', offset: 0, length: 20 }
+    expect((await h.tool('rich_inline_read', request)).isError).toBe(false)
+    expect((await h.tool('rich_inline_read', { ...request, length: 21 })).isError).toBe(true)
+    const mounted = await h.host.mount({ sessionId: h.session.id, messageId: message.id, blockId: authoredBlockId(message.id, code.key) })
+    expect(mounted.snapshot.manifest.js).toBe(code.js)
+    const events = h.session.snapshotEvents()
+    expect(await h.host.taskUsage(h.session.id)).toMatchObject({ settlements: 1, uncachedInputTokens: { reported: 10, missing: 0 },
+      cacheReadTokens: { reported: null, missing: 1 }, cost: null, qualityScore: null })
+    expect(h.session.snapshotEvents()).toEqual(events)
+  })
+})
 
 function intent(mounted: Awaited<ReturnType<RichInline['mount']>>, actionId = brandString<RichActionId>(`action-${randomUUID()}`)): RichInvokeRequest {
   return { mountId: mounted.mountId, actionId, actionName: 'submit', targetActionId: null, expectedDataRevision: mounted.snapshot.dataRevision,
@@ -287,7 +311,7 @@ describe('RichInline Host', () => {
     const standard = await h.ctx.systemPrompt.assemble({ agent: h.agent })
     expect(standard.sections.filter(section => section.text.length > 0).some(section => section.name === 'rich-inline:authoring')).toBe(false)
     expect(standard.contexts.some(context => context.name === 'rich-inline:output-format' && context.text.length > 0)).toBe(false)
-    expect(standard.tools.some(tool => tool.name.startsWith('rich_inline_'))).toBe(false)
+    expect(standard.tools.filter(tool => tool.name.startsWith('rich_inline_')).map(tool => tool.name)).toEqual(['rich_inline_read'])
     expect((await h.tool('rich_inline_publish', { html: '<p>x</p>', css: '', js: '', fallbackText: 'x', stateSchemaVersion: 1 })).isError).toBe(true)
     h.session.append('turn/start', { turn: 1 })
     const markdown = '# Coding result\n' + 'Keep ordinary source code and Markdown.\n'.repeat(10)

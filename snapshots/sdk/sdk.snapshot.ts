@@ -4,20 +4,26 @@
  * `@deepseek-ai/dsh-sdk-client`, drives one turn over stdio JSON-RPC,
  * and pins the SDK `RunResult`, the complete notification stream, and the
  * persisted session logs. Replay serves recorded model
- * responses via `llm-replay` (`cordis.snapshot.yml`); `DSH_SNAPSHOT=record`
- * re-records against the live API; `DSH_SNAPSHOT=refresh` replays committed
- * fixtures and rewrites expected outputs.
+ * responses via `llm-replay` (`cordis.snapshot.yml`). Every runtime scenario
+ * requires explicit offline markers and a finite replay declaration before
+ * fixture imports or SDK construction; there is no ordinary SDK fallback path.
+ * Live recording is refused. `DSH_SNAPSHOT=refresh` rewrites expected outputs.
  */
 
 import { existsSync } from 'node:fs'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { registerCurrentSessionMessageProjection } from '@deepseek-ai/dsh-session-format-catalog/message-projections'
 import {
   assertPersistedSessionVersion,
   assertSessionFixtureVersion,
+  prepareOfflineSnapshot,
+  startPreparedOfflineSnapshot,
+  requireOfflineSnapshotEntry,
+  startOfflineSnapshotEntry,
   captureExpectedWorkspaceSnapshot,
   captureWorkspaceSnapshot,
   normalizeSessionFormatMetadata,
@@ -35,7 +41,6 @@ import {
   restorePinnedToolSchemas,
   scrubModelRequestBulk,
   scrubSessionSnapshot,
-  scrubSystemPrompts,
   sessionFixtureName,
   systemPromptPrecedesRequests,
   sessionFixtureNames,
@@ -53,15 +58,36 @@ import {
   type NormalizeContext,
   type SnapshotManifest,
   type WorkspaceSnapshotEntry,
+  type OfflineSnapshotMarkers,
+  type OfflineSnapshotDeclaration,
 } from '@deepseek-ai/dsh-session-snapshot'
-import {
-  DeepSeekHarness,
-  type HarnessNotification,
-  type NotificationSubscription,
-  type RunResult,
-  type SdkPromptContentBlock,
+import type {
+  HarnessNotification,
+  NotificationSubscription,
+  RunResult,
+  SdkPromptContentBlock,
 } from '@deepseek-ai/dsh-sdk-client'
 import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-llm-replay'
+import type {} from '@deepseek-ai/dsh-tool-todo'
+
+const sdkProcessObservations = vi.hoisted(() => [] as {
+  pid: number | undefined
+  exit: Promise<{ code: number | null; signal: NodeJS.Signals | null }>
+}[])
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return { ...actual, spawn: (...args: Parameters<typeof actual.spawn>) => {
+    const child = actual.spawn(...args)
+    if (Array.isArray(args[1]) && args[1].some(arg => arg.includes('sdk-snapshot-rich-inline-source-'))) {
+      const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+        child.once('exit', (code, signal) => { resolve({ code, signal }) })
+      })
+      sdkProcessObservations.push({ pid: child.pid, exit })
+    }
+    return child
+  } }
+})
 
 const corpusRoot = fileURLToPath(new URL('../', import.meta.url))
 
@@ -83,7 +109,6 @@ const RUNTIME_WORKSPACE_ENTRIES = [
   '.agents',
   '.child-dsh',
   '.dsh',
-  '.dsh-sdk-background-release',
   '.replay-fixtures',
   '.snapshot-patches',
 ] as const
@@ -96,13 +121,17 @@ const dshSdkChildConfig = fileURLToPath(new URL(
   import.meta.url,
 ))
 
-function dirOf(url: string): string {
-  return fileURLToPath(new URL('.', url))
-}
-
 interface SdkAssertions {
+  /** Required finite offline declaration; absence refuses this test entry. */
+  offlineReplay?: OfflineSnapshotDeclaration
+  /** Source regression entry using the declared dsh profile launcher and ESM hook. */
+  dshBin?: string
+  /** Source profile startup bound; compiled profiles retain the SDK default. */
+  initializeTimeoutMs?: number
   /** Additional profile patches applied after the shared composition. */
   patches?: readonly string[]
+  /** Wait for the recorded provider title before sending each subsequent prompt. */
+  waitForProviderTitle?: boolean
   /** Final response required from a completed turn before updating goldens. */
   expectedFinalResponse?: string
   /** Environment overrides passed to the runtime subprocess. */
@@ -124,7 +153,27 @@ interface SdkAssertions {
   runtimeContext?: false | { includes: readonly string[]; excludes: readonly string[] }
 }
 
+const SDK_OFFLINE_MARKERS: OfflineSnapshotMarkers = {
+  sdkReplay: true, replayOffline: true, uploadDisabled: true, dispatchBlocked: process.env.DSH_SNAPSHOT_REPLAY_ONLY === '1',
+}
+
 const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
+  'session-title-stability': { waitForProviderTitle: true },
+  'rich-inline-source': {
+    offlineReplay: {
+      provider: 'rich-inline-replay',
+      model: 'rich-inline-fixed',
+      expectedCalls: 4,
+    },
+    dshBin: fileURLToPath(new URL('../../apps/cli/src/bin.ts', import.meta.url)),
+    patches: [fileURLToPath(new URL('../../apps/cli/src/sdk-source.cordis.patch.yml', import.meta.url))],
+    initializeTimeoutMs: 60_000,
+    environment: {
+      NODE_OPTIONS: `--import ${import.meta.resolve('tsx/esm')}`,
+      TSX_TSCONFIG_PATH: fileURLToPath(new URL('../../apps/cli/tsconfig.json', import.meta.url)),
+    },
+    expectedFinalResponse: 'RICH_SOURCE_OK',
+  },
   'dynamic-tool-updates': {
     expectedFinalResponse: 'DONE',
   },
@@ -140,19 +189,32 @@ const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
     expectedFinalResponse: 'CODE_ONE+CODE_TWO',
     expectedTools: { run_code: ['description', 'code'] },
   },
+  'subagent-spawn-in-process': {
+    patches: [fileURLToPath(new URL('./subagent-spawn-in-process/runtime.cordis.yml', import.meta.url))],
+  },
+  'subagent-fork-in-process': {
+    patches: [fileURLToPath(new URL('./subagent-spawn-in-process/runtime.cordis.yml', import.meta.url))],
+  },
+  'subagent-mixed': {
+    patches: [fileURLToPath(new URL('./subagent-spawn-in-process/runtime.cordis.yml', import.meta.url))],
+  },
+  'subagent-continuable-inheritance': {
+    patches: [fileURLToPath(new URL('./subagent-spawn-in-process/runtime.cordis.yml', import.meta.url))],
+  },
   'subagent-continuable': {
     environment: { DSH_SNAPSHOT_HUMAN_STEER: '1' },
   },
   'subagent-dsh-sdk-diagnostic': {
+    expectedFinalResponse: 'PARENT_OBSERVED_DSH_SDK_DIAGNOSTIC',
     environment: { DSH_TEST_CHILD_PATCH: dshSdkDiagnosticChildPatch },
   },
   'persistent-tools': {
     environment: { DSH_SYSTEM_PROMPT: MINIMAL_SYSTEM_PROMPT },
-    expectedTools: { bash: ['command'], str_replace_editor: ['command', 'path'] },
+    expectedTools: { bash: ['command'], str_replace_editor: ['command', 'path'], working_directory: [] },
     expectedSystem: MINIMAL_SYSTEM_PROMPT,
     expectedToolDescriptions: { bash: MINIMAL_BASH_DESCRIPTION },
     runtimeContext: {
-      includes: ['Current DSH file policy: danger-full-access', 'Approval prompts are disabled in this session'],
+      includes: ['Current working directory:', 'Current DSH file policy: danger-full-access', 'Approval prompts are disabled in this session'],
       excludes: ['workspace-write'],
     },
   },
@@ -347,12 +409,14 @@ async function fixtureFiles(scenario: CorpusScenario): Promise<string[]> {
   }))
 }
 
-async function hydrateReplayFixtures(scenario: CorpusScenario, cwd: string): Promise<string[]> {
+async function hydrateReplayFixtures(scenario: CorpusScenario, cwd: string, contents: readonly string[]): Promise<string[]> {
   const root = join(cwd, '.replay-fixtures')
   await mkdir(root, { recursive: true })
-  return Promise.all((await fixtureFiles(scenario)).map(async (source) => {
+  return Promise.all((await fixtureFiles(scenario)).map(async (source, index) => {
     const destination = join(root, basename(source))
-    await writeFile(destination, (await readFile(source, 'utf8')).replaceAll('{{cwd}}', cwd))
+    const content = contents[index]
+    if (content === undefined) throw new Error('offline replay fixture is missing')
+    await writeFile(destination, content)
     return destination
   }))
 }
@@ -423,19 +487,6 @@ function notificationComparisonRecords(log: string, sourceLogs: readonly string[
     const event = JSON.parse(normalizeSessionFormatMetadata(JSON.stringify(params.event), versions[0])) as unknown
     return { ...record, params: { ...params, event } }
   })
-}
-
-function modelFromSession(log: string): { provider: string; model: string } {
-  for (const record of records(log)) {
-    if (record.type !== 'request/header') continue
-    const data = record.data as JsonObject | undefined
-    const header = data?.header as JsonObject | undefined
-    const config = header?.config as JsonObject | undefined
-    if (typeof config?.provider === 'string' && typeof config.model === 'string') {
-      return { provider: config.provider, model: config.model }
-    }
-  }
-  throw new Error('SDK snapshot session has no request model')
 }
 
 function turnActions(log: string): TurnAction[] {
@@ -548,138 +599,214 @@ async function runScenario(scenario: CorpusScenario): Promise<{
   finalWorkspace: WorkspaceSnapshotEntry[]
   cwd: string
 }> {
-  const cwd = await mkdtemp(join(tmpdir(), `sdk-snapshot-${scenario.name}-`))
-  const dshHome = join(cwd, '.dsh')
-  const sessionsRoot = join(dshHome, 'sessions')
-  const replayFixtures = recording ? [] : await hydrateReplayFixtures(scenario, cwd)
-  const fixtureContents = await Promise.all((await fixtureFiles(scenario)).map(file => readFile(file, 'utf8')))
-  const primaryFixture = fixtureContents[0]
-  if (primaryFixture === undefined) throw new Error(`${scenario.name}: no primary session fixture`)
-  const route = modelFromSession(primaryFixture)
-  const patchRoot = join(cwd, '.snapshot-patches')
-  await mkdir(patchRoot, { recursive: true })
   const assertions = SDK_ASSERTIONS[scenario.name] ?? {}
-  const patches = [...authoredPatches(scenario, !recording), ...assertions.patches ?? []]
-    .map((patch, index) => materializeProfilePatch(patch, cwd, 'sdk', patchRoot, index))
-  let childSessionsRoot: string | undefined
-  let childEnvironment: Record<string, string> = {}
-  if (assertions.dshSdkChild !== undefined) {
-    const childHome = join(cwd, '.child-dsh')
-    const childPatch = materializeProfilePatch(assertions.dshSdkChild.config, cwd, 'sdk', patchRoot, patches.length)
-    await mkdir(childHome, { recursive: true })
-    childSessionsRoot = join(childHome, 'sessions')
-    childEnvironment = {
-      DSH_TEST_CHILD_PATCHES: JSON.stringify([childPatch]),
-      DSH_TEST_CHILD_HOME: childHome,
+  return startOfflineSnapshotEntry({ composition: scenario.manifest.composition, mode: process.env.DSH_SNAPSHOT,
+    plan: assertions.offlineReplay, markers: SDK_OFFLINE_MARKERS }, async (declaration) => {
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), `sdk-snapshot-${scenario.name}-`)))
+    const dshHome = join(cwd, '.dsh')
+    const sessionsRoot = join(dshHome, 'sessions')
+    const fixtureContents = await Promise.all((await fixtureFiles(scenario)).map(file => readFile(file, 'utf8')))
+    const primaryFixture = fixtureContents[0]
+    if (primaryFixture === undefined) throw new Error(`${scenario.name}: no primary session fixture`)
+    const route = { provider: declaration.provider, model: declaration.model }
+    const offlinePlan = { ...declaration, ...route, cwd, fixtures: fixtureContents }
+    const prepared = prepareOfflineSnapshot(offlinePlan)
+    const replayFixtures = await hydrateReplayFixtures(scenario, cwd, prepared.fixtures)
+    const patchRoot = join(cwd, '.snapshot-patches')
+    await mkdir(patchRoot, { recursive: true })
+    const patches = [...authoredPatches(scenario, !recording), ...assertions.patches ?? []]
+      .map((patch, index) => materializeProfilePatch(patch, cwd, 'sdk', patchRoot, index))
+    const offlinePolicyPatch = join(patchRoot, 'offline-policy.yml')
+    await writeFile(offlinePolicyPatch, '- id: sdk-jsonrpc-server\n  config:\n    offlineReplay: true\n'
+      + '- id: session-log-deepseek\n  disabled: true\n'
+      + '- id: llm-deepseek\n  disabled: true\n'
+      + '- id: llm-deepseek-account\n  disabled: true\n')
+    patches.push(offlinePolicyPatch)
+    let childSessionsRoot: string | undefined
+    let childEnvironment: Record<string, string> = {}
+    if (assertions.dshSdkChild !== undefined) {
+      const childHome = join(cwd, '.child-dsh')
+      const childPatch = materializeProfilePatch(assertions.dshSdkChild.config, cwd, 'sdk', patchRoot, patches.length)
+      await mkdir(childHome, { recursive: true })
+      childSessionsRoot = join(childHome, 'sessions')
+      childEnvironment = {
+        DSH_TEST_CHILD_PATCHES: JSON.stringify([childPatch, offlinePolicyPatch]),
+        DSH_TEST_CHILD_HOME: childHome,
+      }
     }
-  }
-  const workspaceDir = join(scenario.dir, 'workspace')
-  if (existsSync(workspaceDir)) {
-    for (const entry of await readdir(workspaceDir)) {
-      await cp(join(workspaceDir, entry), join(cwd, entry), { recursive: true, verbatimSymlinks: true })
+    const workspaceDir = join(scenario.dir, 'workspace')
+    if (existsSync(workspaceDir)) {
+      for (const entry of await readdir(workspaceDir)) {
+        await cp(join(workspaceDir, entry), join(cwd, entry), { recursive: true, verbatimSymlinks: true })
+      }
     }
-  }
-  const initialWorkspace = await captureWorkspaceSnapshot(cwd, {
-    ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
-  })
-  const [parentFixture, ...childFixtures] = replayFixtures
-  const env: Record<string, string> = {
-    ...Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)) as Record<string, string>,
-    DSH_SNAPSHOT: mode,
-    DSH_SNAPSHOT_PROVIDER: route.provider,
-    DSH_SNAPSHOT_MODEL: route.model,
-    DSH_TELEMETRY_DISABLED: '1',
-    DSH_AGENTS_HOME: join(cwd, '.agents'),
-    NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
-    ...parentFixture === undefined ? {} : {
-      DSH_SNAPSHOT_FILE: parentFixture,
-      ...childFixtures.length > 0 ? { DSH_SNAPSHOT_CHILD_FILES: childFixtures.join(delimiter) } : {},
-    },
-    ...!recording && scenario.manifest.replay?.override === true
-      ? { DSH_SNAPSHOT_OVERRIDE: join(scenario.dir, 'replay.override.json') }
-      : {},
-    ...scenario.manifest.environment,
-    ...assertions.environment,
-    ...childEnvironment,
-  }
+    const initialWorkspace = await captureWorkspaceSnapshot(cwd, {
+      ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
+    })
+    const [parentFixture, ...childFixtures] = replayFixtures
+    const env: Record<string, string> = {
+      ...Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)) as Record<string, string>,
+      DSH_SNAPSHOT: mode,
+      DSH_SNAPSHOT_PROVIDER: route.provider,
+      DSH_SNAPSHOT_MODEL: route.model,
+      DSH_TELEMETRY_DISABLED: '1',
+      DSH_AGENTS_HOME: join(cwd, '.agents'),
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+      ...parentFixture === undefined ? {} : {
+        DSH_SNAPSHOT_FILE: parentFixture,
+        ...childFixtures.length > 0 ? { DSH_SNAPSHOT_CHILD_FILES: childFixtures.join(delimiter) } : {},
+      },
+      ...!recording && scenario.manifest.replay?.override === true
+        ? { DSH_SNAPSHOT_OVERRIDE: join(scenario.dir, 'replay.override.json') }
+        : {},
+      ...scenario.manifest.environment,
+      ...assertions.environment,
+      ...childEnvironment,
+      DSH_SNAPSHOT_REPLAY_ONLY: '1',
+    }
 
-  const harness = new DeepSeekHarness({
-    profile: 'sdk',
-    patches,
-    dshHome,
-    processCwd: cwd,
-    env,
-    requestTimeoutMs: 110_000,
-    cwd,
-    provider: route.provider,
-    model: route.model,
-  })
-  try {
-    const notifications: HarnessNotification[] = []
-    const observedMethods = new Set<string>()
-    const results: RunResult[] = []
-    const sessionId = 'fixture-root-session'
-    const liveSessions: (string | undefined)[] = [sessionId]
-    await harness.start()
-    const subscription = harness.client.subscribeSessionTree(sessionId)
-    const observe = (notification: HarnessNotification): void => {
-      observedMethods.add(notification.method)
-      if (notification.method !== 'subagent.started') return
-      const child = notification.params.childSessionId
-      if (typeof child !== 'string' || liveSessions.includes(child)) return
-      liveSessions.push(child)
-    }
+    const harness = await startPreparedOfflineSnapshot(offlinePlan, async () => {
+      const { DeepSeekHarness } = await import('@deepseek-ai/dsh-sdk-client')
+      return new DeepSeekHarness({
+        ...assertions.dshBin === undefined ? {} : { dshBin: assertions.dshBin },
+        ...assertions.initializeTimeoutMs === undefined ? {} : { initializeTimeoutMs: assertions.initializeTimeoutMs },
+        profile: 'sdk',
+        patches,
+        dshHome,
+        processCwd: cwd,
+        env,
+        requestTimeoutMs: 110_000,
+        cwd,
+        provider: route.provider,
+        model: route.model,
+      })
+    })
     try {
-      const session = harness.session(sessionId)
-      for (const action of turnActions(primaryFixture)) {
-        if (action.content === undefined) {
+      const notifications: HarnessNotification[] = []
+      const observedMethods = new Set<string>()
+      const results: RunResult[] = []
+      const sessionId = 'fixture-root-session'
+      const liveSessions: (string | undefined)[] = [sessionId]
+      await harness.start()
+      const subscription = harness.client.subscribeSessionTree(sessionId)
+      const titleSubscription = assertions.waitForProviderTitle === true
+        ? harness.client.subscribeSessionTree(sessionId) : undefined
+      const expectedTitles = records(primaryFixture).filter(event => event.type === 'session/title'
+        && ((event.data as JsonObject).source as JsonObject).kind === 'provider')
+      const completionSubscription = scenario.name === 'subagent-continuable'
+        ? harness.client.subscribeSessionTree(sessionId) : undefined
+      const observe = (notification: HarnessNotification): void => {
+        observedMethods.add(notification.method)
+        if (notification.method !== 'subagent.started') return
+        const child = notification.params.childSessionId
+        if (typeof child !== 'string' || liveSessions.includes(child)) return
+        liveSessions.push(child)
+      }
+      try {
+        const session = harness.session(sessionId)
+        for (const action of turnActions(primaryFixture)) {
+          if (action.content === undefined) {
+            await waitForRootEvent(
+              subscription,
+              sessionId,
+              event => event.type === 'turn/end' && (event.data as JsonObject | undefined)?.turn === action.turn,
+              observe,
+            )
+            continue
+          }
+          const result = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
+            onNotification: (notification) => {
+              notifications.push(notification)
+              observe(notification)
+            },
+          })
+          results.push(result)
+          if (titleSubscription !== undefined) {
+            const expected = expectedTitles[results.length - 1]?.data as JsonObject | undefined
+            expect(expected, 'each turn has a recorded provider title').toBeDefined()
+            await waitForRootEvent(titleSubscription, sessionId, event => event.type === 'session/title'
+              && ((event.data as JsonObject).source as JsonObject).kind === 'provider'
+              && (event.data as JsonObject).title === expected?.title, observe)
+          }
+          if (completionSubscription !== undefined) {
+            expect(result.finalResponse, 'run returns at the first parent idle').toBe('DONE')
+            expect(result.events.filter(event => event.type === 'turn/end'))
+              .toMatchObject([{ data: { turn: 1 } }])
+            expect(await harness.client.request('session/wait', { sessionId })).toEqual({})
+            const delivered: HarnessNotification[] = []
+            let notification: HarnessNotification | undefined
+            while ((notification = completionSubscription.tryNext()) !== undefined) delivered.push(notification)
+            const completionOrder = delivered.flatMap((entry) => {
+              if (entry.method === 'subagent.finished') return ['child:finished']
+              if (entry.params.sessionId !== sessionId) return []
+              if (entry.method === 'session.status' && entry.params.status === 'idle') return ['parent:idle']
+              const event = notificationEvent(entry)
+              if (event?.type !== 'turn/end') return []
+              const data = event.data as JsonObject
+              expect(data.reason).toEqual({ kind: 'completed' })
+              return [`parent:turn:${String(data.turn)}`]
+            })
+            expect(completionOrder, 'completion notifications arrive before the session/wait response').toEqual([
+              'parent:turn:1', 'parent:idle', 'child:finished', 'parent:turn:2', 'parent:idle',
+            ])
+            const parentMessages = delivered.flatMap((entry) => {
+              const event = entry.params.sessionId === sessionId ? notificationEvent(entry) : undefined
+              return event?.type === 'assistant/message' ? [event] : []
+            })
+            expect(parentMessages.at(-1)).toMatchObject({
+              data: { turn: 2, message: { content: [{ type: 'text', text: 'SUBAGENT_SETTLED_NOTED' }] } },
+            })
+          }
+          if (scenario.manifest.environment?.DSH_SNAPSHOT_FEEDBACK === '1') {
+            const feedback = result.events.filter(event => event.type.startsWith('feedback/'))
+            expect(feedback.map(event => event.type)).toEqual([
+              'feedback/record', 'feedback/record', 'feedback/message-put', 'feedback/message-put', 'feedback/message-delete',
+            ])
+          }
           await waitForRootEvent(
             subscription,
             sessionId,
             event => event.type === 'turn/end' && (event.data as JsonObject | undefined)?.turn === action.turn,
             observe,
           )
-          continue
         }
-        const result = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
-          onNotification: (notification) => {
-            notifications.push(notification)
-            observe(notification)
-          },
-        })
-        results.push(result)
-        if (scenario.manifest.environment?.DSH_SNAPSHOT_FEEDBACK === '1') {
-          const feedback = result.events.filter(event => event.type.startsWith('feedback/'))
-          expect(feedback.map(event => event.type)).toEqual([
-            'feedback/record', 'feedback/record', 'feedback/message-put', 'feedback/message-put', 'feedback/message-delete',
-          ])
+        for (const type of postTurnEventTypes(primaryFixture)) {
+          await waitForRootEvent(subscription, sessionId, event => event.type === type, observe)
         }
-        await waitForRootEvent(
-          subscription,
-          sessionId,
-          event => event.type === 'turn/end' && (event.data as JsonObject | undefined)?.turn === action.turn,
-          observe,
-        )
+      } finally {
+        subscription.close()
+        completionSubscription?.close()
+        titleSubscription?.close()
       }
-      for (const type of postTurnEventTypes(primaryFixture)) {
-        await waitForRootEvent(subscription, sessionId, event => event.type === type, observe)
+      expect(await harness.client.request('session/wait', { sessionId })).toEqual({})
+      const shutdownResponse = scenario.name === 'rich-inline-source'
+        ? await harness.client.request('shutdown', undefined, 10_000) : undefined
+      await harness.close()
+      const processObservation = scenario.name === 'rich-inline-source' ? sdkProcessObservations.at(-1) : undefined
+      if (scenario.name === 'rich-inline-source' && processObservation === undefined) throw new Error('missing SDK child-process observation')
+      const termination = await processObservation?.exit
+      if (termination !== undefined) expect(termination, 'actual SDK child exit').toEqual({ code: 0, signal: null })
+      const logs = (await Promise.all([
+        persistedLogs(sessionsRoot),
+        ...(childSessionsRoot === undefined ? [] : [persistedLogs(childSessionsRoot)]),
+      ])).flat()
+      if (scenario.name === 'rich-inline-source' && process.env.DSH_RICH_LOGS_DIR !== undefined) {
+        const evidenceDir = process.env.DSH_RICH_LOGS_DIR
+        await mkdir(evidenceDir, { recursive: true })
+        for (const [index, log] of logs.entries()) await writeFile(join(evidenceDir, `session.${index}.jsonl`), log.content)
+        await writeFile(join(evidenceDir, 'sdk-close.json'), JSON.stringify({ closeResolved: true,
+          shutdownResponse, pid: processObservation?.pid, termination,
+          finalResponse: results.at(-1)?.finalResponse, logs: logs.length }, null, 2) + '\n')
       }
+      const finalWorkspace = await captureWorkspaceSnapshot(cwd, {
+        ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
+      })
+      return { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd }
     } finally {
-      subscription.close()
+      await harness.close()
+      await rm(cwd, { recursive: true, force: true })
     }
-    await harness.close()
-    const logs = (await Promise.all([
-      persistedLogs(sessionsRoot),
-      ...(childSessionsRoot === undefined ? [] : [persistedLogs(childSessionsRoot)]),
-    ])).flat()
-    const finalWorkspace = await captureWorkspaceSnapshot(cwd, {
-      ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
-    })
-    return { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd }
-  } finally {
-    await harness.close()
-    await rm(cwd, { recursive: true, force: true })
-  }
+  })
 }
 
 /** Order logs parent-first, children by creation time (fixture layout order). */
@@ -750,10 +877,12 @@ async function verifyHeaders(
   const pinFixture = await readFile(pinFixturePath as string, 'utf8')
   const firstLine = pinFixture.split('\n').find(line => line.trim() !== '') ?? '{}'
   const pinHeader = JSON.parse(firstLine) as JsonObject
+  const pinReasons = records(pinFixture).filter(record => record.type === 'request/header')
+    .map(record => (record.data as JsonObject).reason)
   const pinned = normalizedHeaders(pinFixture, {
     sessionIds: [],
     cwd: typeof pinHeader.cwd === 'string' ? pinHeader.cwd : '\0no-cwd\0',
-  })
+  }).filter((_header, index) => pinReasons[index] !== 'series')
   const promptOwner = sourceScenario(pin, pin.manifest.header.systemPromptSource)
   const schemaOwner = sourceScenario(pin, pin.manifest.header.toolSchemasSource)
   const prompt = await readFile(join(promptOwner.dir, 'system-prompt.expected.md'), 'utf8')
@@ -776,15 +905,19 @@ async function verifyHeaders(
 
   for (const [logIndex, log] of ordered.entries()) {
     const headers = normalizedHeaders(log.content, ctx)
+    const reasons = records(log.content).filter(record => record.type === 'request/header')
+      .map(record => (record.data as JsonObject).reason)
     const prompts = normalizedSystemPrompts(log.content, ctx)
     if (headers.length > 0) {
       expect(systemPromptPrecedesRequests(log.content), `${scenario.name}: session ${logIndex} has a system/message before its first request/header`).toBe(true)
       expect(prompts.length, `${scenario.name}: session ${logIndex} system/message count`)
         .toBe(1 + (logIndex === 0 ? pin.manifest.header.promptChanges ?? 0 : 0))
     }
+    let revision = 0
     for (const [index, header] of headers.entries()) {
-      const selectedSchemas = childSchemas.get(logIndex)?.[index]
-      const base = reconstructed[index] ?? reconstructed[0]
+      if (reasons[index] === 'change') revision++
+      const selectedSchemas = childSchemas.get(logIndex)?.[revision]
+      const base = reconstructed[revision] ?? reconstructed[0]
       const configured = logIndex === 1 && dshSdkChildConfig !== undefined
         ? { ...base as JsonObject, config: dshSdkChildConfig }
         : base
@@ -825,12 +958,20 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       ? it.skip
       : it
     scenarioTest(`${mode}s ${scenario.name} through dsh --profile sdk`, async () => {
+      const assertions = SDK_ASSERTIONS[scenario.name] ?? {}
+      requireOfflineSnapshotEntry({ composition: scenario.manifest.composition, mode: process.env.DSH_SNAPSHOT,
+        plan: assertions.offlineReplay, markers: SDK_OFFLINE_MARKERS })
       const scenarioDir = scenario.dir
       const retained = scenario.manifest.sessionFormat !== undefined
       const notificationsExpectedPath = join(scenarioDir, retained ? 'notifications.current.expected.jsonl' : 'notifications.expected.jsonl')
       const resultExpectedPath = join(scenarioDir, 'result.expected.json')
       const hasWireGoldens = existsSync(notificationsExpectedPath) || existsSync(resultExpectedPath)
-      const assertions = SDK_ASSERTIONS[scenario.name] ?? {}
+      if (scenario.name === 'rich-inline-source') {
+        const { richSourceProjection } = await import('../../packages/experimental/rich-inline/src/host/source.ts')
+        const { richToolSourceProjection } = await import('../../packages/experimental/rich-inline/src/host/tool-source.ts')
+        onTestFinished(registerCurrentSessionMessageProjection(richSourceProjection))
+        onTestFinished(registerCurrentSessionMessageProjection(richToolSourceProjection))
+      }
       const writesSessionFixtures = writesCurrentSessionFixtures(scenario.manifest, sessionWriteMode)
 
       let files = await fixtureFiles(scenario)
@@ -848,6 +989,27 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       )
       reconcileCatalogCreationTimes(ordered.map(log => log.content), 'validate')
       const actualContext = contextOf(ordered, cwd)
+      expect(logs.some(log => log.content.includes('llm-replay: script exhausted')), `${scenario.name}: replay script covers every model request`).toBe(false)
+      if (scenario.name === 'subagent-dsh-sdk-diagnostic' || scenario.name === 'subagent-dsh-sdk-dynamic-route') {
+        const parentEvents = records(ordered[0]!.content)
+        const notices = parentEvents.filter(event => event.type === 'user/message'
+          && (event.data as JsonObject | undefined)?.source !== undefined
+          && ((event.data as JsonObject).source as JsonObject).kind === 'subagent-settled')
+        const expectedCount = scenario.name === 'subagent-dsh-sdk-diagnostic' ? 2 : 1
+        expect(notices).toHaveLength(expectedCount)
+        const catalog = parentEvents.filter(event => event.type === 'subagent/catalog')
+        expect(catalog).toHaveLength(expectedCount)
+        expect(catalog.every(event => (event.data as JsonObject).mode === 'external')).toBe(true)
+        const expectedContent = scenario.name === 'subagent-dsh-sdk-diagnostic'
+          ? 'partial child loader answer'
+          : 'child route: mock/mock-routed/max/777; cwd:'
+        for (const notice of notices) expect(JSON.stringify(notice)).toContain(expectedContent)
+        const finalAssistant = parentEvents.findLastIndex(event => event.type === 'assistant/message')
+        for (const notice of notices) expect(parentEvents.indexOf(notice)).toBeLessThan(finalAssistant)
+        expect(parentEvents.filter(event => event.type === 'turn/end')).toEqual([
+          expect.objectContaining({ data: { turn: 1, reason: { kind: 'completed' } } }),
+        ])
+      }
       if (scenario.name === 'dynamic-tool-updates') {
         const selectedTypes = new Set(['request/header', 'request/context', 'developer/message', 'tool/call', 'tool/result'])
         const events = results.flatMap(result => result.events).filter(event => selectedTypes.has(event.type))
@@ -911,6 +1073,12 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       }
       if (scenario.name === 'tool-error-details') {
         const events = results.flatMap(result => result.events)
+        const headers = events.filter(event => event.type === 'request/header')
+          .map(event => (event.data.header as { tools: { name: string }[] }).tools.map(tool => tool.name))
+        expect(headers).toHaveLength(2)
+        expect(headers[0]).toContain('bash')
+        expect(headers[0]).not.toContain('run_code')
+        expect(headers[1]).toEqual(['run_code'])
         const errors = events.filter(event => event.type === 'tool/result' || event.type === 'tool/ptc-dispatch')
           .map(event => event.data['error']).filter(error => error !== undefined)
         expect(errors).toEqual(Array.from({ length: 2 }, () => ({
@@ -989,7 +1157,16 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       // Persisted transcripts match the committed fixtures.
       const expectedContext = contextOfContents(expectedContents)
       const actualSnapshots = normalizeSessionSnapshots(ordered.map(log => log.content), actualContext, { nativeWriterOutput: true })
-      const expectedSnapshots = normalizeSessionSnapshots(expectedContents, expectedContext, { nativeWriterOutput: true })
+      // The fixture owns the JSON-quoted Windows directory; generic text scrubbing stays unchanged.
+      const comparisonContents = scenario.name === 'rich-inline-source' && cwd.includes('\\')
+        ? expectedContents.map(content => {
+            const template = JSON.stringify('Current working directory: "{{cwd}}".').slice(1, -1)
+            expect(content.split(template)).toHaveLength(3)
+            const expected = JSON.stringify(`Current working directory: ${JSON.stringify(cwd)}.`).slice(1, -1)
+            return content.replaceAll(template, expected)
+          })
+        : expectedContents
+      const expectedSnapshots = normalizeSessionSnapshots(comparisonContents, expectedContext, { nativeWriterOutput: true })
       expect(actualSnapshots.map(records), `${scenario.name}: sessions`).toEqual(expectedSnapshots.map(records))
       await verifyHeaders(scenario, ordered, actualContext, assertions.dshSdkChild?.agentConfig)
 

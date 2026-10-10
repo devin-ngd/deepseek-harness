@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-rich-inline",
   "description": "Durable message-inline HTML interactions with host-owned authorization",
-  "version": "0.2.1-alpha.1",
+  "version": "0.2.1-alpha.2",
   "type": "module",
   "license": "MIT",
   "publishConfig": {
@@ -48,21 +48,22 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "locale/*.json",
     "lib/index.js",
     "lib/client.js",
+    "cordis.patch.yml",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts",
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
-    "lib/typert.remote-client.d.ts",
-    "locale/*.json",
-    "cordis.patch.yml",
-    "examples/*.ts"
+    "lib/typert.remote-client.d.ts"
   ],
   "dsh": {
     "client": {
-      "external": ["@deepseek-ai/dsh-client-ui-user-questions/client"],
+      "external": [
+        "@deepseek-ai/dsh-client-ui-user-questions/client"
+      ],
       "inject": [
         "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-api-session-controller",
@@ -115,6 +116,7 @@
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-session-format-catalog": "workspace:*",
     "@deepseek-ai/dsh-session-persistence": "workspace:*",
     "@deepseek-ai/dsh-settings": "workspace:*",
     "@deepseek-ai/dsh-storage-domain": "workspace:*",
@@ -147,7 +149,9 @@
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-session-format-catalog": "workspace:*",
     "@deepseek-ai/dsh-session-persistence": "workspace:*",
+    "@deepseek-ai/dsh-session-projection": "workspace:*",
     "@deepseek-ai/dsh-settings": "workspace:*",
     "@deepseek-ai/dsh-storage": "workspace:*",
     "@deepseek-ai/dsh-storage-domain": "workspace:*",

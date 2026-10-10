@@ -1,0 +1,255 @@
+{
+  "formatVersion": 2,
+  "roots": [
+    {
+      "key": "event:rich-inline/source-offload",
+      "kind": "event",
+      "event": "rich-inline/source-offload",
+      "surface": false,
+      "digest": "cd16f43e1a0118ef5212096132eb89feb67955757b2215ed5d8b72b9db222e94",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 7,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 8,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "targets",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "array",
+            "element": 3
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "blockId",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "dataRevision",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "end",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "partIndex",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "renderRevision",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "seq",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "sourceHash",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "sourceRef",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "start",
+                "type": 6,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "literal",
+            "value": 1
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "rich-inline/source-offload"
+          }
+        ]
+      }
+    },
+    {
+      "key": "event:rich-inline/tool-offload",
+      "kind": "event",
+      "event": "rich-inline/tool-offload",
+      "surface": false,
+      "digest": "78dc1a7de868ba84365365894746f1212987a775abe2adcfd0cb765275c996bd",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 7,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "targets",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "array",
+            "element": 3
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "blockId",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "dataRevision",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "partIndex",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "renderRevision",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "resultSeq",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "seq",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "sourceHash",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "sourceRef",
+                "type": 4,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "rich-inline/tool-offload"
+          }
+        ]
+      }
+    }
+  ],
+  "types": []
+}

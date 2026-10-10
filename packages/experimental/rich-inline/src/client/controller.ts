@@ -10,7 +10,7 @@ import type {
 } from '../shared/types.ts'
 import { guestSdk } from './guest-sdk.ts'
 import { parseActionRequest, parseInvokeRequest, parseSaveDraftRequest } from '../shared/validate.ts'
-import type { NativeRichBridge, RichReservation } from './native.ts'
+import type { NativeRichBridge, RichCopyLabels, RichReservation } from './native.ts'
 import type { RichAppearance } from '../shared/theme.ts'
 import { richThemeCss, richThemeTokens } from '../shared/theme.ts'
 
@@ -91,10 +91,11 @@ export class RichBlockController {
    * @param native - trusted Desktop adapter, absent on Web.
    * @param pollIntervalMs - deployment-configured refresh cadence.
    * @param appearance - reads the current profile preferences, shared with streaming previews.
+   * @param copyLabels - localized copy controls; omitted for consumers without that UI.
    */
   constructor(private readonly sessionId: SessionId, private readonly rpc: RichRpc,
     private readonly native: NativeRichBridge | undefined, private readonly pollIntervalMs: number,
-    private readonly appearance: () => RichAppearance) {
+    private readonly appearance: () => RichAppearance, private readonly copyLabels?: () => RichCopyLabels) {
     this.view = { snapshot: null, reservation: null, height: 160, error: null, closed: false,
       supported: native !== undefined, inputWarning: false, repairing: false }
   }
@@ -176,7 +177,7 @@ export class RichBlockController {
       throw new Error('RICH_DOCUMENT_TOO_LARGE')
     }
     const reservation = await this.native.acquire({ mountId, mountNonce: randomUUID(),
-      html: manifest.html, css, js: manifest.js, sdk })
+      html: manifest.html, css, js: manifest.js, sdk, ...this.copyLabels === undefined ? {} : { copy: this.copyLabels() } })
     if (generation !== this.generation || mountId !== this.mountId) { await this.native.release(reservation.lease); return }
     this.stopNative = this.native.subscribe(reservation.lease, (value) => {
       if (generation !== this.generation || this.view.reservation?.lease !== reservation.lease) return

@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { DESKTOP_IPC } from './ipc.ts'
 import type { DesktopRichBootstrap } from './rich-types.ts'
+import { installRichCopy } from './rich-copy.ts'
 
 if (process.isMainFrame && location.protocol === 'dsh-app:') {
   const bootstrap: unknown = ipcRenderer.sendSync(DESKTOP_IPC.richBootstrap)
@@ -10,6 +11,13 @@ if (process.isMainFrame && location.protocol === 'dsh-app:') {
     throw new Error('desktop rich: unregistered guest document')
   }
   const identity: DesktopRichBootstrap = { mountId: bootstrap.mountId, mountNonce: bootstrap.mountNonce }
+  if ('copy' in bootstrap && bootstrap.copy !== undefined) {
+    const copy = (bootstrap as DesktopRichBootstrap).copy
+    if (copy !== undefined) window.addEventListener('DOMContentLoaded', () => {
+      const dispose = installRichCopy(copy, async value => await ipcRenderer.invoke(DESKTOP_IPC.richCopy, value) === true)
+      window.addEventListener('pagehide', dispose, { once: true })
+    }, { once: true })
+  }
   const listeners = new Set<(packet: Record<string, unknown>) => void>()
   let packetWindow = 0
   let packetCount = 0

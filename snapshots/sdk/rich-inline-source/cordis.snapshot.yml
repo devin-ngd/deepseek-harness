@@ -1,0 +1,13 @@
+- insert:
+    - id: llm-replay
+      name: '../../../packages/test-support/llm-replay/src/index.ts'
+      inject: [richSourceSnapshotReady]
+      config:
+        offline: true
+        providers:
+          - id: rich-inline-replay
+            models:
+              - id: rich-inline-fixed
+                defaultMaxTokens: 256000
+                reasoningEfforts: [off, low, high, max]
+                defaultReasoningEffort: high
