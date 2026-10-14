@@ -17,6 +17,8 @@ import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, val
 
 /** Resolved provider limits (the plugin's schemastery Config supplies defaults). */
 export interface HttpFetchLimits {
+  /** Require locally validated, pinned addresses even when a deployment proxy exists. */
+  directOnly?: boolean
   /** Maximum response body size in bytes (read is aborted past this). */
   maxResponseBytes: number
   /** Maximum decoded body length in characters (truncated past this). */
@@ -132,7 +134,7 @@ export class HttpFetchProvider implements WebFetchProvider {
       // nothing — the address is already stated — so the shortcut would spend the checks for
       // nothing and let a proxy on this machine reach the very service they keep out of reach.
       const route = proxyRouteFor(url)
-      if (route.proxied && !isNonPublicIpLiteral(url.hostname)) {
+      if (!this.limits.directOnly && route.proxied && !isNonPublicIpLiteral(url.hostname)) {
         return await publicHttpNetwork.requestVia(route.dispatcher, url, headers, signal)
       }
       const addresses = await this.resolveAddresses(url.hostname, signal)

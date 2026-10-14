@@ -72,6 +72,26 @@ async function installProxy(): Promise<() => Promise<void>> {
 }
 
 describe('fetching through a proxy', () => {
+  it('refuses private addresses with directOnly even when a deployment proxy is installed', async () => {
+    const resolve = vi.spyOn(publicHttpNetwork, 'resolve')
+    disposeProxy = await installProxy()
+    await expect(new HttpFetchProvider({ ...limits, directOnly: true }).fetch({ url: 'http://127.0.0.2/private' }))
+      .rejects.toMatchObject({ code: 'WEB_BLOCKED_URL' })
+    expect(resolve).toHaveBeenCalledOnce()
+    expect(proxied).toEqual([])
+  })
+
+  it('uses pinned direct transport for a normally proxied hostname when directOnly is selected', async () => {
+    const resolve = vi.spyOn(publicHttpNetwork, 'resolve').mockResolvedValue([{ address: '127.0.0.1', family: 4 }])
+    disposeProxy = await installProxy()
+    const target = new URL(originUrl)
+    target.hostname = 'origin.test'
+    const response = await new HttpFetchProvider({ ...limits, directOnly: true }).fetch({ url: target.href })
+    expect(response.body.content).toBe('direct')
+    expect(resolve).toHaveBeenCalledOnce()
+    expect(proxied).toEqual([])
+  })
+
   it('tunnels the request and never resolves a public address for it', async () => {
     const resolve = vi.spyOn(publicHttpNetwork, 'resolve')
     disposeProxy = await installProxy()
