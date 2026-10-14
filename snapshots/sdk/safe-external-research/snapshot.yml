@@ -1,0 +1,10 @@
+version: 1
+scenario: safe-external-research
+profile: sdk
+composition: sdk-safe-external-research
+recording: authored
+header:
+  class: sdk-safe-external-research
+  pin: true
+  childSystemPrompts: [1]
+  childToolSchemas: [1]

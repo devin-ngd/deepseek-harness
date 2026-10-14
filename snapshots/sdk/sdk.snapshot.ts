@@ -128,6 +128,10 @@ interface SdkAssertions {
   dshBin?: string
   /** Source profile startup bound; compiled profiles retain the SDK default. */
   initializeTimeoutMs?: number
+  /** Explicit output cap for scenarios whose child uses the same fixed cap. */
+  maxTokens?: number
+  /** Whether a persisted child publishes ordinary subagent lifecycle notifications. */
+  childNotifications?: boolean
   /** Additional profile patches applied after the shared composition. */
   patches?: readonly string[]
   /** Wait for the recorded provider title before sending each subsequent prompt. */
@@ -158,6 +162,19 @@ const SDK_OFFLINE_MARKERS: OfflineSnapshotMarkers = {
 }
 
 const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
+  'safe-external-research': {
+    offlineReplay: { provider: 'research-replay', model: 'research-fixed', expectedCalls: 4 },
+    maxTokens: 4096,
+    childNotifications: false,
+    dshBin: fileURLToPath(new URL('../../apps/cli/src/bin.ts', import.meta.url)),
+    patches: [fileURLToPath(new URL('../../apps/cli/src/sdk-source.cordis.patch.yml', import.meta.url))],
+    initializeTimeoutMs: 60_000,
+    environment: {
+      NODE_OPTIONS: `--import ${import.meta.resolve('tsx/esm')}`,
+      TSX_TSCONFIG_PATH: fileURLToPath(new URL('../../apps/cli/tsconfig.json', import.meta.url)),
+    },
+    expectedFinalResponse: 'RESEARCH_OK',
+  },
   'session-title-stability': { waitForProviderTitle: true },
   'rich-inline-source': {
     offlineReplay: {
@@ -670,6 +687,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
       return new DeepSeekHarness({
         ...assertions.dshBin === undefined ? {} : { dshBin: assertions.dshBin },
         ...assertions.initializeTimeoutMs === undefined ? {} : { initializeTimeoutMs: assertions.initializeTimeoutMs },
+        ...assertions.maxTokens === undefined ? {} : { maxTokens: assertions.maxTokens },
         profile: 'sdk',
         patches,
         dshHome,
@@ -1249,8 +1267,8 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
         }
       }
       if (ordered.length > 1 && assertions.dshSdkChild === undefined) {
-        expect(observedMethods.has('subagent.started')).toBe(true)
-        expect(observedMethods.has('subagent.finished')).toBe(true)
+        expect(observedMethods.has('subagent.started')).toBe(assertions.childNotifications ?? true)
+        expect(observedMethods.has('subagent.finished')).toBe(assertions.childNotifications ?? true)
       }
     })
   }

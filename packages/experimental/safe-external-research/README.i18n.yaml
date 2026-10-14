@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/safe-external-research/README.md
+/:
+  en: bca37dcc267dcb6f
+  zh: ef5379670b411ed4
+/deepseek-ai-dsh-experimental-safe-external-research:
+  en: 773b34a30bf46740
+  zh: 46af4b49d60f298d
+/deepseek-ai-dsh-experimental-safe-external-research/summary:
+  en: 54aa2ef8a503ca4c
+  zh: 066b113bfb9dccfe
+/deepseek-ai-dsh-experimental-safe-external-research/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: aec3688fb92d60ae
+/deepseek-ai-dsh-experimental-safe-external-research/use-this-package:
+  en: 3f65a0bb913702b6
+  zh: 5da9fa327fcebeb3
+/deepseek-ai-dsh-experimental-safe-external-research/use-this-package/configuration:
+  en: 558851a32843ba94
+  zh: 0a5c1a95489ab505
+/deepseek-ai-dsh-experimental-safe-external-research/use-this-package/results-and-failures:
+  en: 1f80122170c9013a
+  zh: f9b478b4d728baf1
+/deepseek-ai-dsh-experimental-safe-external-research/understand-the-implementation:
+  en: d8364ed77f22d138
+  zh: 158ca8c249e0da3b
+/deepseek-ai-dsh-experimental-safe-external-research/further-exploration:
+  en: 15e58132e3930d69
+  zh: ee17b9fb09b8dece
+/deepseek-ai-dsh-experimental-safe-external-research/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-safe-external-research/model-experience/research-entry:
+  en: cb79ffacfbe98e56
+  zh: fa94e219c62dc878
+/deepseek-ai-dsh-experimental-safe-external-research/model-experience/research-entry/what-the-model-sees:
+  en: 4748ce5ee155a6c1
+  zh: dc2d75892d4feb9e
+/deepseek-ai-dsh-experimental-safe-external-research/model-experience/research-entry/what-the-model-sees/entry-guidance:
+  en: 3e639c83389fca6d
+  zh: 40419de98aafdc79
+/deepseek-ai-dsh-experimental-safe-external-research/model-experience/research-entry/token-effect:
+  en: 50dd5c68a1549bed
+  zh: da21b770066ef007
+/deepseek-ai-dsh-experimental-safe-external-research/model-experience/research-entry/kv-cache-effect:
+  en: 781199797a7d23df
+  zh: d02cb31d2ad6a6e2
+/deepseek-ai-dsh-experimental-safe-external-research/known-limitations-and-deferred-work:
+  en: 0efb4c4365570140
+  zh: 1c58dc6042bacaee
+/deepseek-ai-dsh-experimental-safe-external-research/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 8ec3e73528ddb1a6

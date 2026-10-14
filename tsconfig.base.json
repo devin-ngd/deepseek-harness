@@ -28,6 +28,7 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@deepseek-ai/dsh-experimental-safe-external-research": ["./packages/experimental/safe-external-research/src/index.ts"],
       "@deepseek-ai/dsh-experimental-rich-inline": ["./packages/experimental/rich-inline/src/index.ts"],
       "@deepseek-ai/dsh-experimental-rich-inline/client": ["./packages/experimental/rich-inline/src/client/index.ts"],
       "@deepseek-ai/dsh-experimental-rich-inline/types": ["./packages/experimental/rich-inline/src/shared/types.ts"],

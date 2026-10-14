@@ -1,0 +1,14 @@
+# Explicit source-development overlay; does not change installed Desktop profiles.
+- insert:
+    - id: safe-external-research
+      name: '../../../../packages/experimental/safe-external-research/src/index.ts'
+      config:
+        skillDirectory: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), '.agents', 'skills', 'safe-external-research')
+        provider: !!js process.env.DSH_RESEARCH_PROVIDER
+        model: !!js process.env.DSH_RESEARCH_MODEL
+        allowedSources:
+          - https://docs.python.org/3
+          - https://www.typescriptlang.org/docs
+          - https://github.com/deepseek-ai/deepseek-harness
+        searchUrl: ''
+        blockedTools: [web_search, web_fetch]

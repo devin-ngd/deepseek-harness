@@ -1,0 +1,11 @@
+- insert:
+    - id: llm-replay
+      name: '../../../packages/test-support/llm-replay/src/index.ts'
+      inject: [researchSnapshotReady]
+      config:
+        offline: true
+        providers:
+          - id: research-replay
+            models:
+              - id: research-fixed
+                defaultMaxTokens: 4096

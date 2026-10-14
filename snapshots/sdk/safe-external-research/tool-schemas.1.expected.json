@@ -1,0 +1,41 @@
+{
+  "initial": [
+    {
+      "name": "research_read",
+      "description": "Read one host-approved public source id.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "research_search",
+      "description": "Search once using the original public question and return approved source ids.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "research_submit",
+      "description": "Submit the shared research result v1 JSON for validation and finish.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ]
+      }
+    }
+  ],
+  "changes": []
+}

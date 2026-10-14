@@ -1164,6 +1164,48 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-ptc-runtime-python -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-safe-external-research -->
+<a id="deepseek-aidsh-experimental-safe-external-research"></a>
+
+## `@deepseek-ai/dsh-experimental-safe-external-research`
+
+- `inject`: `tools` · `systemPrompt` · `agents` · `llm` · `sessionPersistence`
+- `source`: [`packages/experimental/safe-external-research/src/index.ts:19`](../packages/experimental/safe-external-research/src/index.ts)
+
+```ts config-catalog
+/** Deployment policy supplied through Cordis. */
+export type Config = ResearchConfig
+
+/** Complete deployment policy; model callers cannot change it. */
+export interface ResearchConfig {
+  /** Absolute trusted shared Skill directory; every pinned file must match. */
+  skillDirectory: string
+  /** Explicit model provider for the independent worker. */
+  provider: string
+  /** Explicit model id within the configured provider. */
+  model: string
+  /** HTTPS origins and path prefixes that requests may narrow. */
+  allowedSources: string[]
+  /** Anonymous HTML search endpoint; empty disables search. */
+  searchUrl: string
+  /** Query parameter carrying only the initial public question. */
+  searchQueryKey: string
+  /** Host tool names refused while this research entry is mounted. */
+  blockedTools: string[]
+  /** Maximum reads and search requests per operation. */
+  maxReads: number
+  /** Maximum model steps per operation. */
+  maxSteps: number
+  /** Maximum UTF-8 bytes accepted for each response and extracted text. */
+  maxResponseBytes: number
+  /** Operation and individual HTTP deadline in milliseconds. */
+  timeoutMs: number
+  /** Maximum model output tokens for each worker step. */
+  maxTokens: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-safe-external-research -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-speech-to-text -->
 <a id="deepseek-aidsh-experimental-speech-to-text"></a>
 
