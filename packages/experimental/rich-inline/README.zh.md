@@ -42,7 +42,7 @@ CLI 管理的 **Web** 配置已验证以下安装/移除路径：
 
 ```powershell
 $env:DSH_HOME = 'D:\Temp\dsh-rich-profile'
-node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.1-alpha.1.tgz' --ignore-scripts --config.auto-install-peers=false
+node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.1-alpha.2.tgz' --ignore-scripts --config.auto-install-peers=false
 node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-experimental-rich-inline'
 ```
 
@@ -63,7 +63,7 @@ projectDefaults:
 
 项目路径必须存在；重复的规范目录会导致启用失败。空的 `projectDefaults` 不添加项目默认值。模式声明和默认值分别配置：未知或不可用的模式由现有模式选择操作拒绝。
 
-在启用的会话模式中，插件提供默认[创作规则](src/host/guidance.ts)，放在通用交付规则之后，并提供写入会话日志的运行时格式提醒；已有会话的下一回合也生效。报告、要闻、方案、列表和对比默认使用有布局、样式及合适本地控件的 HTML，动画和交互界面同样如此。自然提问即可，不必提醒工具名。简短交流及明确要求的文字或源码保持原展示。已有至少 600 字符的结构化长回答显示有明确标注的兼容阅读，不新增模型调用。这仍是 Markdown 的展示，不代表模型生成了交互 HTML；原文可查看，持久化内容不改写。
+在启用的会话模式中，插件提供默认[创作规则](src/host/guidance.ts)，放在通用交付规则之后，并提供写入会话日志的运行时格式提醒；已有会话的下一回合也生效。日常解释、建议、总结、操作步骤、代码分析和问题回答的最终结果默认使用 HTML，简短答案也适用，报告、对比和交互界面同样如此。简单回答使用内置样式的段落、列表或代码；`css` 和 `js` 可以为空。控件按内容需要添加。自然提问即可，不必提醒工具名。不含实质信息的简短确认、执行中的短进度，以及明确要求的文字、源码或文件保持对应呈现。已有至少 600 字符的结构化长回答显示有明确标注的兼容阅读，不新增模型调用。这仍是 Markdown 的展示，不代表模型生成了交互 HTML；原文可查看，持久化内容不改写。
 
 实时回合准备结束时，插件检查完整发布、唯一块名和块外文字。实质性纯文本回答（至少 160 字符）或非法 `rich-html` 会收到至多一次已记录的格式修正请求（`maxFormatRepairAttempts`，0–2，默认 1）。修正只使用已有结果，隐藏工具定义并拒绝工具执行，不能重复业务操作。简短交流、明确要求文字或源码、已有内容块更新均免除修正。查看历史、挂载及刷新不会触发修正。模型仍拒绝格式时保留原回答及兼容提示，不能视为 HTML 验收通过。
 

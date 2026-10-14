@@ -33,7 +33,7 @@ import { installRichTools } from './tools.ts'
 import type { RichDataInput, RichPublishInput, RichPublishValue } from './tools.ts'
 import { restoreForkBlock } from './fork.ts'
 import { RICH_MAX_CONTENT_BYTES, RICH_MAX_INPUT_BYTES } from '../shared/limits.ts'
-import { RICH_APPEARANCE_GUIDANCE, RICH_AUTHORING_GUIDANCE, richAppearanceReminder } from './guidance.ts'
+import { RICH_APPEARANCE_GUIDANCE, RICH_AUTHORING_GUIDANCE, RICH_OUTPUT_FORMAT_GUIDANCE, richAppearanceReminder } from './guidance.ts'
 import { RICH_THEMES } from '../shared/theme.ts'
 import type { RichAppearance } from '../shared/theme.ts'
 import { authoredBlockId, authoredContent, authoredFences } from '../shared/authored.ts'
@@ -140,7 +140,7 @@ export class RichInline extends TypertRemoteService {
     ctx.systemPrompt.context({ name: 'rich-inline:output-format',
       order: ctx.systemPrompt.getContextOrder('APPROVAL_POLICY') + 1,
       text: context => this.authoringEnabled(context.agent)
-        ? 'Rich inline output is enabled. Substantive final results must be code-only rich-html fenced JSON (key, html, css, js, fallbackText, stateSchemaVersion), with actual styled HTML and suitable local interaction. Do not return a Markdown report or explanatory prose outside the HTML. Only explicit user requests for text/source and brief conversational replies opt out. 只生成 HTML/CSS/JavaScript，渲染由插件完成；无需用户提醒。\n' + richAppearanceReminder(this.appearance()) : '' })
+        ? RICH_OUTPUT_FORMAT_GUIDANCE + '\n' + richAppearanceReminder(this.appearance()) : '' })
     installRichTools(ctx, {
       publish: (sessionId, input) => this.publish(sessionId, input),
       updateData: (sessionId, input) => this.updateData(sessionId, input),

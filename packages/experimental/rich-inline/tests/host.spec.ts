@@ -327,6 +327,13 @@ describe('RichInline Host', () => {
     lumina.session.append('assistant/message', { turn: 1, step: 1, message: createAssistantMessage({ content: [{ type: 'text', text: markdown }], source: { provider: 'unit', model: 'unit' } }), stream: [] }, { surfaceOp: 'append' })
     await lumina.ctx.serial('agent/turn-stopping', { agent: lumina.agent, turn: 1, signal: new AbortController().signal })
     expect(lumina.agent.inbox.nextStep).toHaveLength(1)
+    const allModes = await harness(undefined, [], { activePresets: [] }, { preset: 'standard' })
+    const unrestricted = await allModes.ctx.systemPrompt.assemble({ agent: allModes.agent })
+    expect(unrestricted.sections.find(section => section.name === 'rich-inline:authoring')?.text)
+      .toBe(active.sections.find(section => section.name === 'rich-inline:authoring')?.text)
+    expect(unrestricted.contexts.find(context => context.name === 'rich-inline:output-format')?.text)
+      .toBe(active.contexts.find(context => context.name === 'rich-inline:output-format')?.text)
+    await expect(allModes.publish()).resolves.toBeDefined()
   })
   it('contributes the default authoring contract to existing and new scopes and removes it on disable', async () => {
     const h = await harness()

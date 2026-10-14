@@ -7,6 +7,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { RichBlockId } from '../../src/shared/types.ts'
 import { installRichTools } from '../../src/host/tools.ts'
 import { installRichSourceOffload, readRichSource } from '../../src/host/source.ts'
+import { RICH_APPEARANCE_GUIDANCE, RICH_AUTHORING_GUIDANCE, RICH_OUTPUT_FORMAT_GUIDANCE, richAppearanceReminder } from '../../src/host/guidance.ts'
 
 export const name = 'rich-source-snapshot'
 export const inject = ['sessions', 'tools', 'agents', 'llm', 'systemPrompt']
@@ -38,10 +39,15 @@ export function apply(ctx: Context): void {
     assert.ok(session)
     return session.snapshotEvents()
   })
+  // Keep the output rule in this tool-only fixture while unrelated optional runtime context stays disabled.
+  ctx.systemPrompt.context({ name: 'rich-inline:output-format', required: true,
+    order: ctx.systemPrompt.getContextOrder('APPROVAL_POLICY') + 1,
+    text: RICH_OUTPUT_FORMAT_GUIDANCE + '\n' + richAppearanceReminder({ theme: 'cyber', accent: 'auto' }) })
   ctx.on('agent/created', ({ agent }) => {
     agent.ctx.tools.restrict({ allow: ['rich_inline_complete', 'rich_inline_progress', 'rich_inline_publish', 'rich_inline_read', 'rich_inline_update'] })
     agent.ctx.systemPrompt.section({ name: 'rich-source-fixture', order: 0, complete: true,
-      text: 'You are an AI agent powered by DeepSeek Harness.\n\nSynthetic rich-inline source projection verification.' })
+      text: 'You are an AI agent powered by DeepSeek Harness.\n\nSynthetic rich-inline source projection verification.\n\n'
+        + RICH_AUTHORING_GUIDANCE + '\n\n' + RICH_APPEARANCE_GUIDANCE })
     return undefined
   })
   ctx.provide('richSourceSnapshotReady', true)
@@ -79,6 +85,10 @@ export function apply(ctx: Context): void {
     assert.deepEqual(requests, (JSON.parse(readFileSync(golden, 'utf8')) as object[]).slice(0, requests.length), 'independent SDK adapter request oracle')
     assert.ok(options.messages.some(message => message.source?.kind === 'runtime-context'
       && message.content.some(part => part.type === 'text' && part.text.includes('Current working directory: '))), 'required working directory reaches every adapter request')
+    assert.ok(options.messages.some(message => message.role === 'system'
+      && message.content.some(part => part.type === 'text' && part.text.includes(RICH_AUTHORING_GUIDANCE))), 'HTML authoring guidance reaches the adapter')
+    assert.ok(options.messages.some(message => message.source?.kind === 'runtime-context'
+      && message.content.some(part => part.type === 'text' && part.text.includes(RICH_OUTPUT_FORMAT_GUIDANCE))), 'HTML output reminder reaches every adapter request')
     const text = JSON.stringify(options.messages)
     assert.ok(!text.includes('<p>Mnemo synthetic rows</p>'), 'published HTML must be absent from actual later requests')
     assert.ok(!text.includes('window.localFilter'), 'published JS must be absent from actual later requests')
