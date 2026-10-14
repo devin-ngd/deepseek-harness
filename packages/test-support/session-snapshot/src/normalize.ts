@@ -270,16 +270,19 @@ function tokenizeFixtureValue(
  * Store one generated workspace as `{{cwd}}` while retaining every other
  * session value. The caller opts in only for workspaces created under a
  * platform temporary root; explicitly relocated workspaces keep their real
- * path.
+ * path. Sessions without a working directory retain their header and text.
  *
  * @param rawLog The raw or refresh-stabilized session JSONL fixture.
  * @returns Compact JSONL whose known cwd spellings become `{{cwd}}`.
- * @throws If a non-empty line is invalid JSON or the session cwd has no basename.
+ * @throws If JSON is invalid, the session header is missing, or cwd has no basename.
  */
 export function tokenizeSessionFixtureCwd(rawLog: string): string {
   const lines = rawLog.split('\n')
   const firstLine = lines.find(line => line.trim().length > 0)
-  const header = firstLine === undefined ? undefined : JSON.parse(firstLine) as { cwd?: unknown }
+  const header = firstLine === undefined ? undefined : JSON.parse(firstLine) as { type?: unknown; cwd?: unknown }
+  if (header?.type === 'session' && header.cwd === undefined) {
+    return lines.map(line => line.trim().length === 0 ? line : JSON.stringify(JSON.parse(line))).join('\n')
+  }
   const cwd = typeof header?.cwd === 'string' ? header.cwd : ''
   const basename = cwd.split(/[\\/]/).at(-1)
   if (basename === undefined || basename.length === 0) {

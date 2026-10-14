@@ -33,14 +33,14 @@ function deferredEffects() {
 describe('mandatory offline snapshot entry', () => {
   it('refuses all missing offline inputs before any deferred effect', () => {
     const effects = deferredEffects()
-    expect(() => startOfflineSnapshotEntry({ composition: 'ordinary-sdk', mode: undefined, plan: undefined, markers: undefined },
-      effects.start)).toThrow('explicit replay or refresh')
+    expect(() => { startOfflineSnapshotEntry({ composition: 'ordinary-sdk', mode: undefined, plan: undefined, markers: undefined },
+      effects.start) }).toThrow('explicit replay or refresh')
     for (const effect of effects.all) expect(effect).not.toHaveBeenCalled()
   })
 
   it.each([undefined, '', 'record', 'other'])('refuses mode %s before loading', (mode: string | undefined) => {
     const effects = deferredEffects()
-    expect(() => startOfflineSnapshotEntry({ ...entry(), mode }, effects.start)).toThrow('explicit replay or refresh')
+    expect(() => { startOfflineSnapshotEntry({ ...entry(), mode }, effects.start) }).toThrow('explicit replay or refresh')
     for (const effect of effects.all) expect(effect).not.toHaveBeenCalled()
   })
 
@@ -50,7 +50,7 @@ describe('mandatory offline snapshot entry', () => {
       for (const markers of [{ ...entry().markers, [key]: false },
         missing]) {
         const effects = deferredEffects()
-        expect(() => startOfflineSnapshotEntry({ ...entry(), markers }, effects.start)).toThrow('every offline marker')
+        expect(() => { startOfflineSnapshotEntry({ ...entry(), markers }, effects.start) }).toThrow('every offline marker')
         for (const effect of effects.all) expect(effect).not.toHaveBeenCalled()
       }
     },
@@ -65,7 +65,7 @@ describe('mandatory offline snapshot entry', () => {
     ['fractional budget', { plan: { ...plan(), expectedCalls: 1.5 } }],
   ] satisfies readonly [string, Partial<OfflineSnapshotEntry>][])('refuses %s before effects', (_name: string, overrides: Partial<OfflineSnapshotEntry>) => {
     const effects = deferredEffects()
-    expect(() => startOfflineSnapshotEntry({ ...entry(), ...overrides }, effects.start)).toThrow()
+    expect(() => { startOfflineSnapshotEntry({ ...entry(), ...overrides }, effects.start) }).toThrow()
     for (const effect of effects.all) expect(effect).not.toHaveBeenCalled()
   })
 

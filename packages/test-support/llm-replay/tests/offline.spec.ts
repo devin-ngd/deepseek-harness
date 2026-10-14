@@ -15,7 +15,7 @@ function fixture(provider = 'deepseek-official'): { file: string; remove: () => 
   mkdirSync(directory, { recursive: true })
   const file = directory + 'offline-replay-' + randomUUID() + '.jsonl'
   writeFileSync(file, original.replaceAll('rich-inline-replay', provider).replaceAll('rich-inline-fixed', 'fixed'))
-  return { file, remove: () => unlinkSync(file) }
+  return { file, remove: () => { unlinkSync(file) } }
 }
 
 describe('offline replay installation', () => {

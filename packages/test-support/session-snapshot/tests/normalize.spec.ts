@@ -956,6 +956,11 @@ describe('normalizeSessionSnapshot', () => {
 })
 
 describe('tokenizeSessionFixtureCwd', () => {
+  it('preserves sessions without a working directory and still validates every JSON line', () => {
+    const raw = '{"type":"session"}\n{"text":"private paths are not replaced"}\n'
+    expect(tokenizeSessionFixtureCwd(raw)).toBe(raw)
+    expect(() => tokenizeSessionFixtureCwd(raw + 'invalid\n')).toThrow()
+  })
   it.each([
     {
       name: 'macOS',
