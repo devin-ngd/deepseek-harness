@@ -71,7 +71,23 @@ export interface Config {
 }
 
 declare module '@deepseek-ai/cordis' {
-  interface Context { richInline: RichInline }
+  interface Context {
+    richInline: RichInline
+    /** H2: optional host-verified authoring exclusion policy (absent keeps current behavior). */
+    richAuthoringPolicy?: RichAuthoringPolicy
+  }
+}
+
+/**
+ * H2 (dsh-devflow design §10): host-verified per-agent authoring exclusion.
+ * Orchestrators provide this optional service to keep internal worker agents
+ * (identified by the Host, never by model-supplied JSON) out of rich authoring
+ * while the composing preset stays enabled for the root conversation. Absent
+ * service preserves existing behavior.
+ */
+export interface RichAuthoringPolicy {
+  /** @param agent - the exact Agent asking for authoring guidance or tools. */
+  excludes(agent: Agent): boolean
 }
 
 interface Mount { readonly scope: RichScope }
@@ -174,6 +190,9 @@ export class RichInline extends TypertRemoteService {
   }
 
   private authoringEnabled(agent?: Agent): boolean {
+    // H2: a host-verified exclusion policy outranks the preset decision; the
+    // optional service is absent by default, preserving existing behavior.
+    if (agent !== undefined && this.ctx.get('richAuthoringPolicy')?.excludes(agent) === true) return false
     const presets = this.config.activePresets ?? []
     if (presets.length === 0) return true
     const registry = this.ctx.get('agentPresets')
