@@ -249,6 +249,13 @@ export interface SessionSurface {
   readonly replaceGeneration: number
   /** Monotonic count of committed replacements and plugin-owned message changes. */
   readonly contentGeneration: number
+  /**
+   * Immutable messages replaced by committed message projections, keyed by the
+   * original event sequence. H1 (dsh-devflow design §8.4): consumers pricing the
+   * effective model-visible surface read this maintained projection state
+   * synchronously instead of re-deriving raw event text.
+   */
+  readonly projectedMessages: ReadonlyMap<SessionSeq, Message>
 }
 
 /** Mutable state shared by complete and incremental folds. */
@@ -675,6 +682,13 @@ export class SurfaceManager implements SessionSurface {
     this._assertProjections()
     if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta()
     return this._state.nodes
+  }
+
+  /** Messages replaced by committed projections, keyed by original event seq. */
+  get projectedMessages(): ReadonlyMap<SessionSeq, Message> {
+    this._assertProjections()
+    if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta()
+    return this._state.projectedMessages
   }
 
   /** Fold events appended since the previous access. */

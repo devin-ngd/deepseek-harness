@@ -23,6 +23,10 @@ import {
   SessionLogOffset,
   SessionSeq,
 } from '@deepseek-ai/dsh-session'
+// H1 (dsh-devflow design §8.4): projection event vocabulary is a generated
+// build-time set; importing it through the workspace `src/*` export keeps this
+// patch inside this package without hardcoding any plugin's event names.
+import { MESSAGE_PROJECTION_EVENT_TYPES } from '@deepseek-ai/dsh-session/src/known-event-types.ts'
 // Type-only: activates the `ctx.sessionProjections` Context declaration.
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {
@@ -235,8 +239,45 @@ export class TokenMeter extends Service {
       const event = session.eventAt(SessionSeq(state.consumedEvents))!
       this._foldEvent(state, event)
       state.consumedEvents = SessionLogOffset(state.consumedEvents + 1)
+      // H1 (dsh-devflow design §8.4): a committed message projection changes the
+      // effective model-visible surface, so the meter must re-price affected
+      // nodes under the same projected semantics instead of the original text.
+      // `image/offload` keeps its specialized node mutation inside _foldEvent.
+      // Anchors keep their historical node objects: a later projection never
+      // rewrites an earlier usage anchor's estimate.
+      if (MESSAGE_PROJECTION_EVENT_TYPES.has(event.type) && event.type !== 'image/offload') {
+        this._repriceProjectedSurface(state, session)
+      }
     }
     return state
+  }
+
+  /**
+   * Re-price surface nodes from the session's committed message projections.
+   * Projections are rare, positional replacements never move a node's seq, and
+   * `deriveEventMessage` prices the exact model-visible message, so this stays
+   * O(surface) per projection event — the same bound as one `measure()` call.
+   */
+  /**
+   * Re-price surface nodes from the session's committed message projections.
+   * Reads maintained projection state only (policy: new production code must
+   * not read arbitrary event positions); projections are rare and positional
+   * replacements never move a node's seq, so this stays O(surface) per
+   * projection event — the same bound as one `measure()` call.
+   */
+  private _repriceProjectedSurface(state: ReplayState, session: Session): void {
+    const projectedMessages = session.surface.projectedMessages
+    if (projectedMessages.size === 0) return
+    for (let index = 0; index < state.surface.length; index++) {
+      const node = state.surface[index]
+      if (node === undefined) continue
+      const projected = projectedMessages.get(node.seq)
+      if (projected === undefined) continue
+      const projectedTokens = estimateMessage(projected)
+      if (projectedTokens === node.heuristicTokens) continue
+      // New node object: earlier usage anchors keep their historical estimate.
+      state.surface[index] = { ...node, heuristicTokens: projectedTokens }
+    }
   }
 
   /**
