@@ -267,7 +267,7 @@ const COMPLETIONS_COMPAT_GATE = {
   supportsLongCacheRetention: 'offer',
   openRouterRouting: 'withhold',
   vercelGatewayRouting: 'withhold',
-  zaiToolStream: 'withhold',
+  zaiToolStream: 'offer',
   supportsOpenAIGrammarTools: 'withhold',
   sendSessionAffinityHeaders: 'withhold',
   supportsMidConvoSystemMessages: 'withhold',
@@ -431,6 +431,12 @@ export interface PiAiCompatProfile {
   thinkingTokenBudgetField?: PiAiThinkingTokenBudgetField
   /** vLLM scheduler `priority`; lower runs earlier, and the server must enable priority scheduling. Omitted unless configured. */
   vllmPriority?: number
+  /**
+   * Whether to request ZhipuAI's `tool_stream` mode, which streams tool-call
+   * arguments as incremental deltas instead of one complete chunk. Required
+   * for correct tool-call argument parsing on GLM endpoints; `openai-completions`.
+   */
+  zaiToolStream?: boolean
   /** Whether `openai-responses` accepts `max_output_tokens`; `false` omits it. Azure and Codex ignore this shared compat field. */
   supportsMaxOutputTokens?: boolean
   /**

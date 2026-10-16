@@ -272,6 +272,7 @@ const compatProfile: z<PiAiCompatProfile> = z.object({
   supportsThinkingTokenBudget: z.boolean(),
   thinkingTokenBudgetField: z.union(THINKING_TOKEN_BUDGET_FIELDS),
   vllmPriority: z.number().step(1),
+  zaiToolStream: z.boolean(),
   supportsMaxOutputTokens: z.boolean(),
   supportsStrictMode: z.boolean(),
   cacheControlFormat: z.union(CACHE_CONTROL_FORMATS),
