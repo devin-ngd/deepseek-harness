@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-safe-external-research",
   "description": "Controlled anonymous public research with a minimal worker and validated shared results",
-  "version": "0.2.1-alpha.2",
+  "version": "0.2.1-alpha.4",
   "publishConfig": {
     "access": "public"
   },
