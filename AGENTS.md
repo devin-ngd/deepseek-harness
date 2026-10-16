@@ -12,6 +12,8 @@ Record each externally perceptible breaking change immediately in an [upgrade gu
 
 **Application launch.** Only `dsh` profiles launch supported Node apps; package bins, demos, and public SDK argv escapes are forbidden ([rule](docs/architecture.md#application-launch)).
 
+**Upstream/Desktop upgrades.** Read [upgrade guides](docs/upgrade-guide) across the full upgrade range; synchronize custom modes in global/profile patches and plugin bundles with current APIs, including removed keys and permission semantics. Back up before migrating; preserve unrelated settings. After installation, create sessions in every enabled custom mode on the installed Host and verify tools. Startup/history alone cannot establish completion; report failures and unverified paths.
+
 ## Repository layout
 
 ```
