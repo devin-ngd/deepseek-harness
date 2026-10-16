@@ -387,7 +387,7 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     for (const scope of scopes) mounts.push(await remote(scaffold, 'mount', scope))
     await block(0).locator('input[type=file]').setInputFiles({ name: 'acceptance-notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Only this controlled attachment is granted.') })
     await expect.poll(() => guest<number>(0, 'rich.getState().files.length')).toBe(1)
-    settled = scaffold.whenTurnSettled(30_000)
+    settled = scaffold.whenTurnSettled(30_000, endedSession => endedSession === sessionId && adapter.submitted.length === 1)
     await input(0, '[name=destination]', 'last-character-Z')
     await click(0, '[type=submit]'); await click(0, '[type=submit]')
     await settled
@@ -454,10 +454,14 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     await block(4).getByRole('alert').waitFor({ state: 'hidden' })
     expect(adapter.calls).toBe(callsAfterAction)
     checks.push('Cross-block storage is isolated; forged confirmed/userGesture is rejected before Agent dispatch; oversized draft stays editable with trusted warning')
+    const runtimeErrorSettled = scaffold.whenTurnSettled(30_000, endedSession => endedSession === sessionId
+      && adapter.userInputs.some(value => value.includes('intentional content failure')))
     await guest(2, 'setTimeout(()=>{throw new Error("intentional content failure")},0)')
     await block(2).getByRole('alert').waitFor({ state: 'visible' })
     await block(2).getByRole('button', { name: 'Reload interactive content' }).click()
     await expect.poll(() => guest(2, 'document.querySelector("output").textContent')).toBe('Step 1')
+    await runtimeErrorSettled
+    await expect.poll(() => scaffold!.ctx.agents.get(sessionId)?.status).toBe('idle')
     const loopLease = await block(2).locator('webview').getAttribute('partition')
     await application!.evaluate(({ webContents }, lease) => {
       const target = webContents.getAllWebContents().find(contents => contents.getURL().startsWith(`dsh-app://${lease}/`))!
@@ -469,9 +473,9 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     await block(2).getByRole('button', { name: 'Reload interactive content' }).click()
     await expect.poll(() => guest(2, '!!rich.getState()')).toBe(true)
     checks.push('Runtime exception and infinite loop leave chat usable; trusted controls terminate and recover content')
-    settled = scaffold.whenTurnSettled(30_000)
+    settled = scaffold.whenTurnSettled(30_000, endedSession => endedSession === sessionId && adapter.submitted.length === 2)
     await input(0, '[name=destination]', 'slow'); await click(0, '[type=submit]')
-    await expect.poll(() => adapter.submitted.length).toBe(2)
+    await expect.poll(() => adapter.submitted.length, { timeout: 30_000 }).toBe(2)
     await block(0).getByRole('button', { name: 'Request cancellation' }).waitFor({ state: 'visible' })
     await block(0).getByRole('button', { name: 'Request cancellation' }).click()
     await block(0).getByText('Cancellation requested; awaiting outcome', { exact: true }).waitFor()
@@ -485,7 +489,7 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     const retryRequest: RichInvokeRequest = { sessionId, mountId: active.mountId, actionId: `accept-${randomUUID()}` as RichInvokeRequest['actionId'], actionName: 'submit', targetActionId: null,
       expectedDataRevision: repeatSnapshot.dataRevision, values: { destination: 'retry' }, fileGrants: [],
       draft: { baseRevision: repeatSnapshot.draft.draftRevision, stateSchemaVersion: 1, fields: { destination: 'retry' }, dirty: ['destination'] } }
-    settled = scaffold.whenTurnSettled(30_000)
+    settled = scaffold.whenTurnSettled(30_000, endedSession => endedSession === sessionId && adapter.submitted.length === 3)
     const receipt = await remote<RichReceipt>(scaffold, 'invoke', retryRequest)
     expect(receipt).toMatchObject({ accepted: true, state: 'accepted' })
     expect(await remote(scaffold, 'invoke', retryRequest)).toEqual(receipt)
@@ -757,7 +761,7 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     await writeFile(join(output, 'theme-measurements.json'), JSON.stringify({ ...themeMeasurements, contrast, keyboardFocusRing: true, trustedToolbarReadable: true, sampleCount: themeExamples.length, modelCallsBeforeLocal: themeCalls, modelCallsAfterLocal: adapter.calls, narrowTableScroll: true, reducedMotion: true, perBlockOverride: true }, null, 2))
     checks.push('Built-in cyber CSS styles ordinary code-only answers, comparisons, forms and charts without duplicated CSS; previews and final guests share the same profile theme')
     checks.push('Themed local form, details, filters and animation controls remain independent and cause no model call; narrow layouts scroll only the wide table and reduced-motion media stops animation')
-    await page!.reload(); await page!.waitForSelector('[class*="frame"]')
+    await page!.reload({ timeout: 30_000 }); await page!.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     await expect.poll(() => page!.locator('[data-rich-inline-block] webview').count()).toBe(9)
     await expect.poll(() => guest(5, 'getComputedStyle(document.body).backgroundColor')).toBe('rgb(7, 11, 20)')
     expect(adapter.calls).toBe(themeCalls)
@@ -788,4 +792,4 @@ it.skipIf(process.platform !== 'win32')('copies a selected region in the actual 
   async () => { await runNativeChat(true) }, 60_000)
 
 it.skipIf(process.platform !== 'win32')('accepts rich content in the actual Electron chat and preserves isolated interaction lifetimes',
-  async () => { await runNativeChat(false) }, 180_000)
+  async () => { await runNativeChat(false) }, 240_000)

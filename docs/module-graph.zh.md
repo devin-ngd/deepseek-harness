@@ -929,6 +929,11 @@ flowchart TD
   pkg_experimental_cua_macos --> pkg_system_prompt
   pkg_experimental_cua_macos --> pkg_tools
   pkg_experimental_cua_macos --> pkg_user_questions
+  pkg_experimental_rich_inline --> pkg_llm
+  pkg_experimental_rich_inline --> pkg_session
+  pkg_experimental_rich_inline --> pkg_session_format_catalog
+  pkg_experimental_rich_inline --> pkg_storage_domain
+  pkg_experimental_rich_inline --> pkg_tools
   pkg_experimental_tool_worktree --> pkg_experimental_worktree
   pkg_experimental_tool_worktree --> pkg_tools
   pkg_hooks_codex --> pkg_agent
@@ -1373,34 +1378,6 @@ flowchart TD
   pkg_workflow_ptc --> pkg_tools
   pkg_workflow_ptc --> pkg_workflow
   pkg_workflow_ptc --> pkg_working_directory
-  pkg_experimental_rich_inline --> pkg_agent
-  pkg_experimental_rich_inline --> pkg_agent_preset_registry
-  pkg_experimental_rich_inline --> pkg_api_remotes
-  pkg_experimental_rich_inline --> pkg_api_session_controller
-  pkg_experimental_rich_inline --> pkg_attachment
-  pkg_experimental_rich_inline --> pkg_brand
-  pkg_experimental_rich_inline --> pkg_client_file_upload
-  pkg_experimental_rich_inline --> pkg_client_locale
-  pkg_experimental_rich_inline --> pkg_client_store
-  pkg_experimental_rich_inline --> pkg_client_ui_chat
-  pkg_experimental_rich_inline --> pkg_client_ui_layout
-  pkg_experimental_rich_inline --> pkg_client_ui_plugin_manager
-  pkg_experimental_rich_inline --> pkg_client_ui_primitives
-  pkg_experimental_rich_inline --> pkg_client_ui_renderer
-  pkg_experimental_rich_inline --> pkg_client_ui_settings
-  pkg_experimental_rich_inline --> pkg_client_ui_slots
-  pkg_experimental_rich_inline --> pkg_client_ui_user_questions
-  pkg_experimental_rich_inline --> pkg_llm
-  pkg_experimental_rich_inline --> pkg_session
-  pkg_experimental_rich_inline --> pkg_session_format_catalog
-  pkg_experimental_rich_inline --> pkg_session_persistence
-  pkg_experimental_rich_inline --> pkg_settings
-  pkg_experimental_rich_inline --> pkg_storage_domain
-  pkg_experimental_rich_inline --> pkg_system_prompt
-  pkg_experimental_rich_inline --> pkg_tools
-  pkg_experimental_rich_inline --> pkg_typert_protocol
-  pkg_experimental_rich_inline --> pkg_user_questions
-  pkg_experimental_rich_inline --> pkg_util_values
   pkg_experimental_tool_agent_team --> pkg_agent
   pkg_experimental_tool_agent_team --> pkg_experimental_agent_team
   pkg_experimental_tool_agent_team --> pkg_session
@@ -1729,6 +1706,7 @@ flowchart TD
 | [`experimental-browser-use-stagehand-native`](../packages/experimental/browser-use-stagehand-native) | `experimental` | [`agent`](../packages/core/agent), [`browser-use`](../packages/browser-use/browser-use), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
 | [`experimental-computer-use-cua-driver-native`](../packages/experimental/computer-use-cua-driver-native) | `experimental` | [`computer-use`](../packages/computer-use/computer-use), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
 | [`experimental-cua-macos`](../packages/experimental/cua-macos) | `experimental` | [`agent`](../packages/core/agent), [`computer-use`](../packages/computer-use/computer-use), [`subprocess`](../packages/subprocess/subprocess), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`user-questions`](../packages/interaction/user-questions) |
+| [`experimental-rich-inline`](../packages/experimental/rich-inline) | `experimental` | [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-format-catalog`](../packages/session/session-format-catalog), [`storage-domain`](../packages/storage/storage-domain), [`tools`](../packages/core/tools) |
 | [`experimental-tool-worktree`](../packages/experimental/tool-worktree) | `experimental` | [`experimental-worktree`](../packages/experimental/worktree), [`tools`](../packages/core/tools) |
 | [`hooks-codex`](../packages/experimental/hooks-codex) | `experimental` | [`agent`](../packages/core/agent), [`hook-protocol`](../packages/experimental/hook-protocol), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-projection`](../packages/session/session-projection), [`tools`](../packages/core/tools), [`working-directory`](../packages/session/working-directory) |
 | [`session-title-all-prompts-llm`](../packages/experimental/session-title-all-prompts-llm) | `experimental` | [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-title`](../packages/session/session-title), [`session-title-llm`](../packages/session/session-title-llm) |
@@ -1798,7 +1776,6 @@ flowchart TD
 | [`tool-ralph`](../packages/experimental/tool-ralph) | `experimental` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`subagent`](../packages/subagent/subagent), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`workflow`](../packages/workflow/workflow) |
 | [`sdk-protocol`](../packages/sdk/protocol) | `sdk` | [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent) |
 | [`workflow-ptc`](../packages/workflow/workflow-ptc) | `workflow` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`ptc-runtime`](../packages/ptc-runtime/ptc-runtime), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent), [`tools`](../packages/core/tools), [`workflow`](../packages/workflow/workflow), [`working-directory`](../packages/session/working-directory) |
-| [`experimental-rich-inline`](../packages/experimental/rich-inline) | `experimental` | [`agent`](../packages/core/agent), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`api-remotes`](../packages/api/remotes), [`api-session-controller`](../packages/api/session-controller), [`attachment`](../packages/attachment/attachment), [`brand`](../packages/util/brand), [`client-file-upload`](../packages/client/file-upload), [`client-locale`](../packages/client/locale), [`client-store`](../packages/client/store), [`client-ui-chat`](../packages/client/ui-chat), [`client-ui-layout`](../packages/client/ui-layout), [`client-ui-plugin-manager`](../packages/client/ui-plugin-manager), [`client-ui-primitives`](../packages/client/ui-primitives), [`client-ui-renderer`](../packages/client/ui-renderer), [`client-ui-settings`](../packages/client/ui-settings), [`client-ui-slots`](../packages/client/ui-slots), [`client-ui-user-questions`](../packages/client/ui-user-questions), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-format-catalog`](../packages/session/session-format-catalog), [`session-persistence`](../packages/session/session-persistence), [`settings`](../packages/settings/settings), [`storage-domain`](../packages/storage/storage-domain), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol), [`user-questions`](../packages/interaction/user-questions), [`util-values`](../packages/util/values) |
 | [`experimental-tool-agent-team`](../packages/experimental/tool-agent-team) | `experimental` | [`agent`](../packages/core/agent), [`experimental-agent-team`](../packages/experimental/agent-team), [`session`](../packages/core/session), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
 | [`schedule`](../packages/schedule/schedule) | `schedule` | [`agent`](../packages/core/agent), [`api-session-controller`](../packages/api/session-controller), [`brand`](../packages/util/brand), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`storage-domain`](../packages/storage/storage-domain), [`subagent`](../packages/subagent/subagent), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol), [`workspace`](../packages/workspace/workspace) |
 | [`sdk-client`](../packages/sdk/client) | `sdk` | [`llm`](../packages/llm/llm), [`sdk-protocol`](../packages/sdk/protocol), [`session`](../packages/core/session) |

@@ -292,8 +292,13 @@ export interface WebScaffold {
   harnessHome: string
   /** Send a browser-equivalent Host request with this scaffold's authenticated cookie. */
   hostFetch(path: string, init?: RequestInit): Promise<Response>
-  /** Await a settled turn end: in-process turn/end, then the agent's idle flip (which follows the persistence flush). */
-  whenTurnSettled(timeoutMs?: number): Promise<SessionId>
+  /**
+   * Await an accepted in-process turn/end and its persistence flush.
+   * @param timeoutMs - Maximum time to wait for an accepted turn end.
+   * @param accepts - Optional operation readiness check evaluated for each ending Session.
+   * @returns the Session whose accepted turn end has been flushed.
+   */
+  whenTurnSettled(timeoutMs?: number, accepts?: (sessionId: SessionId) => boolean): Promise<SessionId>
   /**
    * Tear everything down; asserts the replay fixture was fully consumed first
    * (replay/refresh), unless booted with replayProvidersOnly (whose fixture
@@ -948,14 +953,14 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     // Barrier stack: the in-process turn/end identifies the session, its
     // explicit flush makes the transcript durable, and the caller's browser
     // settled-poll comes last because host completion strictly precedes render.
-    whenTurnSettled(timeoutMs = mode === 'record' ? 180_000 : 30_000): Promise<SessionId> {
+    whenTurnSettled(timeoutMs = mode === 'record' ? 180_000 : 30_000, accepts?: (sessionId: SessionId) => boolean): Promise<SessionId> {
       return new Promise<SessionId>((resolveSettled, reject) => {
         const timer = setTimeout(() => {
           off()
           reject(new Error(`no turn/end within ${timeoutMs}ms`))
         }, timeoutMs)
         const off = ctx.on('session/event', (session: Session, event: SessionEvent) => {
-          if (event.type !== 'turn/end') return
+          if (event.type !== 'turn/end' || accepts !== undefined && !accepts(session.id)) return
           clearTimeout(timer)
           off()
           ctx.sessions.flush(session)
