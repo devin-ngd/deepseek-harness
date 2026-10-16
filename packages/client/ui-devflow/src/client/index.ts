@@ -6,16 +6,15 @@ export const name = 'dsh-client-ui-devflow'
 export const inject = ['slots', 'locale']
 
 export function apply(ctx: Context): void {
+  // The turn-tail card: a compact DevFlow status indicator rendered beneath
+  // the conversation flow. Shows "ready" when no task is active and the task
+  // summary when devflow tools have produced state.
   ctx.slots.inject('conversation.chat.turnTail', () =>
     ctx.slots.register(
       {
         name: 'conversation.chat.turnTail',
         id: 'devflow-task-card',
         order: 50,
-        select: (owner: unknown) => {
-          const o = owner as { sessionId?: string } | undefined
-          return o?.sessionId ?? undefined
-        },
         inject: (sessionId: string) => ({ sessionId }),
       },
       DevflowTaskCard,
