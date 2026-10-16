@@ -15,7 +15,7 @@ afterEach(cleanup)
 
 function fixture(snapshot: Partial<ConfigFormSnapshot<RichThemeSettings>> = {}) {
   const formState = createSnapshotStore<ConfigFormSnapshot<RichThemeSettings>>({
-    status: 'ready', value: { theme: 'cyber' }, base: {}, user: {}, revision: 0, writable: true, mode: 'host', ...snapshot,
+    status: 'ready', value: { theme: 'cyber' }, base: {}, user: {}, revision: 0, writable: true, ...snapshot,
   })
   const set = vi.fn(async (_field: string, theme: unknown) => {
     formState.update((state) => { state.value = { theme: theme as RichThemeSettings['theme'] } })

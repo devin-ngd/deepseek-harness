@@ -28,7 +28,7 @@ async function fixture() {
   ctx.provide('fileUpload', { upload: vi.fn() })
   ctx.provide('locale', new LocaleRuntime(ctx))
   const formState = createSnapshotStore<ConfigFormSnapshot<RichThemeSettings>>({
-    status: 'ready', value: { theme: 'cyber' }, base: {}, user: {}, revision: 0, writable: true, mode: 'host',
+    status: 'ready', value: { theme: 'cyber' }, base: {}, user: {}, revision: 0, writable: true,
   })
   const set = vi.fn(async () => true)
   const form: ConfigForm<RichThemeSettings> = {

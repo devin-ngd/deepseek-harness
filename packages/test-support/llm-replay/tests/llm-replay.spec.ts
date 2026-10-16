@@ -2139,6 +2139,7 @@ describe('apply (the plugin entry)', () => {
     children: process.env.DSH_SNAPSHOT_CHILD_FILES,
   }
   afterEach(() => {
+    vi.unstubAllEnvs()
     if (ORIG.file === undefined) delete process.env.DSH_SNAPSHOT_FILE
     else process.env.DSH_SNAPSHOT_FILE = ORIG.file
     if (ORIG.override === undefined) delete process.env.DSH_SNAPSHOT_OVERRIDE
@@ -2173,6 +2174,37 @@ describe('apply (the plugin entry)', () => {
     expect(ctx.llm.listProviders()).toEqual([{ id: 'm', name: 'm' }, { id: 'empty', name: 'empty' }])
     await expect(ctx.llm.resolveModelInfo('m', 'm')).resolves.toMatchObject({ inputModalities: ['image'] })
     expect(await drain(ctx.llm.stream({ provider: 'm', model: 'm', messages: [] }))).toEqual(TEXT_CHUNKS)
+  })
+
+  it('counts replay routes when the runtime requires replay-only dispatch', async () => {
+    vi.stubEnv('DSH_SNAPSHOT_REPLAY_ONLY', '1')
+    writeFileSync(file, replaySessionJsonl([TEXT_CHUNKS]), 'utf8')
+    const ctx = new Context()
+    try {
+      await ctx.plugin(LlmRuntime)
+      apply(ctx, { file, providers: [{ id: 'm', models: [{ id: 'm' }] }] })
+      ctx.llm.assertOfflineReplayReady('m', 'm')
+      expect(await drain(ctx.llm.stream({ provider: 'm', model: 'm', messages: [] }))).toEqual(TEXT_CHUNKS)
+      ctx.llm.assertOfflineReplayConsumed()
+      expect(() => ctx.llm.stream({ provider: 'm', model: 'm', messages: [] })).toThrow('call budget is exhausted')
+      ctx.llm.assertZeroRealCalls()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('rejects an explicitly uncounted adapter under replay-only dispatch', async () => {
+    vi.stubEnv('DSH_SNAPSHOT_REPLAY_ONLY', '1')
+    writeFileSync(file, replaySessionJsonl([TEXT_CHUNKS]), 'utf8')
+    const ctx = new Context()
+    try {
+      await ctx.plugin(LlmRuntime)
+      apply(ctx, { file, offline: false, providers: [{ id: 'm', models: [{ id: 'm' }] }] })
+      expect(() => ctx.llm.stream({ provider: 'm', model: 'm', messages: [] })).toThrow('offline replay adapter and call counter are required')
+      ctx.llm.assertZeroRealCalls()
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 
   it('declares flat image request pricing only for models that configure it', async () => {

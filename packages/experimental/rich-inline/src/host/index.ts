@@ -73,20 +73,19 @@ export interface Config {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     richInline: RichInline
-    /** H2: optional host-verified authoring exclusion policy (absent keeps current behavior). */
+    /** Optional Host-owned authoring restrictions; absence keeps preset selection. */
     richAuthoringPolicy?: RichAuthoringPolicy
   }
 }
 
 /**
- * H2 (dsh-devflow design §10): host-verified per-agent authoring exclusion.
- * Orchestrators provide this optional service to keep internal worker agents
- * (identified by the Host, never by model-supplied JSON) out of rich authoring
- * while the composing preset stays enabled for the root conversation. Absent
- * service preserves existing behavior.
+ * Host-owned exclusions for Agents that must not receive rich authoring guidance or tools.
+ * Without this service, authoring follows the configured presets.
  */
 export interface RichAuthoringPolicy {
-  /** @param agent - the exact Agent asking for authoring guidance or tools. */
+  /** @param agent - the exact Agent asking for authoring guidance or tools.
+   * @returns whether this Agent is excluded from rich authoring.
+   */
   excludes(agent: Agent): boolean
 }
 
@@ -190,8 +189,6 @@ export class RichInline extends TypertRemoteService {
   }
 
   private authoringEnabled(agent?: Agent): boolean {
-    // H2: a host-verified exclusion policy outranks the preset decision; the
-    // optional service is absent by default, preserving existing behavior.
     if (agent !== undefined && this.ctx.get('richAuthoringPolicy')?.excludes(agent) === true) return false
     const presets = this.config.activePresets ?? []
     if (presets.length === 0) return true
@@ -215,7 +212,7 @@ export class RichInline extends TypertRemoteService {
    * @param sessionId - Session inspected through the existing trusted controller.
    * @returns deduplicated settlement accounting; unknown prices and quality remain null.
    */
-  @Remote
+  @Remote({ resources: { session: (sessionId: SessionId) => sessionId } })
   async taskUsage(sessionId: SessionId): Promise<RichTaskUsage> {
     const inspection = await this.ctx.sessionController.inspect(sessionId)
     return deriveRichTaskUsage([{ sessionId, events: inspection.events, inheritedEventCount: inspection.inheritedEventCount }])
@@ -254,9 +251,10 @@ export class RichInline extends TypertRemoteService {
     return action
   }
 
-  private mounted(mountId: RichMountId): Mount {
-    const mount = this.mounts.get(mountId)
+  private mounted(request: RichMountRequestId): Mount {
+    const mount = this.mounts.get(request.mountId)
     if (mount === undefined || this.closed) bad('STALE_MOUNT')
+    if (mount.scope.sessionId !== request.sessionId) bad('MOUNT_SESSION_MISMATCH')
     return mount
   }
 
@@ -282,7 +280,7 @@ export class RichInline extends TypertRemoteService {
    * @param request - identity read from the trusted conversation node.
    * @returns new mount identity and full durable state.
    */
-  @Remote
+  @Remote({ resources: { session: (request: RichMountRequest) => request.sessionId } })
   async mount(request: RichMountRequest): Promise<RichMountValue> {
     await this.startup
     const inspection = await this.ctx.sessionController.inspect(request.sessionId)
@@ -345,9 +343,9 @@ export class RichInline extends TypertRemoteService {
    * @param request - registered mount lifetime.
    * @returns replacement snapshot.
    */
-  @Remote
+  @Remote({ resources: { session: (request: RichMountRequestId) => request.sessionId } })
   snapshot(request: RichMountRequestId): Promise<RichSnapshot> {
-    const { scope } = this.mounted(request.mountId)
+    const { scope } = this.mounted(request)
     return this.serial(scope.sessionId, record => Promise.resolve(this.snapshotOf(record, scope)))
   }
 
@@ -355,10 +353,10 @@ export class RichInline extends TypertRemoteService {
    * @param request - registered mount and last observed revision; null requests a full baseline.
    * @returns the revision and a snapshot only when any observable state changed.
    */
-  @Remote
+  @Remote({ resources: { session: (request: RichPollRequest) => request.sessionId } })
   snapshotIfChanged(request: RichPollRequest): Promise<RichPollValue> {
     if (request.revision !== null && (typeof request.revision !== 'string' || request.revision.length !== 64)) bad('INVALID_POLL_REVISION')
-    const { scope } = this.mounted(request.mountId)
+    const { scope } = this.mounted(request)
     return this.serial(scope.sessionId, (record) => {
       const block = this.block(record, scope)
       const revision = hash(JSON.stringify({ manifest: [block.manifest.contentHash, block.manifest.renderRevision],
@@ -376,10 +374,10 @@ export class RichInline extends TypertRemoteService {
    * @param request - bounded diagnostic from the registered renderer lifetime.
    * @returns whether a durable repair prompt was queued, separately from render success.
    */
-  @Remote
+  @Remote({ resources: { session: (request: RichRenderRequest) => request.sessionId } })
   async reportRender(request: RichRenderRequest): Promise<RichRenderReceipt> {
     if (parseRenderRequest(request) === null) bad('INVALID_RENDER_REPORT')
-    const { scope } = this.mounted(request.mountId)
+    const { scope } = this.mounted(request)
     const result = await this.serial(scope.sessionId, async (record): Promise<RichRenderReceipt> => {
       const block = this.block(record, scope)
       if (block.readOnly) return { code: 'FORK_READ_ONLY', repairQueued: false }
@@ -420,10 +418,10 @@ export class RichInline extends TypertRemoteService {
    * @param request - registered mount and current draft.
    * @returns durable acceptance or a conflict preserving both versions.
    */
-  @Remote
+  @Remote({ resources: { session: (request: RichSaveDraftRequest) => request.sessionId } })
   saveDraft(request: RichSaveDraftRequest): Promise<RichReceipt> {
     if (parseSaveDraftRequest(request) === null || size(request) > this.config.maxInputBytes) bad('INVALID_DRAFT')
-    const { scope } = this.mounted(request.mountId)
+    const { scope } = this.mounted(request)
     return this.serial(scope.sessionId, async (record) => {
       const block = this.block(record, scope)
       if (block.readOnly) bad('FORK_READ_ONLY')
@@ -439,10 +437,10 @@ export class RichInline extends TypertRemoteService {
    * @param request - untrusted intent from a registered content lifetime.
    * @returns original durable receipt; accepted is not completed.
    */
-  @Remote
+  @Remote({ resources: { session: (request: RichInvokeRequest) => request.sessionId } })
   async invoke(request: RichInvokeRequest): Promise<RichReceipt> {
     if (parseInvokeRequest(request) === null || size(request) > this.config.maxInputBytes) bad('INVALID_ACTION')
-    const { scope } = this.mounted(request.mountId)
+    const { scope } = this.mounted(request)
     const requestHash = hash(canonicalRichJson({ actionName: request.actionName, targetActionId: request.targetActionId,
       expectedDataRevision: request.expectedDataRevision, values: request.values,
       draft: { ...request.draft, dirty: [...request.draft.dirty] }, fileGrants: [...request.fileGrants],
@@ -528,10 +526,10 @@ export class RichInline extends TypertRemoteService {
    * @param request - current lifetime and stable action identity.
    * @returns current status or an explicit unknown-action error.
    */
-  @Remote
+  @Remote({ resources: { session: (request: RichActionRequest) => request.sessionId } })
   status(request: RichActionRequest): Promise<RichActionStatus> {
     if (parseActionRequest(request) === null) bad('INVALID_ACTION_LOOKUP')
-    const { scope } = this.mounted(request.mountId)
+    const { scope } = this.mounted(request)
     return this.serial(scope.sessionId, (record) => {
       this.block(record, scope)
       const action = record.actions[request.actionId]
@@ -545,9 +543,9 @@ export class RichInline extends TypertRemoteService {
    * @param signal - cancellation for integrity verification.
    * @returns persisted block-scoped grant without a host path.
    */
-  @Remote
+  @Remote({ resources: { session: (request: RichRegisterFileRequest) => request.sessionId } })
   async registerFile(request: RichRegisterFileRequest, signal: AbortSignal): Promise<RichFileGrant> {
-    const { scope } = this.mounted(request.mountId)
+    const { scope } = this.mounted(request)
     await this.serial(scope.sessionId, (record) => {
       if (this.block(record, scope).readOnly) bad('FORK_READ_ONLY')
       return Promise.resolve()
@@ -574,9 +572,9 @@ export class RichInline extends TypertRemoteService {
    * @param request - current mount and whether the user elected to archive incompatible edits.
    * @returns updated state; successful application invalidates every old mount and requires remounting.
    */
-  @Remote
+  @Remote({ resources: { session: (request: RichApplyUpdateRequest) => request.sessionId } })
   async applyUpdate(request: RichApplyUpdateRequest): Promise<RichSnapshot> {
-    const { scope } = this.mounted(request.mountId)
+    const { scope } = this.mounted(request)
     return this.serial(scope.sessionId, async (record) => {
       const block = this.block(record, scope)
       if (block.readOnly) bad('FORK_READ_ONLY')
@@ -602,8 +600,12 @@ export class RichInline extends TypertRemoteService {
    * @param request - registered lifetime to revoke.
    * @returns nothing.
    */
-  @Remote
-  dispose(request: RichMountRequestId): void { this.mounts.delete(request.mountId) }
+  @Remote({ resources: { session: (request: RichMountRequestId) => request.sessionId } })
+  dispose(request: RichMountRequestId): void {
+    const mount = this.mounts.get(request.mountId)
+    if (mount !== undefined && mount.scope.sessionId !== request.sessionId) bad('MOUNT_SESSION_MISMATCH')
+    this.mounts.delete(request.mountId)
+  }
 
   private revokeBlock(sessionId: SessionId, blockId: RichBlockId): void {
     for (const [id, mount] of this.mounts) {

@@ -20,13 +20,10 @@ import {
   canonicalHeader,
   headerEquals,
   isSurfaceEvent,
+  MESSAGE_PROJECTION_EVENT_TYPES,
   SessionLogOffset,
   SessionSeq,
 } from '@deepseek-ai/dsh-session'
-// H1 (dsh-devflow design §8.4): projection event vocabulary is a generated
-// build-time set; importing it through the workspace `src/*` export keeps this
-// patch inside this package without hardcoding any plugin's event names.
-import { MESSAGE_PROJECTION_EVENT_TYPES } from '@deepseek-ai/dsh-session/src/known-event-types.ts'
 // Type-only: activates the `ctx.sessionProjections` Context declaration.
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {

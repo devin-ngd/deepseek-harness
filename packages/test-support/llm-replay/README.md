@@ -89,6 +89,8 @@ Isolated transcript extraction supplies an explicit empty child-fact set to V3â†
 
 ### Offline isolation
 
+When `offline` is omitted, `DSH_SNAPSHOT_REPLAY_ONLY=1` enables counted offline replay. An explicit `offline: false` does not override the runtime's refusal of uncounted adapters.
+
 `offline: true` requires explicit non-empty provider/model routes and at least one validated scripted call. Installation registers a finite counter and requires replay-only dispatch until disposal. This mode skips all DeepSeek request-extension preparation and acceptance, even for the `deepseek-official` route. `assertConsumed()` checks the exact counter, zero non-replay dispatches, and every script cursor. Missing input, undeclared routes, excess calls, and incomplete consumption fail instead of selecting a live provider.
 
 Offline mode does not unload unrelated plugins. Its composition must disable `session-log-deepseek` and any other network contribution; ordinary replay retains request-extension acceptance simulation.

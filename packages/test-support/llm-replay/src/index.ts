@@ -1164,7 +1164,7 @@ export const inject = ['llm']
 
 /** Plugin config: the {@link ReplayConfig} inputs, each defaulting to its `DSH_SNAPSHOT_*` env var in `apply`. */
 export interface Config {
-  /** Explicit local-only mode: finite routed counters, no request extensions or real adapters. */
+  /** Local-only mode with finite routed counters; defaults to `$DSH_SNAPSHOT_REPLAY_ONLY === '1'`. */
   offline?: boolean
   /** Override the fixture path; defaults to `$DSH_SNAPSHOT_FILE`. */
   file?: string
@@ -1230,6 +1230,7 @@ function validateConfiguredModels(providers: ReplayProviderConfig[] | undefined)
 
 export function apply(ctx: Context, config: Config = {}): void {
   if (config.offline !== undefined && typeof config.offline !== 'boolean') throw new Error('llm-replay: offline must be boolean')
+  const offline = config.offline ?? process.env.DSH_SNAPSHOT_REPLAY_ONLY === '1'
   const file = config.file ?? process.env.DSH_SNAPSHOT_FILE
   if (file === undefined || file.length === 0) {
     throw new Error('llm-replay: a fixture path is required (Config.file or $DSH_SNAPSHOT_FILE)')
@@ -1241,7 +1242,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     ?? (childEnv !== undefined && childEnv.length > 0 ? childEnv.split(pathDelimiter) : [])
   installLlmReplay(ctx, {
     file,
-    ...config.offline === undefined ? {} : { offline: config.offline },
+    offline,
     ...overrideFile !== undefined && overrideFile.length > 0 ? { overrideFile } : {},
     ...childFiles.length > 0 ? { childFiles } : {},
     ...config.providers !== undefined ? { providers: config.providers } : {},

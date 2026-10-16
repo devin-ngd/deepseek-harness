@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-rich-inline",
   "description": "Durable message-inline HTML interactions with host-owned authorization",
-  "version": "0.2.1-alpha.2",
+  "version": "0.2.1-alpha.4",
   "type": "module",
   "license": "MIT",
   "publishConfig": {
@@ -126,6 +126,10 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:*"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-api-gateway": "workspace:*",
+    "@deepseek-ai/dsh-api-remote-access": "workspace:*",
+    "@deepseek-ai/dsh-client-connection": "workspace:*",
+    "@deepseek-ai/dsh-typert-registry": "workspace:*",
     "@deepseek-ai/dsh-client-ui-user-questions": "workspace:*",
     "@deepseek-ai/dsh-user-questions": "workspace:*",
     "@deepseek-ai/dsh-agent-preset-registry": "workspace:*",
@@ -160,10 +164,11 @@
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/dsh-util-values": "workspace:*",
-    "@types/react": "~18.3.1",
-    "@types/react-dom": "~18.3.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "@deepseek-ai/dsh-util-crypto": "workspace:*"
+  },
+  "engines": {
+    "dsh": ">=0.2.1-alpha.4 <0.2.1-alpha.5"
   }
 }

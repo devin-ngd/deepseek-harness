@@ -15,6 +15,12 @@ import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
+import TypertGateway from '@deepseek-ai/dsh-api-gateway'
+import RemoteAccess from '@deepseek-ai/dsh-api-remote-access'
+import type { RemoteAccessBinding } from '@deepseek-ai/dsh-api-remote-access'
+import { Peer } from '@deepseek-ai/dsh-client-connection'
+import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import RichInline from '../src/host/index.ts'
 import type { Config } from '../src/host/index.ts'
 import type { RichAppearance } from '../src/shared/theme.ts'
@@ -29,6 +35,11 @@ import { offloadRichSources } from '../src/host/source.ts'
 import type { SessionPromptRequest } from '@deepseek-ai/dsh-api-session-controller/types'
 
 const resources: { ctx: Context; root: string; remove: boolean }[] = []
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface PrincipalMap {
+    'rich-fixture': { readonly kind: 'rich-fixture' }
+  }
+}
 afterEach(async () => {
   for (const owned of resources.splice(0).reverse()) {
     await owned.ctx.fiber.dispose()
@@ -45,7 +56,7 @@ const limits: ProfileConfig = { maxContentBytes: 2_097_152, maxInputBytes: 131_0
   maxFormatRepairAttempts: 1, sourceOffloadMinBytes: 4_096, sourceReadMaxChars: 8_192, theme: 'cyber', accent: 'blue' }
 
 async function harness(root?: string, seed: readonly SessionEvent[] = [], config: Partial<ProfileConfig> = {},
-  options: { live?: boolean; preset?: string } = {}) {
+  options: { live?: boolean; preset?: string; remote?: boolean } = {}) {
   const dir = root ?? await mkdtemp(join(tmpdir(), 'dsh-rich-host-'))
   const ctx = new Context()
   if (options.preset !== undefined) ctx.provide('agentPresets', { composedPreset: () => options.preset } as never)
@@ -86,7 +97,8 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
   ctx.provide('sessionController', { resolveAgent: resolved, inspect: async () => ({ meta: session.header, inheritedEventCount: 0, events: session.snapshotEvents() }), prompt } as never)
   const flush = vi.fn(async () => {})
   ctx.provide('sessionPersistence', { flush } as never)
-  ctx.provide('typert', {} as never)
+  if (options.remote === true) await ctx.plugin(TypertRegistry)
+  else ctx.provide('typert', {} as never)
   ctx.provide('attachments', {} as never)
   ctx.provide('fileUploads', {} as never)
   // A Loader entry lets a test edit the profile configuration the way the Plugins page theme picker does.
@@ -128,6 +140,47 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
   return { ctx, dir, session, agent, host, prompts, prompt, resolved, flush, owner, live, tool, publish, bind, claim }
 }
 
+describe('Remote Session access', () => {
+  it('checks Session grants before dispatch and rejects a mount attributed to another Session', async () => {
+    const h = await harness(undefined, [], {}, { remote: true })
+    const mounted = await h.bind(await h.publish())
+    await h.ctx.plugin(RemoteAccess)
+    await h.ctx.plugin(TypertGateway)
+    h.ctx.effect(() => h.ctx.typert.register({
+      package: '@fixture/rich-remote', face: 'host', schemas: [], model: { services: [], events: [], objects: [] },
+      invocations: ['snapshot', 'dispose'].map(method => ({
+        id: `@fixture/rich-remote/${method}`, service: 'richInline', namespace: 'richInline', method,
+        invocation: { kind: 'direct' },
+        parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'src-json' } }],
+        result: { mode: 'src-json' },
+      })),
+    }))
+    const actions = ['richInline/snapshot', 'richInline/dispose'] as const
+    let held: readonly RemoteAccessBinding[] = []
+    h.ctx.effect(() => h.ctx.remoteAccess.registerPolicy('rich-fixture', { bindings: () => held }))
+    const peer = new Peer(h.ctx, { principal: { kind: 'rich-fixture' }, interactions: 'none' })
+    const request = { sessionId: h.session.id, mountId: mounted.mountId }
+    const call = (method: string, value = request) => h.ctx.typertGateway.invoke({
+      namespace: 'richInline', method, args: { request: value }, peer,
+    })
+    held = [{ role: { name: 'global-only', resource: 'global', actions }, resource: { kind: 'global' } }]
+    await expect(call('snapshot')).rejects.toMatchObject({ code: 'remote-access/denied' })
+    held = [{ role: { name: 'own-session', resource: 'session', actions }, resource: { kind: 'session', id: h.session.id } }]
+    await expect(call('snapshot')).resolves.toMatchObject({ scope: { sessionId: h.session.id } })
+    const foreign = { ...request, sessionId: SessionId('foreign-session') }
+    await expect(call('snapshot', foreign)).rejects.toMatchObject({ code: 'remote-access/denied' })
+    held = [{ role: { name: 'foreign-session', resource: 'session', actions }, resource: { kind: 'session', id: foreign.sessionId } }]
+    await expect(call('snapshot', foreign)).rejects.toThrow('MOUNT_SESSION_MISMATCH')
+    await expect(call('dispose', foreign)).rejects.toThrow('MOUNT_SESSION_MISMATCH')
+    expect(await h.host.snapshot(request)).toEqual(mounted.snapshot)
+    const mountMethods = remoteMethods(h.host).filter(method => method.method !== 'appearance' && method.method !== 'taskUsage')
+    expect(mountMethods).toHaveLength(10)
+    for (const method of mountMethods) expect(method.resources?.session?.(request)).toBe(h.session.id)
+    await peer.dispose()
+    await expect(call('snapshot')).rejects.toMatchObject({ code: 'gateway/peer-disposed' })
+  })
+})
+
 describe('task usage and scoped source reads', () => {
   it('reads historical source outside authoring modes before mount and preserves audit-only usage', async () => {
     const h = await harness(undefined, [], { sourceOffloadMinBytes: 1, sourceReadMaxChars: 20, activePresets: ['lumina'] }, { preset: 'standard' })
@@ -152,7 +205,7 @@ describe('task usage and scoped source reads', () => {
 })
 
 function intent(mounted: Awaited<ReturnType<RichInline['mount']>>, actionId = brandString<RichActionId>(`action-${randomUUID()}`)): RichInvokeRequest {
-  return { mountId: mounted.mountId, actionId, actionName: 'submit', targetActionId: null, expectedDataRevision: mounted.snapshot.dataRevision,
+  return { sessionId: mounted.snapshot.scope.sessionId, mountId: mounted.mountId, actionId, actionName: 'submit', targetActionId: null, expectedDataRevision: mounted.snapshot.dataRevision,
     values: { text: 'last-key' }, fileGrants: [], draft: { baseRevision: mounted.snapshot.draft.draftRevision, stateSchemaVersion: 1, fields: { text: 'last-key' }, dirty: ['text'] } }
 }
 
@@ -212,15 +265,15 @@ describe('data-only document updates', () => {
     const h = await harness()
     const blockId = await h.publish(undefined, { progress: 'started' })
     const mounted = await h.bind(blockId)
-    await h.host.saveDraft({ mountId: mounted.mountId,
+    await h.host.saveDraft({ sessionId: mounted.snapshot.scope.sessionId, mountId: mounted.mountId,
       draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { note: 'still editing' }, dirty: ['note'] } })
-    const before = await h.host.snapshot({ mountId: mounted.mountId })
+    const before = await h.host.snapshot({ sessionId: mounted.snapshot.scope.sessionId, mountId: mounted.mountId })
     const args = { blockId, expectedRenderRevision: before.manifest.renderRevision,
       expectedDataRevision: before.dataRevision, values: { progress: 'checked' }, fallbackText: 'Checked one item' }
     const updated = await h.tool('rich_inline_update', args)
     expect(updated.isError).toBe(false)
     expect(updated.meta).toMatchObject({ richInline: { kind: 'data', blockId, dataRevision: before.dataRevision + 1 } })
-    const after = await h.host.snapshot({ mountId: mounted.mountId })
+    const after = await h.host.snapshot({ sessionId: mounted.snapshot.scope.sessionId, mountId: mounted.mountId })
     expect(after.values).toEqual(args.values)
     expect(after.dataRevision).toBe(before.dataRevision + 1)
     expect(after.manifest).toEqual({ ...before.manifest, fallbackText: args.fallbackText })
@@ -232,9 +285,9 @@ describe('data-only document updates', () => {
     expect((await h.tool('rich_inline_update', { ...args, expectedDataRevision: after.dataRevision, fallbackText: ' ' })).isError).toBe(true)
     expect((await h.tool('rich_inline_update', { ...args, expectedDataRevision: after.dataRevision,
       values: { large: 'x'.repeat(limits.maxInputBytes + 1) } })).isError).toBe(true)
-    expect(await h.host.snapshot({ mountId: mounted.mountId })).toEqual(after)
+    expect(await h.host.snapshot({ sessionId: mounted.snapshot.scope.sessionId, mountId: mounted.mountId })).toEqual(after)
     expect(h.prompts).toEqual([])
-    h.host.dispose({ mountId: mounted.mountId })
+    h.host.dispose({ sessionId: mounted.snapshot.scope.sessionId, mountId: mounted.mountId })
     const reopened = await h.host.mount({ sessionId: h.session.id, messageId: before.scope.messageId, blockId })
     expect(reopened.snapshot.values).toEqual(after.values)
     expect(reopened.snapshot.draft).toEqual(after.draft)
@@ -250,16 +303,18 @@ describe('code-only assistant messages', () => {
     await expect(h.host.mount(request)).rejects.toThrow('settled')
     h.session.append('assistant/message', { turn: 1, step: 1, message, stream: [] }, { surfaceOp: 'append' })
     const first = await h.host.mount(request)
-    h.host.dispose({ mountId: first.mountId })
+    h.host.dispose({ sessionId: first.snapshot.scope.sessionId, mountId: first.mountId })
     const second = await h.host.mount(request)
     expect(second.snapshot.manifest).toEqual(first.snapshot.manifest)
     expect(second.snapshot.actions).toEqual([])
     expect(h.prompts).toEqual([])
-    const poll = await h.host.snapshotIfChanged({ mountId: second.mountId, revision: null })
+    const poll = await h.host.snapshotIfChanged({ sessionId: second.snapshot.scope.sessionId, mountId: second.mountId, revision: null })
     expect(poll.snapshot).not.toBeNull()
-    expect((await h.host.snapshotIfChanged({ mountId: second.mountId, revision: poll.revision })).snapshot).toBeNull()
-    await h.host.saveDraft({ mountId: second.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { note: 'last key' }, dirty: ['note'] } })
-    expect((await h.host.snapshotIfChanged({ mountId: second.mountId, revision: poll.revision })).snapshot?.draft.fields).toEqual({ note: 'last key' })
+    expect((await h.host.snapshotIfChanged({
+      sessionId: second.snapshot.scope.sessionId, mountId: second.mountId, revision: poll.revision,
+    })).snapshot).toBeNull()
+    await h.host.saveDraft({ sessionId: second.snapshot.scope.sessionId, mountId: second.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { note: 'last key' }, dirty: ['note'] } })
+    expect((await h.host.snapshotIfChanged({ sessionId: second.snapshot.scope.sessionId, mountId: second.mountId, revision: poll.revision })).snapshot?.draft.fields).toEqual({ note: 'last key' })
   })
   it.each(['invalid', 'duplicate', 'interrupted'])('refuses %s publication without creating authority', async (kind) => {
     const h = await harness()
@@ -400,7 +455,7 @@ describe('RichInline Host', () => {
     await h.live!.update({ theme: 'aurora' })
     expect(host.appearance()).toEqual({ theme: 'aurora', accent: 'blue' })
     // A restarted Host would have dropped this in-memory mount.
-    expect((await host.snapshot({ mountId })).scope.renderRevision).toBe(1)
+    expect((await host.snapshot({ sessionId: h.session.id, mountId })).scope.renderRevision).toBe(1)
     const after = await h.ctx.systemPrompt.assemble()
     expect(after.sections.find(item => item.name === 'rich-inline:authoring')?.text).toBe(section)
     expect(after.contexts.find(item => item.name === 'rich-inline:output-format')?.text).toContain('Active built-in appearance: aurora (polar night')
@@ -423,14 +478,14 @@ describe('RichInline Host', () => {
     const h = await harness()
     const id = await h.publish(undefined, { confirmed: 'keep' })
     const first = await h.bind(id)
-    await h.host.saveDraft({ mountId: first.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { last: 'unsent' }, dirty: ['last'] } })
-    const report = { mountId: first.mountId, state: 'failed' as const, message: 'ReferenceError: undefinedChart' }
+    await h.host.saveDraft({ sessionId: first.snapshot.scope.sessionId, mountId: first.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { last: 'unsent' }, dirty: ['last'] } })
+    const report = { sessionId: first.snapshot.scope.sessionId, mountId: first.mountId, state: 'failed' as const, message: 'ReferenceError: undefinedChart' }
     expect(await h.host.reportRender(report)).toEqual({ code: 'RENDER_REPAIR_QUEUED', repairQueued: true })
     expect(await h.host.reportRender({ ...report, message: 'changed diagnostic' })).toEqual({ code: 'RENDER_ALREADY_REPORTED', repairQueued: false })
     await vi.waitFor(() => { expect(h.prompts).toHaveLength(1) })
     const feedback = h.prompts[0]!.content.find(part => part.type === 'text')
     expect(feedback?.type === 'text' && feedback.text.includes('untrusted-render-diagnostic')).toBe(true)
-    expect((await h.host.snapshot({ mountId: first.mountId })).actions).toHaveLength(0)
+    expect((await h.host.snapshot({ sessionId: first.snapshot.scope.sessionId, mountId: first.mountId })).actions).toHaveLength(0)
     await expect(h.host.reportRender({ ...report, confirmed: true } as never)).rejects.toThrow('INVALID_RENDER_REPORT')
     const repaired = await h.tool('rich_inline_publish', { blockId: id, expectedRenderRevision: 1,
       html: '<div>Repaired</div>', css: '', js: '', fallbackText: 'Repaired', stateSchemaVersion: 1 })
@@ -438,25 +493,25 @@ describe('RichInline Host', () => {
     const stale = await h.tool('rich_inline_publish', { blockId: id, expectedRenderRevision: 1,
       html: '<div>Stale</div>', css: '', js: '', fallbackText: 'Stale', stateSchemaVersion: 1 })
     expect(stale.isError).toBe(true)
-    await h.host.applyUpdate({ mountId: first.mountId, discardDraft: false })
+    await h.host.applyUpdate({ sessionId: first.snapshot.scope.sessionId, mountId: first.mountId, discardDraft: false })
     await expect(h.host.reportRender(report)).rejects.toThrow('STALE_MOUNT')
     const second = await h.host.mount({ sessionId: h.session.id, messageId: first.snapshot.scope.messageId, blockId: id })
     expect(second.snapshot.values).toEqual({ confirmed: 'keep' })
     expect(second.snapshot.draft.fields).toEqual({ last: 'unsent' })
-    await h.host.reportRender({ mountId: second.mountId, state: 'rendered', message: '' })
-    expect(await h.host.reportRender({ mountId: second.mountId, state: 'failed', message: 'Later error' })).toMatchObject({ repairQueued: true })
+    await h.host.reportRender({ sessionId: second.snapshot.scope.sessionId, mountId: second.mountId, state: 'rendered', message: '' })
+    expect(await h.host.reportRender({ sessionId: second.snapshot.scope.sessionId, mountId: second.mountId, state: 'failed', message: 'Later error' })).toMatchObject({ repairQueued: true })
     await vi.waitFor(() => { expect(h.prompts).toHaveLength(2) })
     await h.publish(id)
-    await h.host.applyUpdate({ mountId: second.mountId, discardDraft: false })
+    await h.host.applyUpdate({ sessionId: second.snapshot.scope.sessionId, mountId: second.mountId, discardDraft: false })
     const third = await h.host.mount({ sessionId: h.session.id, messageId: first.snapshot.scope.messageId, blockId: id })
-    await h.host.reportRender({ mountId: third.mountId, state: 'rendered', message: '' })
-    expect(await h.host.reportRender({ mountId: third.mountId, state: 'failed', message: 'Again' })).toEqual({ code: 'RENDER_REPAIR_LIMIT', repairQueued: false })
+    await h.host.reportRender({ sessionId: third.snapshot.scope.sessionId, mountId: third.mountId, state: 'rendered', message: '' })
+    expect(await h.host.reportRender({ sessionId: third.snapshot.scope.sessionId, mountId: third.mountId, state: 'failed', message: 'Again' })).toEqual({ code: 'RENDER_REPAIR_LIMIT', repairQueued: false })
     const seed = h.session.snapshotEvents()
     await h.owner.dispose()
     await h.ctx.fiber.dispose()
     const reopened = await harness(h.dir, seed)
     const restored = await reopened.host.mount({ sessionId: reopened.session.id, messageId: first.snapshot.scope.messageId, blockId: id })
-    expect(await reopened.host.reportRender({ mountId: restored.mountId, state: 'failed', message: 'Again' })).toMatchObject({ repairQueued: false })
+    expect(await reopened.host.reportRender({ sessionId: restored.snapshot.scope.sessionId, mountId: restored.mountId, state: 'failed', message: 'Again' })).toMatchObject({ repairQueued: false })
     expect(reopened.prompts).toHaveLength(0)
   })
   it('caps deployment budgets at 2 MiB content and 128 KiB input without changing defaults', () => {
@@ -481,7 +536,7 @@ describe('RichInline Host', () => {
     expect(rejected.isError).toBe(true)
     expect(rejected.content.some(part => part.type === 'text' && part.text.includes('BLOCK_PUBLICATION_TOO_LARGE'))).toBe(true)
     expect(await readFile(join(h.dir, 'rich_inline.json'))).toEqual(before)
-    expect((await h.host.snapshot({ mountId: m.mountId })).manifest.html).toBe(request.html)
+    expect((await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })).manifest.html).toBe(request.html)
   }, 15_000)
   it('stores and reopens HTML above the 128 KiB input budget byte-identically via a genuine tool marker', async () => {
     const h = await harness()
@@ -515,7 +570,7 @@ describe('RichInline Host', () => {
     expect(Buffer.byteLength(JSON.stringify(over))).toBe(RICH_MAX_INPUT_BYTES + 1)
     await expect(h.host.invoke(over)).rejects.toThrow('INVALID_ACTION')
     expect(await readFile(join(h.dir, 'rich_inline.json'))).toEqual(before)
-    expect((await h.host.snapshot({ mountId: m.mountId })).actions).toEqual([])
+    expect((await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })).actions).toEqual([])
     expect(await h.host.invoke(request)).toMatchObject({ accepted: true, state: 'accepted' })
     await vi.waitFor(() =>{  expect(h.prompts).toHaveLength(1) })
   })
@@ -532,7 +587,7 @@ describe('RichInline Host', () => {
     expect(await h.host.invoke(request)).toEqual(first)
     await vi.waitFor(() =>{  expect(h.prompts).toHaveLength(1) })
     expect(h.flush).toHaveBeenCalled()
-    expect((await h.host.snapshot({ mountId: m.mountId })).actions[0]?.terminal).toBe(false)
+    expect((await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })).actions[0]?.terminal).toBe(false)
   })
   it('returns original receipt after draft and data advance; changed retry payload conflicts', async () => {
     const h = await harness()
@@ -541,32 +596,32 @@ describe('RichInline Host', () => {
     const first = await h.host.invoke(request)
     await h.claim()
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: m.mountId, actionId: request.actionId })).state).toBe('running')
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('running')
     })
     await h.tool('rich_inline_complete', { actionId: request.actionId, state: 'completed', values: { result: 'done' } })
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: m.mountId, actionId: request.actionId })).state).toBe('completed')
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('completed')
     })
     expect(await h.host.invoke(request)).toEqual(first)
     expect(await h.host.invoke({ ...request, values: { text: 'different' } })).toMatchObject({ accepted: false, code: 'ACTION_ID_CONFLICT' })
-    expect((await h.host.snapshot({ mountId: m.mountId })).values).toEqual({ result: 'done' })
+    expect((await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })).values).toEqual({ result: 'done' })
   })
   it('preserves dirty draft and defers full replacement until the host explicitly applies it', async () => {
     const h = await harness()
     const id = await h.publish()
     const m = await h.bind(id)
-    expect(await h.host.saveDraft({ mountId: m.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { text: 'editing' }, dirty: ['text'] } })).toMatchObject({ accepted: true })
-    expect(await h.host.saveDraft({ mountId: m.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { text: 'another-tab' }, dirty: ['text'] } })).toMatchObject({ code: 'DRAFT_CONFLICT' })
+    expect(await h.host.saveDraft({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { text: 'editing' }, dirty: ['text'] } })).toMatchObject({ accepted: true })
+    expect(await h.host.saveDraft({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { text: 'another-tab' }, dirty: ['text'] } })).toMatchObject({ code: 'DRAFT_CONFLICT' })
     await h.publish(id, { server: 'new-data' }, 2)
-    const waiting = await h.host.snapshot({ mountId: m.mountId })
+    const waiting = await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })
     expect(waiting.manifest.renderRevision).toBe(1)
     expect(waiting.pendingManifest?.renderRevision).toBe(2)
     expect(waiting.draft.fields).toEqual({ text: 'editing' })
-    await expect(h.host.applyUpdate({ mountId: m.mountId, discardDraft: false })).rejects.toThrow('DIRTY_DRAFT')
-    const applied = await h.host.applyUpdate({ mountId: m.mountId, discardDraft: true })
+    await expect(h.host.applyUpdate({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, discardDraft: false })).rejects.toThrow('DIRTY_DRAFT')
+    const applied = await h.host.applyUpdate({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, discardDraft: true })
     expect(applied.archivedDrafts[0]?.fields).toEqual({ text: 'editing' })
     expect(applied.draft.fields).toEqual({})
-    expect(() => h.host.snapshot({ mountId: m.mountId })).toThrow('STALE_MOUNT')
+    expect(() => h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })).toThrow('STALE_MOUNT')
     expect(applied.manifest.renderRevision).toBe(2)
   })
   it('stages mounted replacements before a debounced draft arrives and keeps compatible edits on application', async () => {
@@ -574,12 +629,12 @@ describe('RichInline Host', () => {
     const id = await h.publish()
     const m = await h.bind(id)
     await h.publish(id, { server: 'updated' })
-    expect((await h.host.snapshot({ mountId: m.mountId })).pendingManifest?.renderRevision).toBe(2)
-    await h.host.saveDraft({ mountId: m.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { text: 'last keystroke' }, dirty: ['text'] } })
-    const applied = await h.host.applyUpdate({ mountId: m.mountId, discardDraft: false })
+    expect((await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })).pendingManifest?.renderRevision).toBe(2)
+    await h.host.saveDraft({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, draft: { baseRevision: 0, stateSchemaVersion: 1, fields: { text: 'last keystroke' }, dirty: ['text'] } })
+    const applied = await h.host.applyUpdate({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, discardDraft: false })
     expect(applied.draft).toMatchObject({ fields: { text: 'last keystroke' }, dirty: ['text'] })
     expect(applied.manifest.renderRevision).toBe(2)
-    expect(() => h.host.snapshot({ mountId: m.mountId })).toThrow('STALE_MOUNT')
+    expect(() => h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })).toThrow('STALE_MOUNT')
   })
   it('keeps a late old-render/data result on its action without overwriting the newer block', async () => {
     const h = await harness()
@@ -588,16 +643,18 @@ describe('RichInline Host', () => {
     const request = intent(m)
     await h.host.invoke(request)
     await h.claim()
-    await h.host.snapshot({ mountId: m.mountId })
+    await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })
     await h.publish(id, { fresh: 'authoritative' })
     const next = await h.host.mount({ sessionId: h.session.id, messageId: m.snapshot.scope.messageId, blockId: id })
     expect(await h.host.invoke({ ...request, mountId: next.mountId })).toMatchObject({ accepted: true, state: 'accepted' })
     await h.tool('rich_inline_complete', { actionId: request.actionId, state: 'completed', values: { stale: 'late-result' } })
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: next.mountId, actionId: request.actionId })).terminal).toBe(true)
+      expect((await h.host.status({
+        sessionId: next.snapshot.scope.sessionId, mountId: next.mountId, actionId: request.actionId,
+      })).terminal).toBe(true)
     })
-    expect((await h.host.snapshot({ mountId: next.mountId })).values).toEqual({ fresh: 'authoritative' })
-    expect((await h.host.status({ mountId: next.mountId, actionId: request.actionId })).values).toEqual({ stale: 'late-result' })
+    expect((await h.host.snapshot({ sessionId: next.snapshot.scope.sessionId, mountId: next.mountId })).values).toEqual({ fresh: 'authoritative' })
+    expect((await h.host.status({ sessionId: next.snapshot.scope.sessionId, mountId: next.mountId, actionId: request.actionId })).values).toEqual({ stale: 'late-result' })
   })
   it('keeps newer data and dirty input when a result arrives before a pending render is applied', async () => {
     const h = await harness()
@@ -606,14 +663,16 @@ describe('RichInline Host', () => {
     const request = intent(m)
     await h.host.invoke(request)
     await h.claim()
-    const current = await h.host.snapshot({ mountId: m.mountId })
-    await h.host.saveDraft({ mountId: m.mountId, draft: { baseRevision: current.draft.draftRevision, stateSchemaVersion: 1, fields: { text: 'new edit' }, dirty: ['text'] } })
+    const current = await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })
+    await h.host.saveDraft({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, draft: { baseRevision: current.draft.draftRevision, stateSchemaVersion: 1, fields: { text: 'new edit' }, dirty: ['text'] } })
     await h.publish(id, { newer: 'data' })
     await h.tool('rich_inline_complete', { actionId: request.actionId, state: 'completed', values: { old: 'result' } })
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: m.mountId, actionId: request.actionId })).terminal).toBe(true)
+      expect((await h.host.status({
+        sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId,
+      })).terminal).toBe(true)
     })
-    const next = await h.host.snapshot({ mountId: m.mountId })
+    const next = await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })
     expect(next.manifest.renderRevision).toBe(1)
     expect(next.pendingManifest?.renderRevision).toBe(2)
     expect(next.values).toEqual({ newer: 'data' })
@@ -625,15 +684,19 @@ describe('RichInline Host', () => {
     const request = intent(m)
     await h.host.invoke(request)
     await h.claim()
-    await h.host.snapshot({ mountId: m.mountId })
+    await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })
     expect((await h.tool('rich_inline_progress', { actionId: request.actionId, done: 2, total: 3, label: 'two complete' })).isError).toBe(false)
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: m.mountId, actionId: request.actionId })).progress?.done).toBe(2)
+      expect((await h.host.status({
+        sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId,
+      })).progress?.done).toBe(2)
     })
     expect((await h.tool('rich_inline_progress', { actionId: request.actionId, done: 4, total: 3, label: 'invalid' })).isError).toBe(true)
     await h.tool('rich_inline_complete', { actionId: request.actionId, state: 'completed' })
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: m.mountId, actionId: request.actionId })).terminal).toBe(true)
+      expect((await h.host.status({
+        sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId,
+      })).terminal).toBe(true)
     })
     expect((await h.tool('rich_inline_progress', { actionId: request.actionId, done: 3, total: 3, label: 'late' })).isError).toBe(true)
     expect((await h.tool('rich_inline_progress', { actionId: 'foreign-action', done: 1, total: 1, label: 'foreign' })).isError).toBe(true)
@@ -647,7 +710,7 @@ describe('RichInline Host', () => {
     const cancellation = await h.host.invoke({ ...request, actionId: brandString<RichActionId>(`cancel-${randomUUID()}`), actionName: 'cancel', targetActionId: request.actionId, values: {}, draft: request.draft })
     expect(cancellation.accepted).toBe(true)
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: m.mountId, actionId: request.actionId })).state).toBe('cancelled')
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('cancelled')
     })
     expect(h.prompts).toHaveLength(1)
   })
@@ -657,17 +720,19 @@ describe('RichInline Host', () => {
     const request = intent(m)
     await h.host.invoke(request)
     await h.claim()
-    await h.host.snapshot({ mountId: m.mountId })
+    await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })
     await h.host.invoke({ ...request, actionId: brandString<RichActionId>(`cancel-${randomUUID()}`), actionName: 'cancel', targetActionId: request.actionId, values: {} })
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: m.mountId, actionId: request.actionId })).state).toBe('cancel_requested')
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('cancel_requested')
     })
     await h.tool('rich_inline_complete', { actionId: request.actionId, state: 'completed', values: { late: 'cannot undo work' } })
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: m.mountId, actionId: request.actionId })).terminal).toBe(true)
+      expect((await h.host.status({
+        sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId,
+      })).terminal).toBe(true)
     })
-    expect(await h.host.status({ mountId: m.mountId, actionId: request.actionId })).toMatchObject({ state: 'completed', lateAfterCancel: true })
-    expect((await h.host.snapshot({ mountId: m.mountId })).values).toEqual({ original: 'data' })
+    expect(await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).toMatchObject({ state: 'completed', lateAfterCancel: true })
+    expect((await h.host.snapshot({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId })).values).toEqual({ original: 'data' })
   })
   it('retries its durable outbox with the original RPC identity and bounds permanent failures', async () => {
     const h = await harness()
@@ -683,7 +748,7 @@ describe('RichInline Host', () => {
     h.prompt.mockRejectedValue(new Error('permanent transport failure'))
     await h.host.invoke(failed)
     await vi.waitFor(async () => {
-      expect((await h.host.status({ mountId: other.mountId, actionId: failed.actionId })).state).toBe('outcome_unknown')
+      expect((await h.host.status({ sessionId: other.snapshot.scope.sessionId, mountId: other.mountId, actionId: failed.actionId })).state).toBe('outcome_unknown')
     })
     expect(h.prompt).toHaveBeenCalledTimes(6)
     const disk = JSON.parse(await readFile(join(h.dir, 'rich_inline.json'), 'utf8')) as { tables: { sessions: Record<string, RichSessionRecord> } }

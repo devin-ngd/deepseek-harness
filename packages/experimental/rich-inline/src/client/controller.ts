@@ -143,13 +143,13 @@ export class RichBlockController {
     this.mountId = null
     if (this.timer !== null) { clearTimeout(this.timer); this.timer = null }
     await this.retireGuest()
-    if (oldMount !== null) await this.rpc.dispose({ mountId: oldMount })
+    if (oldMount !== null) await this.rpc.dispose({ sessionId: this.sessionId, mountId: oldMount })
     if (generation === this.generation) await this.start(messageId, blockId, generation)
   }
 
   private async start(messageId: MessageId, blockId: RichBlockId, generation: number): Promise<void> {
     const mounted = await this.rpc.mount({ sessionId: this.sessionId, messageId, blockId })
-    if (generation !== this.generation) { await this.rpc.dispose({ mountId: mounted.mountId }); return }
+    if (generation !== this.generation) { await this.rpc.dispose({ sessionId: this.sessionId, mountId: mounted.mountId }); return }
     this.mountId = mounted.mountId
     this.pollRevision = null
     this.publish({ snapshot: mounted.snapshot, error: null, repairing: false })
@@ -249,18 +249,18 @@ export class RichBlockController {
       this.publish({ error: 'CONTENT_ERROR', inputWarning: this.view.inputWarning || preserveGuest })
       // Keep the Host mount for polling repaired code; retire only the failing executable guest.
       let repairQueued = false
-      try { repairQueued = (await this.rpc.reportRender({ mountId: this.mountId, state: 'failed', message: packet.payload.message.slice(0, 512) })).repairQueued }
+      try { repairQueued = (await this.rpc.reportRender({ sessionId: this.sessionId, mountId: this.mountId, state: 'failed', message: packet.payload.message.slice(0, 512) })).repairQueued }
       finally { if (!preserveGuest) await this.retireGuest() }
       if (generation === this.generation) this.publish({ repairing: repairQueued })
       return
     }
     if (packet.type === 'render.result') {
       if (packet.payload.state !== 'rendered' || Object.keys(packet.payload).some(key => key !== 'state')) return
-      await this.rpc.reportRender({ mountId: this.mountId, state: 'rendered', message: '' })
+      await this.rpc.reportRender({ sessionId: this.sessionId, mountId: this.mountId, state: 'rendered', message: '' })
       return
     }
     if (packet.type === 'input.error') { this.publish({ inputWarning: true }); return }
-    const request = { ...packet.payload, mountId: this.mountId }
+    const request = { ...packet.payload, sessionId: this.sessionId, mountId: this.mountId }
     let response: Record<string, unknown>
     try {
       switch (packet.type) {
@@ -324,7 +324,7 @@ export class RichBlockController {
     if (generation !== this.generation || mountId !== this.mountId) return
     this.mountId = null
     await this.retireGuest()
-    await this.rpc.dispose({ mountId })
+    await this.rpc.dispose({ sessionId: this.sessionId, mountId })
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- Another async lifecycle may mount while teardown is awaited.
     if (generation !== this.generation || this.mountId !== null) return
     await this.start(snapshot.scope.messageId, snapshot.scope.blockId, generation)
@@ -336,7 +336,7 @@ export class RichBlockController {
     let snapshot: RichSnapshot
     try {
       if (this.rpc.snapshotIfChanged !== undefined) {
-        const result = await this.rpc.snapshotIfChanged({ mountId, revision: this.pollRevision })
+        const result = await this.rpc.snapshotIfChanged({ sessionId: this.sessionId, mountId, revision: this.pollRevision })
         if (generation !== this.generation || mountId !== this.mountId) return
         this.pollRevision = result.revision
         if (result.snapshot === null) {
@@ -345,7 +345,7 @@ export class RichBlockController {
           return
         }
         snapshot = result.snapshot
-      } else snapshot = await this.rpc.snapshot({ mountId })
+      } else snapshot = await this.rpc.snapshot({ sessionId: this.sessionId, mountId })
     }
     catch (error) {
       const previous = this.view.snapshot
@@ -358,7 +358,7 @@ export class RichBlockController {
     const previous = this.view.snapshot
     if ((this.native === undefined || this.view.error === 'CONTENT_ERROR' && this.view.reservation === null) && snapshot.pendingManifest !== null
       && snapshot.pendingManifest.stateSchemaVersion === snapshot.draft.stateSchemaVersion) {
-      const applied = await this.rpc.applyUpdate({ mountId, discardDraft: false })
+      const applied = await this.rpc.applyUpdate({ sessionId: this.sessionId, mountId, discardDraft: false })
       await this.remount(applied, generation, mountId)
       return
     }
@@ -389,7 +389,7 @@ export class RichBlockController {
    */
   async registerFile(receiptId: RichRegisterFileRequest['receiptId']): Promise<void> {
     if (this.mountId === null) throw new Error('NOT_MOUNTED')
-    await this.rpc.registerFile({ mountId: this.mountId, receiptId })
+    await this.rpc.registerFile({ sessionId: this.sessionId, mountId: this.mountId, receiptId })
     await this.refresh(this.generation)
   }
 
@@ -400,7 +400,7 @@ export class RichBlockController {
   async cancelAction(actionId: RichActionRequest['actionId']): Promise<void> {
     const snapshot = this.view.snapshot
     if (this.mountId === null || snapshot === null) return
-    await this.rpc.invoke({ mountId: this.mountId, actionId: randomUUID() as RichInvokeRequest['actionId'],
+    await this.rpc.invoke({ sessionId: this.sessionId, mountId: this.mountId, actionId: randomUUID() as RichInvokeRequest['actionId'],
       actionName: 'cancel', targetActionId: actionId, expectedDataRevision: snapshot.dataRevision,
       values: {}, fileGrants: [], draft: { baseRevision: snapshot.draft.draftRevision,
         stateSchemaVersion: snapshot.draft.stateSchemaVersion, fields: snapshot.draft.fields, dirty: snapshot.draft.dirty } })
@@ -415,7 +415,7 @@ export class RichBlockController {
     if (this.mountId === null || this.updateBarrier !== null) return
     const previous = this.view.snapshot
     await this.settleDraft()
-    try { await this.rpc.applyUpdate({ mountId: this.mountId, discardDraft }) }
+    try { await this.rpc.applyUpdate({ sessionId: this.sessionId, mountId: this.mountId, discardDraft }) }
     catch (error) { await this.send('update.cancel', {}); throw error }
     if (previous === null) return
     await this.close()
@@ -438,7 +438,7 @@ export class RichBlockController {
     if (generation !== this.generation || mountId !== this.mountId) return
     await this.retireGuest()
     try {
-      const snapshot = await this.rpc.snapshot({ mountId })
+      const snapshot = await this.rpc.snapshot({ sessionId: this.sessionId, mountId })
       if (generation !== this.generation || mountId !== this.mountId) return
       const previous = this.view.snapshot
       if (previous !== null && snapshot.manifest.renderRevision !== previous.manifest.renderRevision) {
@@ -484,7 +484,7 @@ export class RichBlockController {
     if (this.timer !== null) { clearTimeout(this.timer); this.timer = null }
     const mountId = this.mountId; this.mountId = null
     await this.retireGuest()
-    if (mountId !== null) await this.rpc.dispose({ mountId })
+    if (mountId !== null) await this.rpc.dispose({ sessionId: this.sessionId, mountId })
     if (generation === this.generation) this.publish({ closed: true, repairing: false })
   }
 }

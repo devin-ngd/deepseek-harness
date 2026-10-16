@@ -9,7 +9,7 @@ English | [中文](2026-10-03-rich-inline-format-attribution.zh.md)
 
 ## Summary
 
-Adds rich-inline-format attribution alongside the working-directory attribution retained from the upstream history.
+Adds rich-inline-format attribution to message sources that also support user-rpc principal attribution.
 
 ## Table of Contents
 
@@ -27,32 +27,32 @@ id: 2026-10-03-rich-inline-format-attribution
 baseline: false
 changes:
   - root: "event:agent/inbox/spliced"
-    previous: "2026-10-05-working-directory-attribution"
-    after: "d549a96998d9c3785a72c58e635d4d324037a085148e8aecfbd4747531db5b25"
+    previous: "2026-10-13-user-rpc-principal"
+    after: "058d1c15434a3106dbd18660d95a720dbc3331381b0fd12979e2db3b846d9ffe"
     decision: same-version
   - root: "event:developer/message"
-    previous: "2026-10-05-working-directory-attribution"
-    after: "c48492703e9e1a5db07bc938cf17b3632df31ea8367d0923c243f7e4a31781c6"
+    previous: "2026-10-13-user-rpc-principal"
+    after: "037ed2593911c74bd680ee4657a8dfc969a389fe4c79f540643abc9fefbc0de6"
     decision: same-version
   - root: "event:session/title-llm-request"
-    previous: "2026-10-07-title-reasoning-effort"
-    after: "74975b4277515eae173b486b4b4ce014f35b53c1eee9843746a9eacf45dd324a"
+    previous: "2026-10-13-user-rpc-principal"
+    after: "f6442fed975bf80bbc07a48e10c543feba1f8f10c472efa837db0121ec6f45d3"
     decision: same-version
   - root: "event:user/message"
-    previous: "2026-10-05-working-directory-attribution"
-    after: "1cfeca32c03ae604b6405890ba1737a231fd08405ca832d9b22b31d55ae9875d"
+    previous: "2026-10-13-user-rpc-principal"
+    after: "3006d32caea1ec8402c8c78f4370698be42b8b00ebb2a965cd8dcb004945b5b7"
     decision: same-version
 ```
 
 <a id="compatibility"></a>
 ## Compatibility
 
-Session format V4 is unchanged. Both reader directions preserve unknown attribution kinds and read complete message content. The working-directory kind remains producer-owned attribution. Only the rich-inline plugin consumes rich-inline-format to count bounded correction attempts and deny business tools during formatting; it grants no authority and changes no model roles. Existing records remain valid, and historical mounts do not enqueue corrections. This unaccepted terminal acknowledgement follows the upstream working-directory acknowledgement; finalized records remain unchanged.
+Session format V4 is unchanged. Both reader directions preserve unknown attribution kinds and read complete message content. The user-rpc principal remains optional and absence retains owner semantics. Only the rich-inline plugin consumes rich-inline-format to count bounded correction attempts and deny business tools during formatting; the attribution grants no authority and changes no model roles. Existing records remain valid, and historical mounts do not enqueue corrections.
 
 <a id="verification"></a>
 ## Verification
 
-The selected rich-inline, Chat, plan and desktop suites passed 427 tests. The rich-inline-source SDK replay passed with four fixed model responses, zero live dispatches, mandatory working-directory context, session/wait, shutdown and process exit code 0. Native Electron acceptance is checked separately; unit mocks and SDK transcript replay do not establish native GUI behavior.
+The focused rich-inline Host, validator and controller selection passed 56 tests, including real Gateway/RemoteAccess/Peer authorization and Session-to-mount checks. The rich-inline-source SDK replay passed with four fixed responses and zero real dispatches. Native GUI and mobile acceptance remain separate.
 
 <a id="dev-note"></a>
 ## Dev Note

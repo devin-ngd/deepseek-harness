@@ -250,10 +250,8 @@ export interface SessionSurface {
   /** Monotonic count of committed replacements and plugin-owned message changes. */
   readonly contentGeneration: number
   /**
-   * Immutable messages replaced by committed message projections, keyed by the
-   * original event sequence. H1 (dsh-devflow design §8.4): consumers pricing the
-   * effective model-visible surface read this maintained projection state
-   * synchronously instead of re-deriving raw event text.
+   * Immutable replacements produced by committed message projections, keyed by
+   * original event sequence, for synchronous reads of projected messages.
    */
   readonly projectedMessages: ReadonlyMap<SessionSeq, Message>
 }

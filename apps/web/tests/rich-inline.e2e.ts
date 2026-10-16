@@ -164,17 +164,17 @@ describe.skipIf(MODE === 'record')('rich-inline: real keyless Host pipeline and 
     })
     const uploaded = await uploadedResponse.json() as RpcResult<{ receiptId: string }>
     if (!uploaded.ok) throw new Error(`test attachment upload failed: ${uploaded.error.message}`)
-    const grant = await remote<RichFileGrant>(scaffold, 'registerFile', { mountId: mount.mountId, receiptId: uploaded.value.receiptId })
+    const grant = await remote<RichFileGrant>(scaffold, 'registerFile', { sessionId, mountId: mount.mountId, receiptId: uploaded.value.receiptId })
     expect(grant).not.toHaveProperty('path')
     expect(grant.sha256).toMatch(/^[a-f0-9]{64}$/u)
     const fields = { ...submittedRichFields, lastKey: 'y', attachment: { type: 'asset', ref: { ...grant } } }
     const draft = { baseRevision: mount.snapshot.draft.draftRevision, stateSchemaVersion: 1, fields, dirty: ['destination', 'lastKey'] }
-    const saved = await remote<RichReceipt>(scaffold, 'saveDraft', { mountId: mount.mountId, draft })
+    const saved = await remote<RichReceipt>(scaffold, 'saveDraft', { sessionId, mountId: mount.mountId, draft })
     expect(saved.accepted).toBe(true)
-    const conflict = await remote<RichReceipt>(scaffold, 'saveDraft', { mountId: mount.mountId, draft })
+    const conflict = await remote<RichReceipt>(scaffold, 'saveDraft', { sessionId, mountId: mount.mountId, draft })
     expect(conflict).toMatchObject({ accepted: false, code: 'DRAFT_CONFLICT' })
     foreignSessionId = (await scaffold.ctx.sessionController.create({ cwd: scaffold.workspaceCwd })).sessionId
-    const request: RichInvokeRequest = { mountId: mount.mountId, actionId: `action-${randomUUID()}` as RichInvokeRequest['actionId'],
+    const request: RichInvokeRequest = { sessionId, mountId: mount.mountId, actionId: `action-${randomUUID()}` as RichInvokeRequest['actionId'],
       actionName: 'submit', targetActionId: null, expectedDataRevision: mount.snapshot.dataRevision,
       values: { ...fields, lastKey: 'z' }, draft: { ...draft, baseRevision: saved.draftRevision, fields: { ...fields, lastKey: 'z' } }, fileGrants: [grant.grantId] }
     await expect(remote(scaffold, 'invoke', { ...request, mountId: `mount-${randomUUID()}` })).rejects.toThrow(/STALE_MOUNT/u)
@@ -184,9 +184,8 @@ describe.skipIf(MODE === 'record')('rich-inline: real keyless Host pipeline and 
     expect(accepted).toMatchObject({ accepted: true, code: 'ACCEPTED', state: 'accepted' })
     const repeated = await remote<RichReceipt>(scaffold, 'invoke', request)
     expect(repeated).toEqual(accepted)
-    // Generated Remote decoding removes unknown object fields; a payload selector cannot change the mount-derived owner.
-    expect(await remote<RichReceipt>(scaffold, 'invoke', { ...request, sessionId: foreignSessionId })).toEqual(accepted)
-    const pending = await remote<RichActionStatus>(scaffold, 'status', { mountId: mount.mountId, actionId: request.actionId })
+    await expect(remote<RichReceipt>(scaffold, 'invoke', { ...request, sessionId: foreignSessionId })).rejects.toThrow('MOUNT_SESSION_MISMATCH')
+    const pending = await remote<RichActionStatus>(scaffold, 'status', { sessionId, mountId: mount.mountId, actionId: request.actionId })
     expect(pending.terminal).toBe(false)
     const conflictId = await remote<RichReceipt>(scaffold, 'invoke', { ...request, values: { ...request.values, lastKey: 'changed' } })
     expect(conflictId).toMatchObject({ accepted: false, code: 'ACTION_ID_CONFLICT' })
@@ -196,11 +195,11 @@ describe.skipIf(MODE === 'record')('rich-inline: real keyless Host pipeline and 
     await page.getByText(initialRichContent.fallbackText, { exact: true }).waitFor({ timeout: 15_000 })
     mount = await remote<RichMountValue>(scaffold, 'mount', { sessionId, messageId, blockId: adapter.blockId })
     expect(mount.snapshot.draft.fields.lastKey).toBe('z')
-    expect((await remote<RichActionStatus>(scaffold, 'status', { mountId: mount.mountId, actionId: request.actionId })).terminal).toBe(false)
+    expect((await remote<RichActionStatus>(scaffold, 'status', { sessionId, mountId: mount.mountId, actionId: request.actionId })).terminal).toBe(false)
     adapter.finishAction()
     expect(await settled).toBe(sessionId)
     mount = await remote<RichMountValue>(scaffold, 'mount', { sessionId, messageId, blockId: adapter.blockId })
-    const status = await remote<RichActionStatus>(scaffold, 'status', { mountId: mount.mountId, actionId: request.actionId })
+    const status = await remote<RichActionStatus>(scaffold, 'status', { sessionId, mountId: mount.mountId, actionId: request.actionId })
     expect(status).toMatchObject({ state: 'completed', terminal: true, values: updatedRichContent.values })
     expect(mount.snapshot.draft.fields.lastKey).toBe('z')
     await expect.poll(async () => {
@@ -233,8 +232,8 @@ describe.skipIf(MODE === 'record')('rich-inline: real keyless Host pipeline and 
     expect(restored.snapshot.draft.fields.lastKey).toBe('z')
     expect(restored.snapshot.actions.filter(action => action.state === 'completed')).toHaveLength(1)
     await expect(remote(scaffold, 'mount', { sessionId: foreignSessionId, messageId, blockId: adapter.blockId })).rejects.toThrow()
-    await remote<null>(scaffold, 'dispose', { mountId: restored.mountId })
-    await expect(remote<RichSnapshot>(scaffold, 'snapshot', { mountId: restored.mountId })).rejects.toThrow(/STALE_MOUNT/u)
+    await remote<null>(scaffold, 'dispose', { sessionId, mountId: restored.mountId })
+    await expect(remote<RichSnapshot>(scaffold, 'snapshot', { sessionId, mountId: restored.mountId })).rejects.toThrow(/STALE_MOUNT/u)
     expect(adapter.requests).toHaveLength(5)
     expect(tripwire.pageErrors).toEqual([])
     await compareOrRefreshGolden(WEB_EXPECTED,

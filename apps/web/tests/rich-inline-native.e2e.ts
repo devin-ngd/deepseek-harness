@@ -393,15 +393,15 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     await settled
     expect(adapter.submitted).toHaveLength(1)
     expect(adapter.submitted[0]!.values.destination).toBe('last-character-Z')
-    await expect.poll(async () => (await remote<RichSnapshot>(scaffold!, 'snapshot', { mountId: mounts[0]!.mountId })).actions.at(-1)?.state).toBe('completed')
-    const requestSnapshot = await remote<RichSnapshot>(scaffold, 'snapshot', { mountId: mounts[0]!.mountId })
+    await expect.poll(async () => (await remote<RichSnapshot>(scaffold!, 'snapshot', { sessionId, mountId: mounts[0]!.mountId })).actions.at(-1)?.state).toBe('completed')
+    const requestSnapshot = await remote<RichSnapshot>(scaffold, 'snapshot', { sessionId, mountId: mounts[0]!.mountId })
     expect(requestSnapshot.manifest.renderRevision).toBe(1)
     expect(requestSnapshot.pendingManifest?.renderRevision).toBe(2)
     await input(0, '[name=destination]', 'unsubmitted newest draft')
     await block(0).getByRole('button', { name: 'Apply new version' }).click()
     await expect.poll(() => guest(0, 'document.querySelector("h2").textContent'), { timeout: 10_000 }).toBe('Updated trip form')
     expect(await guest(0, 'document.querySelector("input").value')).toBe('unsubmitted newest draft')
-    await expect(remote(scaffold, 'snapshot', { mountId: mounts[0]!.mountId })).rejects.toThrow('STALE_MOUNT')
+    await expect(remote(scaffold, 'snapshot', { sessionId, mountId: mounts[0]!.mountId })).rejects.toThrow('STALE_MOUNT')
     await block(0).scrollIntoViewIfNeeded(); await screenshot('03-agent-update')
     checks.push('Last keystroke accepted once, Agent completion distinguished from receipt, same message updated, new draft preserved, old mounts revoked')
     const callsAfterAction = adapter.calls
@@ -477,12 +477,12 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     await block(0).getByText('Cancellation requested; awaiting outcome', { exact: true }).waitFor()
     adapter.release(); await settled
     const active = await remote<RichMountValue>(scaffold, 'mount', scopes[0]!)
-    await expect.poll(async () => (await remote<RichSnapshot>(scaffold!, 'snapshot', { mountId: active.mountId }))
+    await expect.poll(async () => (await remote<RichSnapshot>(scaffold!, 'snapshot', { sessionId, mountId: active.mountId }))
       .actions.find(action => action.actionId === adapter.submitted[1]!.actionId)).toMatchObject({ state: 'completed', lateAfterCancel: true })
     await expect.poll(() => scaffold!.ctx.agents.get(sessionId)?.status).toBe('idle')
     checks.push('Cancellation is an intent; a late known result is retained and labelled without promising rollback')
-    const repeatSnapshot = await remote<RichSnapshot>(scaffold, 'snapshot', { mountId: active.mountId })
-    const retryRequest: RichInvokeRequest = { mountId: active.mountId, actionId: `accept-${randomUUID()}` as RichInvokeRequest['actionId'], actionName: 'submit', targetActionId: null,
+    const repeatSnapshot = await remote<RichSnapshot>(scaffold, 'snapshot', { sessionId, mountId: active.mountId })
+    const retryRequest: RichInvokeRequest = { sessionId, mountId: active.mountId, actionId: `accept-${randomUUID()}` as RichInvokeRequest['actionId'], actionName: 'submit', targetActionId: null,
       expectedDataRevision: repeatSnapshot.dataRevision, values: { destination: 'retry' }, fileGrants: [],
       draft: { baseRevision: repeatSnapshot.draft.draftRevision, stateSchemaVersion: 1, fields: { destination: 'retry' }, dirty: ['destination'] } }
     settled = scaffold.whenTurnSettled(30_000)
@@ -529,8 +529,8 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     const fork = await scaffold.ctx.sessionController.fork({ sessionId })
     const forked = await remote<RichMountValue>(scaffold, 'mount', { ...scopes[0]!, sessionId: fork.sessionId })
     expect(forked.snapshot).toMatchObject({ readOnly: true, actions: [], files: [], draft: { fields: {}, dirty: [] } })
-    await expect(remote(scaffold, 'invoke', { ...retryRequest, mountId: forked.mountId })).rejects.toThrow('FORK_READ_ONLY')
-    expect(await remote(scaffold, 'reportRender', { mountId: forked.mountId, state: 'failed', message: 'Untrusted inherited error' })).toEqual({ code: 'FORK_READ_ONLY', repairQueued: false })
+    await expect(remote(scaffold, 'invoke', { ...retryRequest, sessionId: fork.sessionId, mountId: forked.mountId })).rejects.toThrow('FORK_READ_ONLY')
+    expect(await remote(scaffold, 'reportRender', { sessionId: fork.sessionId, mountId: forked.mountId, state: 'failed', message: 'Untrusted inherited error' })).toEqual({ code: 'FORK_READ_ONLY', repairQueued: false })
     expect(adapter.submitted).toHaveLength(3)
     checks.push('Real Session fork inherits its own publication prefix as read-only, without parent drafts, grants or action replay')
     await page!.getByRole('button', { name: 'New session', exact: true }).last().click()
@@ -601,8 +601,8 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     const mountedInline = await remote<RichMountValue>(scaffold, 'mount', request)
     const childInline = await scaffold.ctx.sessionController.fork({ sessionId: secondSession })
     expect((await remote<RichMountValue>(scaffold, 'mount', { ...request, sessionId: childInline.sessionId })).snapshot.readOnly).toBe(true)
-    const conditional = await remote<{ revision: string; snapshot: RichSnapshot | null }>(scaffold, 'snapshotIfChanged', { mountId: mountedInline.mountId, revision: null })
-    expect((await remote<{ snapshot: RichSnapshot | null }>(scaffold, 'snapshotIfChanged', { mountId: mountedInline.mountId, revision: conditional.revision })).snapshot).toBeNull()
+    const conditional = await remote<{ revision: string; snapshot: RichSnapshot | null }>(scaffold, 'snapshotIfChanged', { sessionId: secondSession, mountId: mountedInline.mountId, revision: null })
+    expect((await remote<{ snapshot: RichSnapshot | null }>(scaffold, 'snapshotIfChanged', { sessionId: secondSession, mountId: mountedInline.mountId, revision: conditional.revision })).snapshot).toBeNull()
     await input(1, '[name=destination]', 'stream draft preserved')
     await expect.poll(() => guest(1, 'rich.getState()?.draft.fields.destination')).toBe('stream draft preserved')
     await page!.reload(); await page!.waitForSelector('[class*="frame"]')

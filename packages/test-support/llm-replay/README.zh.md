@@ -89,6 +89,8 @@ parent agent 委托给进程内 subagent 的场景会为每个 Session 记录一
 
 ### 离线隔离
 
+省略 `offline` 时，`DSH_SNAPSHOT_REPLAY_ONLY=1` 启用带计数的离线回放。显式设置 `offline: false` 也不能绕过运行时对未计数适配器的拒绝。
+
 `offline: true` 要求显式、非空的 provider/model 路由，以及至少一次已校验的脚本调用。安装时注册有限计数器，并要求在释放前只进行回放派发。该模式跳过所有 DeepSeek 请求扩展的准备及接受步骤，即使路由为 `deepseek-official` 也是如此。`assertConsumed()` 检查确切计数器、零非回放派发及每个脚本游标。缺少输入、未声明路由、超额调用或未完整消耗均会失败，不会选择真实提供商。
 
 离线模式不会卸载无关插件。其组合必须禁用 `session-log-deepseek` 及其他联网贡献；普通回放仍保留请求扩展的接受模拟。

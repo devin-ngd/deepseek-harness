@@ -148,7 +148,7 @@ export const ChatGroupSeat = memo(function ChatGroupSeat({ groupKey, useChatGrou
     || (policy.stepGrouping === 'history' && turnLocation?.status !== 'open' && !deferCollapse))
   const reason = turnLocation?.end?.data.reason.kind
   const alwaysOpen = (presentation?.turnClosed === false && props.compactLiveProcess !== true) || presentation?.hasInterleavedInput === true
-    || reason === 'aborted' || reason === 'error'
+    || reason === 'aborted' || reason === 'interrupted' || reason === 'error'
   const spec = presentation?.spec
   const disclosureStep = presentation?.turnClosed === false ? 0 : spec?.answerStep ?? 0
   const selectOpen = useCallback((state: Readonly<ChatStoreState>) => spec !== undefined

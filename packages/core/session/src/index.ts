@@ -33,7 +33,7 @@ export { interruptedTurnClosers, ToolCallRecovery, TOOL_NOT_STARTED, TOOL_OUTCOM
 export type { SessionSurface, SurfaceFoldReplacement, SurfaceFoldResult, SessionMessageProjection, SessionMessageProjectionContext } from './surface.ts'
 export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.ts'
 export { canonicalHeader, foldRequestHeader, headerEquals } from './request-header.ts'
-export { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
+export { KNOWN_SESSION_EVENT_TYPES, MESSAGE_PROJECTION_EVENT_TYPES } from './known-event-types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -1079,6 +1079,7 @@ export class SessionStore extends Service {
       typeCtx.typert.lookups.register('session', {
         parameter: 'session',
         wire: 'sessionId',
+        resource: 'session',
         hostTypeSymbol: '@deepseek-ai/dsh-session#Session',
         wireTypeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
         resolve: sessionId => this.get(sessionId),

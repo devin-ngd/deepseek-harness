@@ -27,20 +27,21 @@ describe('rich shared validation', () => {
     expect(typedRichValuesValid({ table: { ...table, rows: [{ rowId: 'first', cells: { price: { type: 'text', value: '12' } } }] } })).toBe(false)
     expect(typedRichValuesValid({ table: { ...table, columns: [...table.columns, ...table.columns] } })).toBe(false)
   })
-  it('rejects malformed assets and session/block injection in event payloads', () => {
+  it('requires a Session identity and rejects malformed assets and extra block selectors', () => {
     expect(typedRichValuesValid({ asset: { type: 'asset', ref: { grantId: 'grant-a', assetId: 'asset-a', sha256: 'bad', sizeBytes: 3, purpose: 'agent-input' } } })).toBe(false)
     const draft = { baseRevision: 0, stateSchemaVersion: 1, fields: { input: 'last' }, dirty: ['input'] }
-    const invoke = { mountId: 'mount-a', actionId: 'action-a', actionName: 'submit', targetActionId: null, expectedDataRevision: 0, values: {}, fileGrants: [], draft }
+    const invoke = { sessionId: 'session-a', mountId: 'mount-a', actionId: 'action-a', actionName: 'submit', targetActionId: null, expectedDataRevision: 0, values: {}, fileGrants: [], draft }
     expect(parseInvokeRequest(invoke)).not.toBeNull()
-    expect(parseInvokeRequest({ ...invoke, sessionId: 'foreign' })).toBeNull()
+    expect(parseInvokeRequest({ ...invoke, sessionId: '' })).toBeNull()
+    expect(parseInvokeRequest({ ...invoke, sessionId: undefined })).toBeNull()
     expect(parseInvokeRequest({ ...invoke, actionName: 'shell' })).toBeNull()
     expect(parseInvokeRequest({ ...invoke, actionName: 'cancel', targetActionId: 'action-old' })).not.toBeNull()
     expect(parseInvokeRequest({ ...invoke, actionName: 'cancel', targetActionId: null })).toBeNull()
-    expect(parseSaveDraftRequest({ mountId: 'mount-a', draft })).not.toBeNull()
-    expect(parseSaveDraftRequest({ mountId: 'mount-a', draft: { ...draft, fields: { day: { type: 'date', value: '2026-' } } } })).not.toBeNull()
+    expect(parseSaveDraftRequest({ sessionId: 'session-a', mountId: 'mount-a', draft })).not.toBeNull()
+    expect(parseSaveDraftRequest({ sessionId: 'session-a', mountId: 'mount-a', draft: { ...draft, fields: { day: { type: 'date', value: '2026-' } } } })).not.toBeNull()
     expect(parseInvokeRequest({ ...invoke, values: { day: { type: 'date', value: '2026-' } } })).toBeNull()
-    expect(parseSaveDraftRequest({ mountId: 'mount-a', draft, blockId: 'foreign' })).toBeNull()
-    expect(parseActionRequest({ mountId: 'mount-a', actionId: 'action-a', confirmed: true })).toBeNull()
+    expect(parseSaveDraftRequest({ sessionId: 'session-a', mountId: 'mount-a', draft, blockId: 'foreign' })).toBeNull()
+    expect(parseActionRequest({ sessionId: 'session-a', mountId: 'mount-a', actionId: 'action-a', confirmed: true })).toBeNull()
   })
   it('recognizes only fenced one-field markers and canonicalizes retries deterministically', () => {
     expect(richMarkerIds('```rich-inline\n{"blockId":"block-a"}\n```')).toEqual(['block-a'])

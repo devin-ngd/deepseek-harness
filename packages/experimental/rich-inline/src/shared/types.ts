@@ -100,8 +100,8 @@ export interface RichMountRequest {
 }
 /** New lifetime identity and complete durable baseline. */
 export interface RichMountValue { readonly mountId: RichMountId; readonly snapshot: RichSnapshot }
-/** Every request after mounting addresses only the registered lifetime. */
-export interface RichMountRequestId { readonly mountId: RichMountId }
+/** Trusted Client repeats the Session for access checks; it must own the registered mount. */
+export interface RichMountRequestId { readonly sessionId: SessionId; readonly mountId: RichMountId }
 /** Conditional polling keeps unchanged code and state off the transport. */
 export interface RichPollRequest extends RichMountRequestId { readonly revision: string | null }
 /** Opaque revision covers drafts, actions, files, repair and staged code as well as confirmed data. */
@@ -115,7 +115,7 @@ export interface RichRenderRequest extends RichMountRequestId {
 export interface RichRenderReceipt { readonly code: string; readonly repairQueued: boolean }
 /** Compare-and-set draft write. */
 export interface RichSaveDraftRequest extends RichMountRequestId { readonly draft: RichDraft }
-/** Input intent addresses its registered block and carries no session selector. */
+/** Input intent addresses its registered block; generated content never supplies the Session. */
 export interface RichInvokeRequest extends RichSaveDraftRequest {
   readonly actionId: RichActionId
   readonly actionName: 'submit' | 'cancel'

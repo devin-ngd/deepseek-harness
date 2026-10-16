@@ -25,19 +25,20 @@ export function isRichJson(value: unknown, depth = 0): value is JsonValue {
 }
 
 /** Parse a strict save request before forwarding a generated content event.
- * @param value - hostile packet payload with a host-injected mount identity.
+ * @param value - hostile packet payload with trusted Client-injected Session and mount identities.
  * @returns validated request or null.
  */
 export function parseSaveDraftRequest(value: unknown): RichSaveDraftRequest | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
   const request = value as Partial<RichSaveDraftRequest>
-  if (!Object.keys(value).every(key => ['mountId', 'draft'].includes(key)) || typeof request.mountId !== 'string' || !RICH_ID.test(request.mountId)
+  if (!Object.keys(value).every(key => ['sessionId', 'mountId', 'draft'].includes(key)) || typeof request.sessionId !== 'string' || request.sessionId.length === 0
+    || typeof request.mountId !== 'string' || !RICH_ID.test(request.mountId)
     || !isRichDraft(request.draft)) return null
-  return { mountId: request.mountId, draft: request.draft }
+  return { sessionId: request.sessionId, mountId: request.mountId, draft: request.draft }
 }
 
 /** Parse supported submit or cancel intents without granting authority.
- * @param value - hostile packet payload with a host-injected mount identity.
+ * @param value - hostile packet payload with trusted Client-injected Session and mount identities.
  * @returns validated request or null.
  */
 export function parseInvokeRequest(value: unknown): RichInvokeRequest | null { return isRichInvoke(value) ? value : null }
@@ -49,23 +50,25 @@ export function parseInvokeRequest(value: unknown): RichInvokeRequest | null { r
 export function parseRenderRequest(value: unknown): RichRenderRequest | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
   const request = value as Partial<RichRenderRequest>
-  if (!Object.keys(value).every(key => ['mountId', 'state', 'message'].includes(key))
+  if (!Object.keys(value).every(key => ['sessionId', 'mountId', 'state', 'message'].includes(key))
+    || typeof request.sessionId !== 'string' || request.sessionId.length === 0
     || typeof request.mountId !== 'string' || !RICH_ID.test(request.mountId)
     || (request.state !== 'rendered' && request.state !== 'failed')
     || typeof request.message !== 'string' || request.message.length > 512) return null
-  return { mountId: request.mountId, state: request.state, message: request.message }
+  return { sessionId: request.sessionId, mountId: request.mountId, state: request.state, message: request.message }
 }
 
-/** Parse action lookup fields without accepting user-supplied session or block selectors.
+/** Parse action lookup fields against the trusted Session and mount without accepting a block selector.
  * @param value - untrusted status request.
  * @returns validated lookup or null.
  */
 export function parseActionRequest(value: unknown): RichActionRequest | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
   const request = value as Partial<RichActionRequest>
-  if (!Object.keys(value).every(key => ['mountId', 'actionId'].includes(key)) || typeof request.mountId !== 'string' || !RICH_ID.test(request.mountId)
+  if (!Object.keys(value).every(key => ['sessionId', 'mountId', 'actionId'].includes(key)) || typeof request.sessionId !== 'string' || request.sessionId.length === 0
+    || typeof request.mountId !== 'string' || !RICH_ID.test(request.mountId)
     || typeof request.actionId !== 'string' || !RICH_ID.test(request.actionId)) return null
-  return { mountId: request.mountId, actionId: request.actionId }
+  return { sessionId: request.sessionId, mountId: request.mountId, actionId: request.actionId }
 }
 
 /** Validate top-level arbitrary JSON fields.
@@ -98,7 +101,8 @@ export function isRichDraft(value: unknown): value is RichDraft {
 export function isRichInvoke(value: unknown): value is RichInvokeRequest {
   if (value === null || typeof value !== 'object') return false
   const request = value as Partial<RichInvokeRequest>
-  return Object.keys(value).every(key => ['mountId', 'actionId', 'actionName', 'targetActionId', 'expectedDataRevision', 'values', 'draft', 'fileGrants'].includes(key))
+  return Object.keys(value).every(key => ['sessionId', 'mountId', 'actionId', 'actionName', 'targetActionId', 'expectedDataRevision', 'values', 'draft', 'fileGrants'].includes(key))
+    && typeof request.sessionId === 'string' && request.sessionId.length > 0
     && typeof request.mountId === 'string' && RICH_ID.test(request.mountId)
     && typeof request.actionId === 'string' && RICH_ID.test(request.actionId)
     && (request.actionName === 'submit' && request.targetActionId === null

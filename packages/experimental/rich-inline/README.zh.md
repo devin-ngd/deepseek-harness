@@ -171,6 +171,10 @@ Agent 生成完整代码并返回发布对象或旧格式标记，插件负责�
 
 每个 Session 的权威记录原子保存草稿、原始回执和发件箱。派发使用稳定的 Session 请求 ID 与既有持久化机制。相同动作重试返回原始回执，同一 ID 改变内容会冲突。完成必须来自所属 Session 的成功工具结果和对应回合。接收、完成和外部副作用是不同事实。
 
+远程挂载操作声明其访问的 Session。挂载后的每次请求携带 `sessionId` 和 `mountId`；Session 与挂载记录的所属者不一致时，Host 拒绝请求。可信 Client 在读取 guest 数据后补入 Session，生成脚本不能选择它。非 owner 调用需要针对确切 `richInline/<method>` 动作的 Session 授权；全局权限不授予 Session 权限。Host 与 Client 一起更新，并刷新旧页面；见 [RPC 迁移说明](../../../docs/upgrade-guide/v0.2.1-alpha.4/rich-inline-session-requests/guide.zh.md)。包的 `engines.dsh` 为 `>=0.2.1-alpha.4 <0.2.1-alpha.5`；完整原生交互仍需要下文列出的 Desktop 接入。
+
+可选的 Host 服务 `ctx.richAuthoringPolicy.excludes(agent)` 在选择预设前，按确切 Agent 实例排除创作提示和工具。没有该服务时按 `activePresets` 决定创作资格；该策略不改变查看和已保存的发布内容。
+
 已挂载或存在草稿时，代码替换进入待更新。可信按钮先同步当前输入，再撤销旧 lease。兼容格式保留编辑，不兼容格式要求可信归档确认。归档草稿可在生成内容之外查看和复制。临时 DOM 状态留在本地，除非显式保存。历史查看不重放动作。Session 分支只恢复继承前缀的发布事实，不继承父会话动作、草稿或授权；继承块只读。恢复时保留当前结果中独立的渲染和数据版本；仅有单一版本的旧结果将该版本用于两个计数。
 
 每块使用新的非持久分区和独立原生进程，保留 `sandbox`、`contextIsolation`、`webSecurity`，禁用 Node。preload 只提供有界 JSON 通道，主进程绑定真实所属窗口及 lease。网络、WebRTC、导航、弹窗、下载、权限、页面文件选择和拖放均阻断。死循环块可关闭、重载，聊天仍响应。支持 DOM、内联 CSS、data 图片/媒体和单独的 `js` 字段；HTML 事件属性、外部依赖、worker 和动态求值受限。

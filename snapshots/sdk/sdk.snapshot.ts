@@ -1,13 +1,13 @@
 /**
  * Keyless snapshot coverage for the TypeScript SDK path: each scenario spawns
- * the real `dsh --profile sdk` runtime through
+ * the real `dsh --profile sdk` or `sdk-minimal` runtime through
  * `@deepseek-ai/dsh-sdk-client`, drives one turn over stdio JSON-RPC,
  * and pins the SDK `RunResult`, the complete notification stream, and the
  * persisted session logs. Replay serves recorded model
- * responses via `llm-replay` (`cordis.snapshot.yml`). Every runtime scenario
- * requires explicit offline markers and a finite replay declaration before
- * fixture imports or SDK construction; there is no ordinary SDK fallback path.
- * Live recording is refused. `DSH_SNAPSHOT=refresh` rewrites expected outputs.
+ * responses via `llm-replay` (`cordis.snapshot.yml`). The rich-inline-source
+ * and safe-external-research scenarios require explicit offline markers and a
+ * finite replay declaration before fixture imports or SDK construction.
+ * `DSH_SNAPSHOT=refresh` rewrites expected outputs.
  */
 
 import { existsSync } from 'node:fs'
@@ -68,7 +68,7 @@ import type {
   SdkPromptContentBlock,
 } from '@deepseek-ai/dsh-sdk-client'
 import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-llm-replay'
+import { deriveReplayScript, parseSessionLog } from '@deepseek-ai/dsh-llm-replay'
 import type {} from '@deepseek-ai/dsh-tool-todo'
 
 const sdkProcessObservations = vi.hoisted(() => [] as {
@@ -162,6 +162,10 @@ const SDK_OFFLINE_MARKERS: OfflineSnapshotMarkers = {
 }
 
 const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
+  'minimal-image-compaction': {
+    expectedFinalResponse: 'MINIMAL_IMAGE_OK',
+    expectedTools: { bash: ['command'], read_image: ['file_path'], working_directory: [] },
+  },
   'safe-external-research': {
     offlineReplay: { provider: 'research-replay', model: 'research-fixed', expectedCalls: 4 },
     maxTokens: 4096,
@@ -285,7 +289,7 @@ async function collectCorpus(): Promise<CorpusScenario[]> {
 const corpus = await collectCorpus()
 const scenarioByKey = new Map(corpus.map(scenario => [scenario.key, scenario]))
 const sdkScenarios = corpus
-  .filter(scenario => scenario.manifest.profile === 'sdk')
+  .filter(scenario => scenario.manifest.profile === 'sdk' || scenario.manifest.profile === 'sdk-minimal')
   .sort((left, right) => left.name.localeCompare(right.name))
 const compositionOwners = new Map<string, CorpusScenario>()
 const headerPins = new Map<string, CorpusScenario>()
@@ -426,12 +430,16 @@ async function fixtureFiles(scenario: CorpusScenario): Promise<string[]> {
   }))
 }
 
-async function hydrateReplayFixtures(scenario: CorpusScenario, cwd: string, contents: readonly string[]): Promise<string[]> {
+async function hydrateReplayFixtures(scenario: CorpusScenario, cwd: string, contents?: readonly string[]): Promise<string[]> {
   const root = join(cwd, '.replay-fixtures')
   await mkdir(root, { recursive: true })
   return Promise.all((await fixtureFiles(scenario)).map(async (source, index) => {
     const destination = join(root, basename(source))
-    const content = contents[index]
+    const content = contents === undefined
+      ? records(await readFile(source, 'utf8')).map(record => JSON.stringify(record,
+          (_key, value: unknown) => typeof value === 'string' ? value.replaceAll('{{cwd}}', cwd) : value,
+        )).join('\n') + '\n'
+      : contents[index]
     if (content === undefined) throw new Error('offline replay fixture is missing')
     await writeFile(destination, content)
     return destination
@@ -447,17 +455,21 @@ function normalizeNotifications(notifications: readonly HarnessNotification[], c
   const events = notifications
     .filter(n => n.method === 'session.event')
     .map(n => n.params.event as Record<string, unknown>)
-  const typedFeedback = events.some(event => event.type === 'feedback/message-put')
+  const typedIdentities = events.some(event => event.type === 'feedback/message-put'
+    || event.type === 'job/registered' || event.type === 'job/settled')
   const eventLog = events.map(event => JSON.stringify(event)).join('\n') + '\n'
-  const typedLog = typedFeedback
-    ? redactSessionSnapshotIds([JSON.stringify({ type: 'session', id: ctx.sessionIds[0] }) + '\n' + eventLog])[0]!.split('\n').slice(1).join('\n')
+  const typedLog = typedIdentities
+    ? redactSessionSnapshotIds([
+        JSON.stringify({ type: 'session', id: ctx.sessionIds[0] }) + '\n' + eventLog,
+        ...ctx.sessionIds.slice(1).map(id => JSON.stringify({ type: 'session', id }) + '\n'),
+      ])[0]!.split('\n').slice(1).join('\n')
     : eventLog
   const normalizedEvents = events.length === 0
     ? []
     : scrubModelRequestBulk(normalizeSessionLog(
       normalizeSessionFormatMetadata(typedLog),
       ctx,
-      typedFeedback ? { identityMode: 'preserve' } : {},
+      typedIdentities ? { identityMode: 'preserve' } : {},
     )).trimEnd().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
   let eventIndex = 0
   const records = notifications.map((notification) => {
@@ -466,10 +478,10 @@ function normalizeNotifications(notifications: readonly HarnessNotification[], c
     return { method: notification.method, params: { ...notification.params, event } }
   })
   let output = records.map(record => JSON.stringify(record)).join('\n') + '\n'
-  if (typedFeedback) {
+  if (typedIdentities) {
     for (const [index, id] of ctx.sessionIds.entries()) output = output.replaceAll(id, '{{session:' + (index + 1) + '}}')
   }
-  return normalizeStdout(output, ctx, typedFeedback ? { identityMode: 'preserve' } : {})
+  return normalizeStdout(output, ctx, typedIdentities ? { identityMode: 'preserve' } : {})
 }
 
 /** Normalize the owned-run projection. */
@@ -504,6 +516,19 @@ function notificationComparisonRecords(log: string, sourceLogs: readonly string[
     const event = JSON.parse(normalizeSessionFormatMetadata(JSON.stringify(params.event), versions[0])) as unknown
     return { ...record, params: { ...params, event } }
   })
+}
+
+function modelFromSession(log: string): { provider: string; model: string } {
+  for (const record of records(log)) {
+    if (record.type !== 'request/header') continue
+    const data = record.data as JsonObject | undefined
+    const header = data?.header as JsonObject | undefined
+    const config = header?.config as JsonObject | undefined
+    if (typeof config?.provider === 'string' && typeof config.model === 'string') {
+      return { provider: config.provider, model: config.model }
+    }
+  }
+  throw new Error('SDK snapshot session has no request model')
 }
 
 function turnActions(log: string): TurnAction[] {
@@ -606,7 +631,7 @@ function authoredPatches(scenario: CorpusScenario, replaying: boolean): string[]
   ]
 }
 
-/** One SDK-controlled recorded scenario against a fresh `dsh --profile sdk` subprocess. */
+/** One SDK-controlled recorded scenario against a fresh SDK-profile subprocess. */
 async function runScenario(scenario: CorpusScenario): Promise<{
   results: RunResult[]
   notifications: HarnessNotification[]
@@ -617,28 +642,35 @@ async function runScenario(scenario: CorpusScenario): Promise<{
   cwd: string
 }> {
   const assertions = SDK_ASSERTIONS[scenario.name] ?? {}
-  return startOfflineSnapshotEntry({ composition: scenario.manifest.composition, mode: process.env.DSH_SNAPSHOT,
-    plan: assertions.offlineReplay, markers: SDK_OFFLINE_MARKERS }, async (declaration) => {
-    const cwd = await realpath(await mkdtemp(join(tmpdir(), `sdk-snapshot-${scenario.name}-`)))
+  const execute = async (declaration?: OfflineSnapshotDeclaration) => {
+    const workspaceParent = await realpath(tmpdir())
+    let workspacePrefix = `sdk-snapshot-${scenario.name}-`
+    if (scenario.name === 'minimal-image-compaction') {
+      // mkdtemp appends six characters; JSON quoting is part of the runtime-context text.
+      const paddingLength = 192 - JSON.stringify(join(workspaceParent, `${workspacePrefix}XXXXXX`)).length
+      if (paddingLength < 0) throw new Error('compaction snapshot temporary root exceeds its fixed cwd text length')
+      workspacePrefix += '-'.repeat(paddingLength)
+    }
+    const cwd = await realpath(await mkdtemp(join(workspaceParent, workspacePrefix)))
     const dshHome = join(cwd, '.dsh')
     const sessionsRoot = join(dshHome, 'sessions')
     const fixtureContents = await Promise.all((await fixtureFiles(scenario)).map(file => readFile(file, 'utf8')))
     const primaryFixture = fixtureContents[0]
     if (primaryFixture === undefined) throw new Error(`${scenario.name}: no primary session fixture`)
-    const route = { provider: declaration.provider, model: declaration.model }
-    const offlinePlan = { ...declaration, ...route, cwd, fixtures: fixtureContents }
-    const prepared = prepareOfflineSnapshot(offlinePlan)
-    const replayFixtures = await hydrateReplayFixtures(scenario, cwd, prepared.fixtures)
+    const route = declaration ?? modelFromSession(primaryFixture)
+    const offlinePlan = declaration === undefined ? undefined : { ...declaration, ...route, cwd, fixtures: fixtureContents }
+    const prepared = offlinePlan === undefined ? undefined : prepareOfflineSnapshot(offlinePlan)
+    const replayFixtures = recording ? [] : await hydrateReplayFixtures(scenario, cwd, prepared?.fixtures)
     const patchRoot = join(cwd, '.snapshot-patches')
     await mkdir(patchRoot, { recursive: true })
     const patches = [...authoredPatches(scenario, !recording), ...assertions.patches ?? []]
-      .map((patch, index) => materializeProfilePatch(patch, cwd, 'sdk', patchRoot, index))
+      .map((patch, index) => materializeProfilePatch(patch, cwd, scenario.manifest.profile, patchRoot, index))
     const offlinePolicyPatch = join(patchRoot, 'offline-policy.yml')
-    await writeFile(offlinePolicyPatch, '- id: sdk-jsonrpc-server\n  config:\n    offlineReplay: true\n'
+    if (declaration !== undefined) await writeFile(offlinePolicyPatch, '- id: sdk-jsonrpc-server\n  config:\n    offlineReplay: true\n'
       + '- id: session-log-deepseek\n  disabled: true\n'
       + '- id: llm-deepseek\n  disabled: true\n'
       + '- id: llm-deepseek-account\n  disabled: true\n')
-    patches.push(offlinePolicyPatch)
+    if (declaration !== undefined) patches.push(offlinePolicyPatch)
     let childSessionsRoot: string | undefined
     let childEnvironment: Record<string, string> = {}
     if (assertions.dshSdkChild !== undefined) {
@@ -647,7 +679,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
       await mkdir(childHome, { recursive: true })
       childSessionsRoot = join(childHome, 'sessions')
       childEnvironment = {
-        DSH_TEST_CHILD_PATCHES: JSON.stringify([childPatch, offlinePolicyPatch]),
+        DSH_TEST_CHILD_PATCHES: JSON.stringify([childPatch, ...declaration === undefined ? [] : [offlinePolicyPatch]]),
         DSH_TEST_CHILD_HOME: childHome,
       }
     }
@@ -661,6 +693,16 @@ async function runScenario(scenario: CorpusScenario): Promise<{
       ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
     })
     const [parentFixture, ...childFixtures] = replayFixtures
+    const actions = turnActions(primaryFixture)
+    const resumeReplayFile = scenario.name === 'session-resume' && !recording
+      ? join(patchRoot, 'resume-replay.json') : undefined
+    const prepareTurnReplay = async (turn: number): Promise<void> => {
+      if (resumeReplayFile === undefined || parentFixture === undefined) return
+      const events = parseSessionLog(await readFile(parentFixture, 'utf8'))
+        .filter(event => 'turn' in event.data && event.data.turn === turn)
+      await writeFile(resumeReplayFile, JSON.stringify(deriveReplayScript(events)))
+    }
+    if (actions[0] !== undefined) await prepareTurnReplay(actions[0].turn)
     const env: Record<string, string> = {
       ...Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)) as Record<string, string>,
       DSH_SNAPSHOT: mode,
@@ -680,15 +722,16 @@ async function runScenario(scenario: CorpusScenario): Promise<{
       ...assertions.environment,
       ...childEnvironment,
       DSH_SNAPSHOT_REPLAY_ONLY: '1',
+      ...resumeReplayFile === undefined ? {} : { DSH_SNAPSHOT_OVERRIDE: resumeReplayFile },
     }
 
-    const harness = await startPreparedOfflineSnapshot(offlinePlan, async () => {
+    const constructHarness = async () => {
       const { DeepSeekHarness } = await import('@deepseek-ai/dsh-sdk-client')
       return new DeepSeekHarness({
         ...assertions.dshBin === undefined ? {} : { dshBin: assertions.dshBin },
-        ...assertions.initializeTimeoutMs === undefined ? {} : { initializeTimeoutMs: assertions.initializeTimeoutMs },
+        initializeTimeoutMs: assertions.initializeTimeoutMs ?? 110_000,
         ...assertions.maxTokens === undefined ? {} : { maxTokens: assertions.maxTokens },
-        profile: 'sdk',
+        profile: scenario.manifest.profile,
         patches,
         dshHome,
         processCwd: cwd,
@@ -698,7 +741,9 @@ async function runScenario(scenario: CorpusScenario): Promise<{
         provider: route.provider,
         model: route.model,
       })
-    })
+    }
+    const createHarness = () => offlinePlan === undefined ? constructHarness() : startPreparedOfflineSnapshot(offlinePlan, constructHarness)
+    let harness = await createHarness()
     try {
       const notifications: HarnessNotification[] = []
       const observedMethods = new Set<string>()
@@ -706,7 +751,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
       const sessionId = 'fixture-root-session'
       const liveSessions: (string | undefined)[] = [sessionId]
       await harness.start()
-      const subscription = harness.client.subscribeSessionTree(sessionId)
+      let subscription = harness.client.subscribeSessionTree(sessionId)
       const titleSubscription = assertions.waitForProviderTitle === true
         ? harness.client.subscribeSessionTree(sessionId) : undefined
       const expectedTitles = records(primaryFixture).filter(event => event.type === 'session/title'
@@ -721,8 +766,8 @@ async function runScenario(scenario: CorpusScenario): Promise<{
         liveSessions.push(child)
       }
       try {
-        const session = harness.session(sessionId)
-        for (const action of turnActions(primaryFixture)) {
+        let session = harness.session(sessionId)
+        for (const action of actions) {
           if (action.content === undefined) {
             await waitForRootEvent(
               subscription,
@@ -731,6 +776,17 @@ async function runScenario(scenario: CorpusScenario): Promise<{
               observe,
             )
             continue
+          }
+          if (scenario.name === 'session-resume' && results.length > 0) {
+            subscription.close()
+            await harness.close()
+            await prepareTurnReplay(action.turn)
+            harness = await createHarness()
+            await harness.start()
+            subscription = harness.client.subscribeSessionTree(sessionId)
+            await expect(harness.resumeSession('missing-session')).rejects.toThrow()
+            session = await harness.resumeSession(sessionId)
+            expect(session.id).toBe(sessionId)
           }
           const result = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
             onNotification: (notification) => {
@@ -824,7 +880,15 @@ async function runScenario(scenario: CorpusScenario): Promise<{
       await harness.close()
       await rm(cwd, { recursive: true, force: true })
     }
-  })
+  }
+  return guardedOfflineScenario(scenario.name)
+    ? startOfflineSnapshotEntry({ composition: scenario.manifest.composition, mode: process.env.DSH_SNAPSHOT,
+      plan: assertions.offlineReplay, markers: SDK_OFFLINE_MARKERS }, execute)
+    : execute()
+}
+
+function guardedOfflineScenario(name: string): boolean {
+  return name === 'rich-inline-source' || name === 'safe-external-research'
 }
 
 /** Order logs parent-first, children by creation time (fixture layout order). */
@@ -977,7 +1041,7 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       : it
     scenarioTest(`${mode}s ${scenario.name} through dsh --profile sdk`, async () => {
       const assertions = SDK_ASSERTIONS[scenario.name] ?? {}
-      requireOfflineSnapshotEntry({ composition: scenario.manifest.composition, mode: process.env.DSH_SNAPSHOT,
+      if (guardedOfflineScenario(scenario.name)) requireOfflineSnapshotEntry({ composition: scenario.manifest.composition, mode: process.env.DSH_SNAPSHOT,
         plan: assertions.offlineReplay, markers: SDK_OFFLINE_MARKERS })
       const scenarioDir = scenario.dir
       const retained = scenario.manifest.sessionFormat !== undefined
@@ -1007,6 +1071,38 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       )
       reconcileCatalogCreationTimes(ordered.map(log => log.content), 'validate')
       const actualContext = contextOf(ordered, cwd)
+      if (scenario.name === 'minimal-image-compaction') {
+        const events = results.flatMap(result => result.events)
+        const image = events.find(event => event.type === 'tool/result')
+        expect(image).toMatchObject({ data: { message: {
+          toolCallId: 'minimal-image-read',
+          isError: false,
+          content: expect.arrayContaining([expect.objectContaining({ type: 'image', attachment: {
+            attachmentId: expect.stringMatching(/^sha256:/u),
+            mediaType: 'image/png', bytes: 69, width: 1, height: 1, name: 'red.png',
+          } })]),
+        } } })
+        const summaries = events.filter(event => event.type === 'compaction/summary')
+        expect(summaries).toHaveLength(1)
+        expect(summaries[0]).toMatchObject({ data: {
+          llmStreamCall: true,
+          rawOutput: [{ type: 'text', text: 'Read red.png and report MINIMAL_IMAGE_OK.' }],
+        } })
+        expect(summaries[0]?.data).not.toHaveProperty('sourceCommandId')
+        expect(events.filter(event => event.type === 'compaction/end')).toHaveLength(1)
+        expect(events.filter(event => event.type === 'compaction/error')).toHaveLength(0)
+        const offloads = events.filter(event => event.type === 'image/offload')
+        expect(offloads).toHaveLength(1)
+        const imageSeq = events.find(event => event.type === 'tool/result')?.seq
+        expect(offloads[0]).toMatchObject({ data: { targets: [{ seq: imageSeq, imageIndexes: [0] }] } })
+        const subscribed = notifications.flatMap(notification => {
+          const event = notificationEvent(notification)
+          return event?.type === 'compaction/summary' ? [event] : []
+        })
+        expect(subscribed).toEqual(summaries)
+        expect(events.findLastIndex(event => event.type === 'assistant/message'))
+          .toBeGreaterThan(events.findIndex(event => event.type === 'compaction/summary'))
+      }
       expect(logs.some(log => log.content.includes('llm-replay: script exhausted')), `${scenario.name}: replay script covers every model request`).toBe(false)
       if (scenario.name === 'subagent-dsh-sdk-diagnostic' || scenario.name === 'subagent-dsh-sdk-dynamic-route') {
         const parentEvents = records(ordered[0]!.content)
@@ -1176,10 +1272,10 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       const expectedContext = contextOfContents(expectedContents)
       const actualSnapshots = normalizeSessionSnapshots(ordered.map(log => log.content), actualContext, { nativeWriterOutput: true })
       // The fixture owns the JSON-quoted Windows directory; generic text scrubbing stays unchanged.
-      const comparisonContents = scenario.name === 'rich-inline-source' && cwd.includes('\\')
+      const comparisonContents = cwd.includes('\\')
         ? expectedContents.map(content => {
             const template = JSON.stringify('Current working directory: "{{cwd}}".').slice(1, -1)
-            expect(content.split(template)).toHaveLength(3)
+            if (scenario.name === 'rich-inline-source') expect(content.split(template)).toHaveLength(3)
             const expected = JSON.stringify(`Current working directory: ${JSON.stringify(cwd)}.`).slice(1, -1)
             return content.replaceAll(template, expected)
           })

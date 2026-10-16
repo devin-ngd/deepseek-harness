@@ -16,7 +16,7 @@ const props: AssistantMarkdownProps = {
   blocks: [], streaming: false, useDisclosure, usePresentation: useDetailedPresentation,
   useGroupAction: () => useRef<HTMLDivElement>(null),
   renderSlot: (_key, _owner, options) => options?.fallback,
-  renderMessageImages: () => <div>image gallery</div>,
+  loadImage: async () => '',
   t: () => 'fallback',
 }
 const owner = { nodeKey: 'assistant-step:1:1', messageId: 'assistant-1' as MessageId }
