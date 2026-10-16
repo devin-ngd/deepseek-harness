@@ -17,6 +17,8 @@ import { assertNever, deepFreeze, snapshotJsonValue, type JsonValue } from '@dee
 import type { PromptSection, ToolProviderResult } from '@deepseek-ai/dsh-system-prompt'
 import type { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
+import { parameterSchemaSpecToJsonSchema } from './schema.ts'
+import type { ParameterSchemaSpec as ToolParameterSchemaSpec } from './schema.ts'
 // Type-only: makes `ctx.get('approval')` resolve to the ApprovalService
 // augmentation. The seam stays optional at runtime — see `serviceAsk`.
 import type {} from '@deepseek-ai/dsh-user-approval'
@@ -1289,7 +1291,11 @@ export class ToolRuntime extends Service {
   /** Project one definition onto the model-facing schema fields. */
   private schemaOf(definition: ToolDefinition, detachParameters: boolean): ToolSchema {
     const { name, description, parameters, deferLoading } = definition
-    const detached = detachParameters ? snapshotJsonValue(parameters) : parameters
+    // Project the ParameterSchemaSpec DSL into standard JSON Schema so every
+    // LLM adapter receives the wire shape the API expects (type/properties/
+    // required). An already-JSON-Schema value (type: "object") passes through.
+    const projected = projectParameters(parameters)
+    const detached = detachParameters ? snapshotJsonValue(projected) : projected
     if (detached === undefined) {
       throw new Error(`tool "${name}" parameters must be lossless JSON before schema projection`)
     }
@@ -1987,6 +1993,27 @@ function toolAbortedBeforeDispatchResult(prior?: ToolExecutionResult): ToolExecu
       info: { name: 'AbortError', code: TOOL_ABORTED_BEFORE_DISPATCH },
     },
     ...additionalContexts.length > 0 ? { additionalContexts } : {},
+  }
+}
+
+/**
+ * Project a tool's `parameters` into the JSON Schema wire shape every LLM
+ * adapter expects. Already-projected schemas (with `type: "object"` and
+ * `properties`) pass through; ParameterSchemaSpec DSL values compile through
+ * the existing {@link parameterSchemaSpecToJsonSchema}.
+ */
+function projectParameters(parameters: Record<string, unknown>): Record<string, unknown> {
+  if (parameters['type'] === 'object' && parameters['properties'] !== undefined) {
+    return parameters
+  }
+  try {
+    // oxlint-disable-next-line typescript/no-unsafe-argument -- boundary cast from untyped storage; try/catch guards invalid shapes
+    const schema = parameterSchemaSpecToJsonSchema(parameters as ToolParameterSchemaSpec)
+    return schema as unknown as Record<string, unknown>
+  } catch {
+    // Not a compilable DSL dict; pass through unchanged rather than reject —
+    // adapters that accepted the previous raw shape keep working.
+    return parameters
   }
 }
 
