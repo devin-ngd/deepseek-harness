@@ -171,7 +171,7 @@ Agent 生成完整代码并返回发布对象或旧格式标记，插件负责�
 
 每个 Session 的权威记录原子保存草稿、原始回执和发件箱。派发使用稳定的 Session 请求 ID 与既有持久化机制。相同动作重试返回原始回执，同一 ID 改变内容会冲突。完成必须来自所属 Session 的成功工具结果和对应回合。接收、完成和外部副作用是不同事实。
 
-远程挂载操作声明其访问的 Session。挂载后的每次请求携带 `sessionId` 和 `mountId`；Session 与挂载记录的所属者不一致时，Host 拒绝请求。可信 Client 在读取 guest 数据后补入 Session，生成脚本不能选择它。非 owner 调用需要针对确切 `richInline/<method>` 动作的 Session 授权；全局权限不授予 Session 权限。Host 与 Client 一起更新，并刷新旧页面；见 [RPC 迁移说明](../../../docs/upgrade-guide/v0.2.1-alpha.4/rich-inline-session-requests/guide.zh.md)。包的 `engines.dsh` 为 `>=0.2.1-alpha.4 <0.2.1-alpha.5`；完整原生交互仍需要下文列出的 Desktop 接入。
+远程挂载操作声明其访问的 Session。挂载后的每次请求携带 `sessionId` 和 `mountId`；Session 与挂载记录的所属者不一致时，Host 拒绝请求。可信 Client 在读取 guest 数据后补入 Session，生成脚本不能选择它。非 owner 调用需要针对确切 `richInline/<method>` 动作的 Session 授权；全局权限不授予 Session 权限。Host 与 Client 一起更新，并刷新旧页面；见 [RPC 迁移说明](../../../docs/upgrade-guide/v0.2.1-alpha.4/rich-inline-session-requests/guide.zh.md)。包的 `engines.dsh` 为 `>=0.2.1-rc.2 <0.2.1-rc.3`；完整原生交互仍需要下文列出的 Desktop 接入。
 
 可选的 Host 服务 `ctx.richAuthoringPolicy.excludes(agent)` 在选择预设前，按确切 Agent 实例排除创作提示和工具。没有该服务时按 `activePresets` 决定创作资格；该策略不改变查看和已保存的发布内容。
 

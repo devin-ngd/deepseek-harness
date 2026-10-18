@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-rich-inline",
   "description": "Durable message-inline HTML interactions with host-owned authorization",
-  "version": "0.2.1-alpha.4",
+  "version": "0.2.1-rc.2",
   "type": "module",
   "license": "MIT",
   "publishConfig": {
@@ -146,6 +146,6 @@
     "@deepseek-ai/dsh-util-crypto": "workspace:*"
   },
   "engines": {
-    "dsh": ">=0.2.1-alpha.4 <0.2.1-alpha.5"
+    "dsh": ">=0.2.1-rc.2 <0.2.1-rc.3"
   }
 }
