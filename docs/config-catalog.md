@@ -2038,6 +2038,12 @@ export interface PiAiCompatProfile {
   thinkingTokenBudgetField?: PiAiThinkingTokenBudgetField
   /** vLLM scheduler `priority`; lower runs earlier, and the server must enable priority scheduling. Omitted unless configured. */
   vllmPriority?: number
+  /**
+   * Whether to request ZhipuAI's `tool_stream` mode, which streams tool-call
+   * arguments as incremental deltas instead of one complete chunk. Required
+   * for correct tool-call argument parsing on GLM endpoints; `openai-completions`.
+   */
+  zaiToolStream?: boolean
   /** Whether `openai-responses` accepts `max_output_tokens`; `false` omits it. Azure and Codex ignore this shared compat field. */
   supportsMaxOutputTokens?: boolean
   /**
@@ -2099,7 +2105,7 @@ export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['
 ```ts config-catalog
 /** Plugin config: the {@link ReplayConfig} inputs, each defaulting to its `DSH_SNAPSHOT_*` env var in `apply`. */
 export interface Config {
-  /** Explicit local-only mode: finite routed counters, no request extensions or real adapters. */
+  /** Local-only mode with finite routed counters; defaults to `$DSH_SNAPSHOT_REPLAY_ONLY === '1'`. */
   offline?: boolean
   /** Override the fixture path; defaults to `$DSH_SNAPSHOT_FILE`. */
   file?: string
@@ -4266,7 +4272,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-tools`
 
 - `inject`: `systemPrompt`
-- `source`: [`packages/core/tools/src/index.ts:675`](../packages/core/tools/src/index.ts)
+- `source`: [`packages/core/tools/src/index.ts:677`](../packages/core/tools/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: how the registered tools are presented to the model. */
