@@ -1,0 +1,11 @@
+{
+  "profileId": "normal-controls",
+  "preset": "harmony-mobile-link-test",
+  "fixedRequests": 3,
+  "duplicateTaskDispatches": 1,
+  "richState": "completed",
+  "values": { "title": "Mobile checked", "count": "7" },
+  "unrelatedProviderDispatches": 2,
+  "globalDefaultSaved": 0,
+  "globalOfflinePolicyChanged": 0
+}

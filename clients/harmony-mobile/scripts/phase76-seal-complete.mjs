@@ -1,0 +1,39 @@
+/** Seal a new full review without changing the prior HAP/archives or invoking any live operation. */
+import assert from 'node:assert/strict'
+import { readFile, writeFile, copyFile, cp, mkdir, readdir } from 'node:fs/promises'
+import { join, resolve, dirname } from 'node:path'
+import { createHash } from 'node:crypto'
+import { sealZip } from './phase75-zip.mjs'
+const json = async file => JSON.parse(await readFile(file, 'utf8')), hash = bytes => createHash('sha256').update(bytes).digest('hex'), stage = resolve('.build/phase76-complete-review-candidate'), prior = resolve('.build/phase76.1-control-review-candidate'), plan = await json('operations/phase76/plan.json')
+const integration = await json('evidence/phase76-integration-latest.json'), desktop = await json('evidence/phase76-desktop-closure.json'), sdk = await json('evidence/phase76-complete-sdk-check.json'), detached = await json('evidence/phase76-detached-profile.json')
+assert.equal(integration.code, 0); assert.equal(integration.tests, 82); assert.equal(integration.failed, 0)
+for (const [file, count] of [['evidence/phase76-operations-tests.log', 47], ['evidence/phase76-complete-control-tests.log', 21], ['evidence/phase76-closed-control.log', 12]]) { const text = await readFile(file, 'utf8'); assert.match(text, new RegExp('pass ' + count + '\\b')); assert.match(text, /fail 0/) }
+assert.match(await readFile('evidence/phase76-complete-strict.log', 'utf8'), /180 modules/); assert.match(await readFile('evidence/phase76-complete-build-check.log', 'utf8'), /2 passed, 0 failed/)
+assert.equal(sdk.nativeInputsUnchanged && sdk.lintPassed && detached.result.richCompleted && detached.result.cancellation, true)
+assert.equal(detached.result.replayCalls, 4); assert.equal(detached.result.realModels + detached.result.uploads, 0); assert.equal(desktop.manifestSha256, plan.local.desktopInventorySha256)
+assert.equal(hash(await readFile(plan.native.hap)), plan.native.sha256)
+const inventory = await json(join(prior, 'files.sha256.json')); for (const row of inventory) assert.equal(hash(await readFile(join(prior, row.file))), row.sha256)
+const priorRecord = await json('evidence/phase76.1-candidate.json'); assert.equal(hash(await readFile(priorRecord.archive.path)), priorRecord.archive.sha256)
+await mkdir(stage)
+for (const file of ['native', 'native-project', 'source-before']) await cp(join(prior, file), join(stage, file), { recursive: true, force: false, errorOnExist: true })
+await copyFile(join(prior, 'rollback.json'), join(stage, 'control-rollback.json'))
+await cp(plan.local.desktop, join(stage, 'desktop'), { recursive: true, force: false, errorOnExist: true })
+const sources = ['package.json', 'README.md', 'README.zh.md', 'README.i18n.yaml', 'replay-profile/field.enabled.example.json', 'replay-profile/FIELD.md', 'replay-profile/src/field.ts', 'replay-profile/src/field-config.ts', 'replay-profile/src/connect-readiness.ts', 'replay-profile/src/grant-deadline.ts', 'desktop-plugin/src/relay-lifecycle.ts', 'src/relay-control-client.ts', 'src/paired-relay.ts', 'src/native-paired-bridge.ts', 'tests/phase76-operations.test.mjs', 'tests/phase76-control.test.mjs', 'tests/phase76-diagnostic-lines.test.mjs', 'tests/fixtures/phase76-control-challenge.json', 'integration/phase76-epoch.spec.ts', 'integration/phase76-control.vitest.config.mjs', 'scripts/phase75-zip.mjs', 'docs/phase76-complete-candidate.md', 'docs/phase76-control-diagnosis.md', 'docs/acceptance.md', 'docs/tasks.md']
+for (const file of await readdir('scripts')) if (file.startsWith('phase76-') && file.endsWith('.mjs')) sources.push('scripts/' + file)
+for (const file of await readdir('operations/phase76')) if (file !== 'plan.json') sources.push('operations/phase76/' + file)
+for (const file of sources) { const target = join(stage, 'source-overlay', file); await mkdir(dirname(target), { recursive: true }); await copyFile(file, target) }
+const draft = structuredClone(plan); draft.native.zip = null; draft.native.zipSha256 = null; draft.assemblyReady = false
+await writeFile(join(stage, 'operator-plan.draft.json'), JSON.stringify(draft, null, 2) + '\n', { flag: 'wx' })
+const evidence = ['evidence/phase76-desktop-closure.json', 'evidence/phase76-complete-sdk-check.json', 'evidence/phase76-detached-profile.json', 'evidence/phase76-operations-tests.log', 'evidence/phase76-complete-control-tests.log', 'evidence/phase76-closed-control.log', 'evidence/phase76-integration-latest.json', integration.log, integration.report, 'evidence/phase76-complete-strict.log', 'evidence/phase76-complete-lint.log', 'evidence/phase76-complete-build-check.log', 'evidence/phase76-core-build.json', 'evidence/phase76-diagnosis.json', 'evidence/phase75-field-closeout.json', sdk.nativeBuildEvidence, sdk.nativeBuildEvidence.replace(/json$/, 'log')]
+for (const file of evidence) { const target = join(stage, file); await mkdir(dirname(target), { recursive: true }); await copyFile(file, target) }
+const oldDesktop = resolve('.build/phase75.1-desktop-candidate'), changes = []
+for (const row of desktop.changes) { const target = join(stage, 'source-before/desktop', row.file); await mkdir(dirname(target), { recursive: true }); await copyFile(join(oldDesktop, row.file), target); changes.push({ ...row, preimage: 'source-before/desktop/' + row.file }) }
+await copyFile(join(oldDesktop, 'files.sha256.json'), join(stage, 'source-before/desktop/files.sha256.json'))
+const core = { at: new Date().toISOString(), status: 'COMPLETE_OFFLINE_REVIEW_CANDIDATE', native: { path: plan.native.hap, bytes: plan.native.bytes, sha256: plan.native.sha256, buildEvidence: sdk.nativeBuildEvidence, reusedUnchanged: true, signed: false, installed: false }, desktop: { files: desktop.files, manifestSha256: desktop.manifestSha256, changes, originalBindingOwnersRetained: true }, relay: { existingCode: plan.relay.code, unchangedFiles: 40, newRunOnlyWhenApproved: plan.relay.run, sixPublicFieldsOnly: true }, checks: { operator: 47, closedControl: 12, controlHttpFifo: 21, memoryHistory: 82, strictModules: 180, rootBuildCheck: true, lintWarnings: 0, detachedFourResponses: true }, approval: { approved: false, required: plan.confirmationScopes, noOldApprovalReuse: true }, phoneIo: false, remoteIo: false, realGrantCreated: false, realModels: 0, physicalAcceptance: false, rollback: 'Preserve both older archives, signed75, original desktop and all epochs/data. Prefer the intact prior directory. Review code preimage hashes before any code restoration; never restore credentials or public generations.' }
+await writeFile(join(stage, 'candidate-core.json'), JSON.stringify(core, null, 2) + '\n', { flag: 'wx' })
+await writeFile(join(stage, 'README.md'), '# Complete phase76 offline review\n\nRead candidate-core.json and source-overlay/docs/phase76-complete-candidate.md. The original unsigned HAP, native project, updated closed desktop, source tests, evidence and code preimages are included. The operator plan is a non-executable draft to avoid a self-referential archive hash; use the separately sealed complete-operation-plan, which pins this ZIP. Both packages remain unapproved. No phone, SSH, signing, installation or grant operation occurred. Native/ArkWeb and physical task acceptance remain pending.\n', { flag: 'wx' })
+const sealed = await sealZip(stage, 'D:/Temp/dsh-harmony-mobile-phase76-complete-review-candidate.zip'), result = { ...core, ...sealed }
+await writeFile('evidence/phase76-complete-review.json', JSON.stringify(result, null, 2) + '\n', { flag: 'wx' })
+plan.native.zip = sealed.archive.path; plan.native.zipSha256 = sealed.archive.sha256; plan.assemblyReady = true
+await writeFile('operations/phase76/plan.json', JSON.stringify(plan, null, 2) + '\n')
+console.log(JSON.stringify({ archive: sealed.archive, files: sealed.filesVerified, manifestSha256: sealed.manifestSha256, unsignedHap: core.native, approved: false }))

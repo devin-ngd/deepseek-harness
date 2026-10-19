@@ -1,0 +1,57 @@
+# Proposal only. New DNS/TLS/files/reload need explicit approval; no existing private key is read or copied.
+# These two zones belong to the existing http context via conf.d, once.
+limit_conn_zone $binary_remote_addr zone=harmony_relay_conn:1m;
+limit_req_zone $binary_remote_addr zone=harmony_relay_upgrade:1m rate=5r/m;
+server {
+    listen 80;
+    listen [::]:80;
+    server_name dsh.devinho.me;
+    access_log off;
+    error_log /dev/null crit;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/harmony-relay-acme;
+        try_files $uri =404;
+    }
+    location / { return 404; }
+}
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name dsh.devinho.me;
+    ssl_certificate /etc/letsencrypt/live/dsh.devinho.me/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dsh.devinho.me/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log off;
+    error_log /dev/null crit;
+    client_header_timeout 10s;
+    client_body_timeout 10s;
+    limit_conn harmony_relay_conn 4;
+    location = /harmony/relay/control/v1 {
+        limit_req zone=harmony_relay_upgrade burst=2 nodelay;
+        proxy_pass http://127.0.0.1:17846;
+        proxy_http_version 1.1;
+        proxy_set_header Host dsh.devinho.me;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-DSH-Relay-Pair $http_x_dsh_relay_pair;
+        proxy_set_header X-DSH-Relay-Role $http_x_dsh_relay_role;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 10s;
+        proxy_buffering off;
+    }
+    location = /harmony/relay/v1 {
+        limit_req zone=harmony_relay_upgrade burst=2 nodelay;
+        proxy_pass http://127.0.0.1:17846;
+        proxy_http_version 1.1;
+        proxy_set_header Host dsh.devinho.me;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-DSH-Relay-Room $http_x_dsh_relay_room;
+        proxy_set_header X-DSH-Relay-Role $http_x_dsh_relay_role;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 10s;
+        proxy_buffering off;
+    }
+    location / { return 404; }
+}

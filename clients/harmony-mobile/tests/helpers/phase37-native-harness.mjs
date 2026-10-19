@@ -1,0 +1,14 @@
+/** Real new ETS classes plus fixed public scalar6 SDK substitute. No real key creation, hardware, listener or platform network is accessed. */
+import { NativeDeviceKeys, NativeDeviceKeyPolicy, NativeCryptoPrimitives, NativeExistingIdentitySigner, NativePairingPresenter, PairingView, state, reset, huks } from '../../.build/phase37-native.js'
+export async function nativePairingHarness(clock, scheduler) {
+  const authority = {}, crypto = new NativeCryptoPrimitives(16384)
+  reset(); state.aliases.add('phase37-public-fixture')
+  const keys = new NativeDeviceKeys(new NativeDeviceKeyPolicy(authority, 'phase37-public-fixture', huks.HuksAuthStorageLevel.HUKS_AUTH_STORAGE_LEVEL_ECE, 16384)), identity = new NativeExistingIdentitySigner(authority, keys, crypto)
+  const publicBytes = await identity.initializeNative(authority), encode = bytes => Buffer.from(bytes).toString('base64url'), decode = value => new Uint8Array(Buffer.from(value, 'base64url'))
+  const signer = { publicSpki: encode(publicBytes), sign: bytes => identity.signNative(authority, bytes) }, decisions = []
+  let current
+  const presenter = new NativePairingPresenter(authority, clock, scheduler, view => { current = view; decisions.push({ desktopFingerprint: view.desktopFingerprint, phoneFingerprint: view.phoneFingerprint, desktopId: view.desktopId, profileId: view.profileId, deviceId: view.deviceId, sessionIds: view.sessionIds, operations: view.operations, expiresAt: view.expiresAt, grantTtlMs: view.grantTtlMs }) })
+  const confirmation = { async request(offer) { const view = new PairingView(offer.desktopFingerprint, offer.phoneFingerprint, offer.ticket.desktopId, offer.ticket.profileId, offer.ticket.deviceId, offer.sessions.join(', '), offer.operations.join(', '), offer.ticket.expiresAt, offer.grantTtlMs); return await presenter.requestNative(authority, view) === view ? offer : undefined }, close() { presenter.closeNative(authority) } }
+  const primitives = { encode, decode, publicKey: value => crypto.validatePublicSpki(decode(value)), credentialId: async value => 'p256-sha256-' + Buffer.from(await crypto.hash(decode(value))).toString('hex'), hash: bytes => crypto.hash(bytes), hkdf: (secret, salt, info, length) => crypto.hkdf(secret, salt, info, length), verify: (key, message, signature) => crypto.verifyP256(decode(key), message, signature), encrypt: (key, nonce, aad, bytes) => crypto.encrypt(key, nonce, aad, bytes), decrypt: (key, nonce, aad, bytes) => crypto.decrypt(key, nonce, aad, bytes) }
+  return { signer, confirmation, primitives, decisions, decide(compared, allow) { if (current === undefined) throw new Error('no native offer'); presenter.decideNative(authority, current, compared, allow) }, close() { presenter.closeNative(authority); identity.closeNative(authority) }, generatedKeys() { return state.calls.filter(value => value === 'create').length }, signatures() { return state.calls.filter(value => value === 'finish').length } }
+}

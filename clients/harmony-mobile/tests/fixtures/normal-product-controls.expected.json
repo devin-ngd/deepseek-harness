@@ -1,0 +1,16 @@
+{
+  "command": {
+    "name": "harmony-pair",
+    "profileId": "controls-profile",
+    "sessions": ["controls-normal-session"],
+    "modelTurns": 0,
+    "providerRemovedOnStop": true
+  },
+  "scopes": {
+    "before": ["old-test-profile / old-test-session"],
+    "after": ["old-test-profile / old-test-session", "controls-profile / controls-normal-session"],
+    "selectedSavedScopeConnects": false,
+    "legacyHistoryBytesSame": true,
+    "revokedScopeDenied": true
+  }
+}

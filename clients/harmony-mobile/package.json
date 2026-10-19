@@ -1,0 +1,27 @@
+{
+  "name": "@local/dsh-harmony-client-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "check:integration": "node scripts/check.mjs --integration",
+    "check:connection-candidate": "node scripts/check-connection-candidate.mjs",
+    "check:connection-deployment": "node scripts/connection-deployment.mjs",
+    "test:connection-candidate": "node --test tests/connection-candidate.test.mjs",
+    "test:connection-deployment": "node --test tests/connection-deployment.test.mjs",
+    "test:integration": "node scripts/check.mjs --integration && node scripts/integration-check.mjs",
+    "test:product-entry": "node scripts/test-normal-product.mjs",
+    "build:product-entry": "node scripts/build-normal-product.mjs",
+    "test:network": "node scripts/check.mjs --integration && node scripts/network-check.mjs",
+    "test:phase5": "node scripts/check.mjs --integration && node scripts/assets.mjs && node scripts/phase5-assets.mjs && node --test tests/domain.test.mjs tests/wire.test.mjs tests/guest-runtime.test.mjs tests/native-source.test.mjs && node scripts/phase5-check.mjs && node scripts/phase5-native-preview.mjs",
+    "test": "node scripts/regression.mjs",
+    "test:unit": "node scripts/check.mjs && node scripts/assets.mjs && node --test tests/*.test.mjs",
+    "assets": "node scripts/check.mjs && node scripts/assets.mjs",
+    "test:link": "node scripts/check.mjs && node --test tests/link.test.mjs",
+    "test:control": "node scripts/phase76-control-build.mjs && node scripts/product-native-substitute.mjs && node scripts/phase73-port-build.mjs && node --test tests/phase76-control.test.mjs tests/phase76-diagnostic-lines.test.mjs tests/phase73-http-refusal.test.mjs tests/phase73-port-order.test.mjs && node scripts/phase76-integration.mjs",
+    "test:phase76-operations": "node scripts/phase76-build-operations.mjs && node scripts/phase76-control-build.mjs && node --test tests/phase76-operations.test.mjs && node scripts/phase76-closed-control-test.mjs",
+    "demo:link": "node scripts/check.mjs && node scripts/demo-link.mjs",
+    "test:browser": "node scripts/check.mjs && node scripts/assets.mjs && node scripts/browser-check.mjs"
+  }
+}

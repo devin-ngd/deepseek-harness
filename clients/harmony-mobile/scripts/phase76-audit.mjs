@@ -1,0 +1,27 @@
+/** Reconstruct only recorded phase75 facts and compare sealed native inputs; no phone, SSH, credential or grant owner is opened. */
+import assert from 'node:assert/strict'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { createHash } from 'node:crypto'
+const hash = bytes => createHash('sha256').update(bytes).digest('hex'), json = async file => JSON.parse(await readFile(file, 'utf8')), run = 'D:/Temp/dsh-harmony-phase75-operation', closeout = await json('evidence/phase75-field-closeout.json')
+assert.equal(closeout.grant.finalEpoch, 8); assert.equal(closeout.grant.active, 0)
+const receipts = [['relay-activated', 'relay-activate-1792225744392.json'], ['final-public-record-entered', 'device-input-pair-1792225800483.json'], ['final-record-save-requested', 'device-confirm-pair-1792225875971.json'], ['phone-connect-requested', 'device-connect-1792225899535.json'], ['phone-diagnostic-collected', 'exercise-connection-log-receipt-1792225963968.json']]
+const timeline = []
+for (const [stage, name] of receipts) { const bytes = await readFile(join(run, name)), at = Number(/-(\d+)\.json$/.exec(name)[1]); timeline.push({ stage, hostReceiptAt: new Date(at).toISOString(), hostReceiptMs: at, exactRemoteOrSdkEventTime: false, file: join(run, name), sha256: hash(bytes) }) }
+const comparisons = []
+for (const file of ['native/NativeRelaySocket.ets', 'native/NativeDeviceKeys.ets', 'native/NativeExistingIdentitySigner.ets', 'native/NativePairedConnectionOwner.ets', 'native/NativeTransientAgreement.ets', 'paired/PairedCore.js', 'product/NativeProductOwner.ets']) {
+  const hashes = {}
+  for (const [stage, directory] of [['phase72', 'native-renewal-candidate-project'], ['phase73_1', 'native-data-channel-order-project'], ['phase75', 'native-history-candidate-project']]) hashes[stage] = hash(await readFile(join('.build', directory, 'entry/src/main/ets', file)))
+  comparisons.push({ file, hashes, unchanged73_1To75: hashes.phase73_1 === hashes.phase75 })
+}
+const shared = []
+for (const file of ['src/relay-control-client.ts', 'src/native-protocol-shims.mjs', 'src/native-paired-bridge.ts']) { const reports = await Promise.all(['evidence/phase73-core-build.json', 'evidence/phase75-core-build.json'].map(json)), values = reports.map(report => report.reports.find(row => row.entry === 'src/native-paired-bridge.ts').sourceHashes[file]); shared.push({ file, phase73: values[0], phase75: values[1], unchanged: values[0] === values[1] }) }
+const sdkRoot = 'D:/Program Files/HuaWei/DevEco Studio/sdk/default/openharmony/ets/api', official = []
+for (const file of ['@ohos.net.webSocket.d.ts', '@ohos.base.d.ts']) official.push({ path: join(sdkRoot, file), sha256: hash(await readFile(join(sdkRoot, file))) })
+const result = { at: new Date().toISOString(), scope: 'offline-recorded-evidence-and-source-only', timeline, relayActivationToPhoneConnectMs: timeline[3].hostReceiptMs - timeline[0].hostReceiptMs,
+  strictControlTimeline: { firstMessageCallback: 'recorded, before error/data validation; payload and exact time absent', challengeDecoded: 'unrecorded', challengeFieldsAdmitted: 'unrecorded', identityCredentialVerified: 'unrecorded', controlHuksSignStarted: 'unrecorded', controlHuksSignReturned: 'unrecorded', controlProofQueued: 'unrecorded', controlProofNativeSendReturned: 'unrecorded', relayProofValidated: 'unrecorded; no relay diagnostics were collected', roomReceived: 'unrecorded; no data-dial evidence', authenticationDeadline: 'recorded repeatedly in native stage order', desktopDialAndBudgetEnd: 'unrecorded; no exact desktop exhaustion time can be asserted' },
+  comparison: { phase72: 'control led to data HTTP upgrade/first-frame; later data failed', phase74: 'new enrollment signed, but pair upload denied and control not activated', nativeInputs: comparisons, sharedInputs: shared },
+  demonstrated: { orderingDefect: 'Original control/broker/supervisor with8 attempts,10s challenges,500ms retries exhausts desktop while phone preparation takes155143ms; a correct late phone proof gets no room. Preparing phone first succeeds on generation1 under the same limits.', nativeMessageErrorDefect: 'Official AsyncCallback data is unavailable on error. Sealed NativeRelaySocket dereferences data.byteLength first and fails the same error-without-data fixture; repaired source closes normally.', uniquePhysicalRootCauseClaimed: false, ecdhFailureClaimed: false },
+  historyAndSigning: { historyVerificationBeforeSocketCreation: true, historySocketDeadlineConsumptionClaimed: false, possibleCoordinationDelay: true, huksParametersChanged: false, fixturePurpose: 4, fixtureAlgorithm: 'ECC256/SHA256', fixtureStorage: 'ECE', fixedSignatureVerifiedByOriginalBroker: true, physicalControlSignDurationKnown: false },
+  officialSdk: official, preservedCloseoutSha256: hash(await readFile('evidence/phase75-field-closeout.json')), lastRecordedEpoch: 8, freshGrantReadPerformed: false, phoneIo: false, ssh: false, installation: false, upload: false, signing: false, realGrantCreated: false }
+await writeFile('evidence/phase76-diagnosis.json', JSON.stringify(result, null, 2) + '\n', { flag: 'wx' }); console.log(JSON.stringify({ observedGapMs: result.relayActivationToPhoneConnectMs, unchangedControlFiles: comparisons.filter(row => row.unchanged73_1To75).length, totalCompared: comparisons.length, uniquePhysicalRootCauseClaimed: false, evidence: 'evidence/phase76-diagnosis.json' }))

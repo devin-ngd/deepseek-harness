@@ -1,0 +1,7 @@
+/** Add locale-owned product strings without changing old resource values. */
+import { readFile, writeFile } from 'node:fs/promises'
+const file = 'harmony/entry/src/main/resources/base/element/string.json', value = JSON.parse(await readFile(file, 'utf8'))
+const strings = { product_unpaired: '未配对', product_paired: '已配对', product_revoked: '本机访问已撤销', product_blocked: '配对配置不可用', product_connected: '已连接电脑', product_connecting: '正在连接或恢复', product_connection_stopped: "连接已停止。请退出后检查配对、网络和授权状态。", product_disconnected: '未连接', product_disabled: '当前安装未启用远程连接。完成本地授权与设备验证后才可启用。', product_operation_failed: '操作未确认完成。请查看状态；任务可以查询原回执，避免重复发送。', product_local_offer: '使用由电脑本地确认的公开配对配置，并逐项比较双方公钥指纹。不要输入账号密钥。', product_public_offer: '公开配对配置', product_compared: '我已在手机与电脑比较双方公钥指纹，并确认会话和操作范围', product_confirm_pair: '保存本地配对', product_connect: '连接电脑', product_reconcile: '查询原回执', product_exit: '断开并退出', product_all_sessions: '全部授权会话', product_revoke: '撤销本机访问', product_revoke_notice: '这会立即关闭本机连接并保存撤销记录。已交给电脑的任务继续运行；电脑侧撤销需由电脑本地确认。', product_confirm_revoke: '确认撤销', product_keep_pair: '保留配对' }
+Object.assign(strings, {"product_successor_notice":"旧授权已过期。续接需要新签名授权和重新确认；原身份与历史记录会保留。","product_grant_summary":"授权纪元 %d；到期 %s","product_pair_identifier":"中继配对：%s"})
+for (const [name, text] of Object.entries(strings)) { const existing = value.string.find(row => row.name === name); if (existing) existing.value = text; else value.string.push({ name, value: text }) }
+await writeFile(file, JSON.stringify(value, null, 2) + '\n')

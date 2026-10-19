@@ -1,0 +1,66 @@
+{
+  "schema": "dsh-native-offline-policy/1",
+  "host": {
+    "port": {
+      "generation": 1,
+      "maxBytes": 2097152,
+      "maxPending": 8,
+      "timeoutMs": 10000
+    },
+    "domain": {
+      "maxBytes": 1048576,
+      "maxEvents": 256,
+      "maxBlocks": 256,
+      "maxText": 262144,
+      "maxRichBlocks": 8
+    },
+    "read": {
+      "maxSourceItems": 256,
+      "maxPageItems": 64,
+      "maxSnapshots": 8,
+      "maxSnapshotBytes": 1048576,
+      "snapshotTtlMs": 60000,
+      "maxHistoryEvents": 256,
+      "maxImageBytes": 1048576,
+      "maxImageDimension": 4096,
+      "maxImagePixels": 16777216,
+      "maxImageHandles": 4,
+      "imageTtlMs": 60000,
+      "maxImageChunkBytes": 65536,
+      "maxInFlight": 8
+    },
+    "maxRows": 20,
+    "maxFrames": 256,
+    "chunkBytes": 1024,
+    "maxIntents": 128,
+    "maxMounts": 4,
+    "cacheAgeMs": 86400000,
+    "ttlMs": 60000,
+    "commandClock": {
+      "maxPeerSkewMs": 5000,
+      "maxWallDriftMs": 1000
+    },
+    "follow": {
+      "mode": "once"
+    }
+  },
+  "nativeHttp": {
+    "enabled": false,
+    "url": "",
+    "maxChunkBytes": 65536,
+    "maxTotalBytes": 1048576,
+    "timeoutMs": 10000
+  },
+  "nativeHttpIo": {
+    "enabled": false,
+    "baseUrl": "",
+    "maxChunkBytes": 65536,
+    "maxTotalBytes": 1048576,
+    "maxQueuedBytes": 262144,
+    "maxChunks": 256,
+    "maxStreams": 4,
+    "timeoutMs": 8000
+  },
+  "maxResourceBytes": 2097152,
+  "maxRuntimeBytes": 3145728
+}

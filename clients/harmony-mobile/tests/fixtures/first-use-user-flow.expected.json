@@ -1,0 +1,22 @@
+{
+  "replayCalls": 4,
+  "uploads": 0,
+  "promptCalls": 3,
+  "originalTaskDispatches": 1,
+  "listedSessions": 1,
+  "nativeStreamObserved": true,
+  "nativeControlsReplaced": true,
+  "desktopControlsReplaced": true,
+  "richCompletedObserved": true,
+  "localTrustAfterReopen": "revoked",
+  "localConfirmationCount": 1,
+  "guestHostDenied": true,
+  "formWidths": [
+    360,
+    480
+  ],
+  "socketsClosed": true,
+  "publicFileHandles": 0,
+  "nativeIdentityCreated": true,
+  "nativeIdentityRemoved": false
+}

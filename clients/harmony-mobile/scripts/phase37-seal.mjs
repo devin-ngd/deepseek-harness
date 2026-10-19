@@ -1,0 +1,47 @@
+/** Preserve old generations and freeze this source-only pairing checkpoint. No installed-profile, user-session, credential or remote access. */
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
+import { resolve, join } from 'node:path'
+import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
+import assert from 'node:assert/strict'
+const hash = bytes => createHash('sha256').update(bytes).digest('hex'), json = async file => JSON.parse(await readFile(file, 'utf8'))
+const save = async (file, value) => writeFile(file, JSON.stringify(value, null, 2) + '\n', { flag: 'wx' })
+const meta = async path => { const bytes = await readFile(path); return { path, bytes: bytes.length, sha256: hash(bytes) } }
+const changed = ['README.md', 'docs/acceptance.md', 'docs/tasks.md', 'integration/p256-enrollment.ts', 'scripts/build-native.mjs', 'harmony/entry/src/main/ets/pages/PairingPreview.ets']
+const added = ['docs/phase37-first-pairing.md', 'src/pairing-protocol.ts', 'src/phone-pairing.ts', 'integration/short-room.ts', 'integration/offline-first-pairing.ts', 'integration/phase37-pairing.spec.ts', 'integration/phase37.vitest.config.mjs', 'harmony/entry/src/main/ets/native/NativePairingPresenter.ets', 'harmony/entry/src/main/ets/native/NativeExistingIdentitySigner.ets', 'tests/helpers/phase37-native-sdk.mjs', 'tests/helpers/phase37-native-harness.mjs', 'tests/helpers/phase37-native-harness.d.mts', 'scripts/phase37-native-fixture.mjs', 'scripts/phase37-native-project.mjs', 'scripts/phase37-test.mjs', 'scripts/phase37-check.mjs', 'scripts/phase37-evidence.mjs', 'scripts/phase37-seal.mjs', 'scripts/archive-phase37.ps1']
+const archive = 'D:/Temp/dsh-harmony-client-20261013-source-v37-delta.zip', hap = 'D:/Temp/dsh-harmony-mobile-20261013-v37-pairing-flow-compile-only-unsigned.hap'
+if (process.argv[2] === 'prepare') {
+  const readme = await readFile('README.md', 'utf8'), paragraphs = readme.split(/\r?\n\r?\n/)
+  if (!paragraphs[1].includes('Phase37')) { paragraphs[1] = '最新进展为 [Phase37：首次配对合成闭环与实装准备](docs/phase37-first-pairing.md)。14条新增合成用例、旧 relay/crypto 回归和 API26 unsigned 编译通过；dhome 只读 inventory 完成。未部署、签名、安装或进行真实配对。'; await writeFile('README.md', paragraphs.join('\n\n').trimEnd() + '\n') }
+  for (const [path, section] of [
+    ['docs/acceptance.md', '# Phase37 验收分层\n\n首次配对完整合成流程通过41条测试（14条新增、27条旧 relay/crypto 回归），103模块 strict TS，独立 API26 CompileArkTS 与 unsigned/permission-free HAP；一条会写旧封存 evidence 的用例有意排除。原生确认/已有 key signer 的实际 ETS 使用 SDK 替身，完整手机 owner 仍为纯 TS 离线运行；不等同 HUKS、TLS、ArkWeb、真机或实际桌面派发。dhome 只读检查已批准并完成，没有部署。当前层级、官方签名字段与对应实装阻塞见 [Phase37](phase37-first-pairing.md)。'],
+    ['docs/tasks.md', '# Phase37 首次配对收敛\n\n- [x] 共享 ticket/proof 字节与只读 grant parser，原生确认 presenter/已有 identity signer，短期 room glue。\n- [x] 完整 synthetic first-pairing、最小 Session grant、拒绝/过期/撤回/重放/撤销失败清理；独立只读安全复核。\n- [x] 41条离线回归、103模块 strict TS、API26 permission-free unsigned compile与本次源码/回退封存。\n- [x] 经追加批准完成 dhome 相关 metadata 的3次只读 SSH，记录实际 nginx/端口/Node；没有部署。\n- [ ] 对 [具体实装步骤](phase37-first-pairing.md) 获取 runtime/profile/安装、DNS/TLS/nginx/start 和手机签名/设备信任/安装审批。\n- [ ] 取得 HUKS/native TLS/ArkWeb 真机证据后再激活 short room 与 synthetic read-only pairing；真实模型、长期凭据和写操作仍不自动启用。']
+  ]) { const text = await readFile(path, 'utf8'); if (!text.includes('# Phase37')) await writeFile(path, text.trimEnd() + '\n\n' + section + '\n') }
+  const report = await json('evidence/native-build/2026-10-13T10-50-42-370Z.json'); assert.equal(report.exitCode, 0); assert.equal(report.sourceArkTsCompiled, true); assert.equal(report.inputsUnchangedDuringBuild, true); assert.deepEqual(report.signingConfigs, []); assert.deepEqual(report.requestPermissions, [])
+  await writeFile(hap, await readFile(report.artifact.path), { flag: 'wx' }); assert.equal((await meta(hap)).sha256, report.artifact.sha256)
+  await save('evidence/phase37-hap.json', { ...await meta(hap), buildReport: 'evidence/native-build/2026-10-13T10-50-42-370Z.json', bundle: 'local.dsh.mobile.pairingflowcheck', unsigned: true, permissionFree: true, compileOnly: true, installed: false, executed: false, fullPhonePairingOwnerCompiledInHap: false, arkWebValidated: false, huksExecuted: false })
+  const tests = await json('evidence/phase37-vitest.json'); assert.equal(tests.numFailedTests, 0); assert.equal(tests.numPassedTests, 41); assert.equal(tests.numPendingTests, 1)
+  assert.match(await readFile('evidence/phase37-types.log', 'utf8'), /103 modules/)
+  const old = await json('evidence/phase36-final-seal.json'), preserved = []
+  for (const item of [old.sourceArchive, old.hap, old.relay]) { const current = await meta(item.path); assert.equal(current.sha256, item.sha256); preserved.push(current) }
+  const oldManifest = await json('.build/phase36-source-files.json')
+  for (const item of oldManifest.filter(x => x.file.startsWith('evidence/'))) { const result = spawnSync('C:/Windows/System32/tar.exe', ['-xOf', old.sourceArchive.path, item.file], { windowsHide: true, maxBuffer: 4194304 }); assert.equal(result.status, 0, item.file); assert.equal(hash(result.stdout), hash(await readFile(item.file)), item.file) }
+  await save('evidence/phase37-preserved-generations.json', { priorArtifacts: preserved, phase36EvidenceUnchanged: true, installedPluginChanged: false, installedProfileReadThisBatch: false, appRestarted: false })
+  await save('evidence/phase37-checks.json', { tests: { passed: 41, newCases: 14, priorRelayCryptoCases: 27, failed: 0, intentionallyExcludedOldEvidenceWriter: 1, report: 'phase37-vitest.json' }, typescript: { strict: true, version: '6.0.3', modules: 103, log: 'phase37-types.log' }, nativeCompile: { api: 26, passed: true, unsigned: true, permissionFree: true, installed: false, executed: false, report: 'native-build/2026-10-13T10-50-42-370Z.json' }, sdkSubstitute: { actualEts: true, key: 'fixed public scalar6, caller-owned buffers', huksExecuted: false, keysGenerated: 0 }, securityReview: 'phase37-security-review.json', offlineFlow: { listeners: 0, modelCalls: 0, userSessions: 0, serverConnections: 0, realCredentialsCreated: 0 }, approvedInventory: { sshConnections: 3, readonly: true, report: 'phase37-dhome-readonly.json', mutations: 0 } })
+  const evidence = (await readdir('evidence')).filter(x => x.startsWith('phase37-') && !x.includes('final-seal')).map(x => 'evidence/' + x)
+  const stage = resolve('.build/phase37-delta'), files = []
+  for (const path of [...changed, ...added, ...evidence, 'evidence/native-build/2026-10-13T10-50-42-370Z.json', 'evidence/native-build/2026-10-13T10-50-42-370Z.log']) {
+    const bytes = await readFile(path), text = bytes.toString('utf8')
+    if (/\.(?:md|ts|mjs|mts|ets|ps1|json)$/.test(path)) { assert.ok(text.endsWith('\n') && !text.endsWith('\n\n'), path); assert.ok(!/[^\S\r\n]+\r?$/m.test(text), path) }
+    await mkdir(resolve(stage, path, '..'), { recursive: true }); await writeFile(join(stage, path), bytes); files.push({ file: path, sha256: hash(bytes) })
+  }
+  for (const path of changed) { const file = 'rollback/' + path, bytes = await readFile('.build/phase37-before/' + path); await mkdir(resolve(stage, file, '..'), { recursive: true }); await writeFile(join(stage, file), bytes); files.push({ file, sha256: hash(bytes) }) }
+  for (const path of ['phase37-remote-inventory.py', 'phase37-proxy-fields.py', 'phase37-final-public-metadata.py']) { const file = 'evidence/inventory-scripts/' + path, bytes = await readFile('.build/' + path); await mkdir(resolve(stage, file, '..'), { recursive: true }); await writeFile(join(stage, file), bytes); files.push({ file, sha256: hash(bytes) }) }
+  await save('.build/phase37-source-files.json', files); await save('.build/phase37-source-changes.json', { changed, added, incrementalFrom: 'phase36', sourceTextChecks: changed.length + added.length, nativeInputs: report.sourceHashes })
+  console.log('PASS: phase37 exact source/rollback staging and immutable phase36 artifacts preserved')
+} else if (process.argv[2] === 'seal') {
+  const files = await json('.build/phase37-source-files.json'), verified = await json('.build/phase37-verified-entries.json'); assert.equal(files.length, verified.length)
+  for (const item of files) assert.equal(verified.find(x => x.file === item.file)?.sha256, item.sha256, item.file)
+  const seal = { schema: 'dsh-harmony-phase37-seal/1', sealedAt: new Date().toISOString(), sourceArchive: { ...await meta(archive), entries: verified.length, incremental: true, exactEntryVerification: true }, hap: await json('evidence/phase37-hap.json'), reuseRelayArtifact: (await json('evidence/phase36-final-seal.json')).relay, changes: await json('.build/phase37-source-changes.json'), verification: 'evidence/phase37-checks.json', serverAccess: 'three approved readonly inventory connections; no deployment', installedOrActivated: false, signed: false, realModels: 0, actualPhonePairing: false, blockers: ['server runtime/profile/package and nginx/TLS/start approval', 'phone model/API/debug signing/device trust/installation approval', 'HUKS/public-key/signature interoperability and native TLS/device evidence', 'ArkWeb isolation and real desktop task/rich-action acceptance'], execution: 'memory/fixed public scalars/ETS SDK substitute plus official compile only' }
+  await save('evidence/phase37-final-seal.json', seal); await save('D:/Temp/dsh-harmony-client-20261013-source-v37-delta.seal.json', seal); console.log(JSON.stringify({ sourceArchive: seal.sourceArchive, hap: seal.hap }))
+} else throw new Error('Select prepare or seal')

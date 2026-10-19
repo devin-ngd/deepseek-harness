@@ -1,0 +1,15 @@
+{
+  "name": "@deepseek-ai/dsh-experimental-harmony-relay",
+  "version": "0.0.0-phase36.1",
+  "private": true,
+  "type": "module",
+  "description": "Default-disabled bounded relay route for an isolated dsh profile",
+  "license": "MIT",
+  "main": "lib/index.js",
+  "exports": { ".": "./lib/index.js", "./package.json": "./package.json" },
+  "files": ["lib", "cordis.patch.yml", "README.md", "LICENSE", "build-info.json"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "engines": { "node": "^22.19.0 || >=24.0.0" },
+  "peerDependencies": { "@deepseek-ai/cordis": "4.0.5-alpha.1", "@deepseek-ai/schemastery": "3.18.5-alpha.1", "@deepseek-ai/dsh": "0.2.1-alpha.2" },
+  "dependencies": { "@deepseek-ai/dsh-host-webserver": "0.2.1-alpha.2", "ws": "8.21.3" }
+}

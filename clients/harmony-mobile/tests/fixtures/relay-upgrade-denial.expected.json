@@ -1,0 +1,10 @@
+{
+  "status": 403,
+  "message": "Forbidden",
+  "headers": {
+    "connection": "close",
+    "content-length": "0",
+    "cache-control": "no-store"
+  },
+  "body": ""
+}

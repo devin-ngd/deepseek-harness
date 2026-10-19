@@ -1,0 +1,16 @@
+- insert:
+    - id: harmony-mobile-private
+      name: '@deepseek-ai/dsh-experimental-harmony-mobile'
+      disabled: true
+      config:
+        enabled: false
+    - id: harmony-mobile-pairing
+      name: '@deepseek-ai/dsh-experimental-harmony-mobile/pairing'
+      disabled: true
+      config:
+        enabled: false
+    - id: harmony-mobile-link-test
+      name: '@deepseek-ai/dsh-experimental-harmony-mobile/test-session'
+      disabled: true
+      config:
+        enabled: false

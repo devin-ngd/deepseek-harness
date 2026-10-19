@@ -1,0 +1,14 @@
+.build/
+node_modules/
+local.properties
+oh_modules/
+.hvigor/
+harmony/entry/build/
+*.p12
+*.cer
+*.p7b
+*.keystore
+
+# Device traces and local acceptance reports stay on the development machine.
+evidence/
+*.log

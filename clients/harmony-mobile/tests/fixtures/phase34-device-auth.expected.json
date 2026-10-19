@@ -1,0 +1,8 @@
+{
+  "kind": "select",
+  "message": "{\"sessions\":[\"phase34-session\"],\"operations\":[\"task.receipt\",\"session.sync\"],\"ttl\":1000}",
+  "options": [
+    { "id": "deny", "label": "Deny" },
+    { "id": "allow", "label": "Allow" }
+  ]
+}

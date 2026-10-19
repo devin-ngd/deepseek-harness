@@ -1,0 +1,33 @@
+# Proposal only. Existing TLS/proxy/service/port ownership is unverified; do not deploy or reload.
+# The certificate paths are placeholders; no key/certificate is created, read or bundled.
+# Put the two shared limits in the approved http context, once, after conflict review.
+limit_conn_zone $binary_remote_addr zone=dsh_relay_conn:1m;
+limit_req_zone $binary_remote_addr zone=dsh_relay_upgrade:1m rate=5r/m;
+
+server {
+    listen 443 ssl;
+    server_name dsh.devinho.me;
+    ssl_certificate REPLACE_APPROVED_CERTIFICATE_PATH;
+    ssl_certificate_key REPLACE_APPROVED_PRIVATE_KEY_PATH;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log off;
+    error_log /dev/null crit;
+    client_header_timeout 10s;
+    client_body_timeout 10s;
+    limit_conn dsh_relay_conn 4;
+    location = /harmony/relay/v1 {
+        limit_req zone=dsh_relay_upgrade burst=2 nodelay;
+        proxy_pass http://127.0.0.1:17846;
+        proxy_http_version 1.1;
+        proxy_set_header Host dsh.devinho.me;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-DSH-Relay-Room $http_x_dsh_relay_room;
+        proxy_set_header X-DSH-Relay-Role $http_x_dsh_relay_role;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 10s;
+        proxy_buffering off;
+    }
+    location / { return 404; }
+}

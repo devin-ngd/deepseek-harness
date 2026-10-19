@@ -1,0 +1,5 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { handshakeMarkers } from '../scripts/phase73-diagnostic-lines.mjs'
+test('native markers distinguish wire/hello/derive without retaining sensitive error bodies',()=>{assert.deepEqual(handshakeMarkers('I DSH_E2E_STAGE=phone-relay-ready\nI DSH_E2E_STAGE=phone-peer-hello\nI DSH_CRYPTO_STAGE=agreement-create\nI DSH_CRYPTO_FAILURE=agreement code=401\nprivate body\nI DSH_E2E_STAGE=phone-failure-hello:key-invalid'),[{owner:'phone-e2e',stage:'relay-ready'},{owner:'phone-e2e',stage:'peer-hello'},{owner:'phone-crypto',stage:'agreement-create'},{owner:'phone-crypto',stage:'agreement-failed',code:401},{owner:'phone-e2e',stage:'failure-hello:key-invalid'}])})
+test('unknown stages, arbitrary SDK messages and oversized codes are rejected; retention remains bounded',()=>{assert.deepEqual(handshakeMarkers('DSH_E2E_STAGE=phone-private-body\nDSH_CRYPTO_STAGE=private-key\nDSH_CRYPTO_FAILURE=agreement code=123456789012\nDSH_E2E_STAGE=phone-relay-readyPRIVATE'),[]);assert.equal(handshakeMarkers(Array(80).fill('DSH_E2E_STAGE=phone-closed').join('\n')).length,64)})

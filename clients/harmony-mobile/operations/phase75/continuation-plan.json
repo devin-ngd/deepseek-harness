@@ -1,0 +1,11 @@
+{
+  "schema": "harmony-phase75-operation-pointer/1",
+  "approved": false,
+  "executable": true,
+  "operator": "cli.mjs",
+  "plan": "plan.json",
+  "runbook": "runbook.md",
+  "requiresHumanApprovalAndTTY": true,
+  "previousNonExecutableDraftPreservedIn": "D:/Temp/dsh-harmony-mobile-phase75-review-candidate.zip",
+  "previousArchiveSha256": "2c56d34ef83740b3b89c353e6a57955045d30c654e8a92a2e5b01bcf79d3860d"
+}

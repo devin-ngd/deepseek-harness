@@ -1,0 +1,17 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write clients/harmony-mobile/docs/upgrade-guide/v0.2.1-alpha.2/protected-desktop-world/guide.md
+/:
+  en: febb532dd7932617
+  zh: b06d9d30ca68ca73
+/protected-desktop-field-storage:
+  en: d7d888a4b27f394a
+  zh: 87383acdeadf251a
+/protected-desktop-field-storage/change:
+  en: 61094100d2b0b356
+  zh: 506b45c37c048fa1
+/protected-desktop-field-storage/migration:
+  en: 87533720100130b3
+  zh: 9fbcc07a44a3d364
+# Private-package guide is outside repo CLI corpus; regenerate with node scripts/protected-world-record-pair.mjs

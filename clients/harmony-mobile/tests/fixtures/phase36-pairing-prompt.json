@@ -1,0 +1,18 @@
+{
+  "kind": "select",
+  "details": {
+    "desktopId": "phase34-desktop",
+    "profileId": "phase34-profile",
+    "deviceId": "phase34-device",
+    "desktopCredentialId": "FAKE-ONLY-desktop-fingerprint",
+    "deviceCredentialId": "phase34-key",
+    "sessions": ["phase34-session"],
+    "operations": ["task.receipt", "session.sync"],
+    "grantTtlMs": 1000,
+    "confirmationExpiresAt": "signed-offer-deadline"
+  },
+  "options": [
+    { "id": "deny", "label": "Deny" },
+    { "id": "allow", "label": "Fingerprints compared; allow synthetic scope" }
+  ]
+}

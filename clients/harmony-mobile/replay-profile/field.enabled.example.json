@@ -1,0 +1,59 @@
+{
+  "schema": "harmony-replay-field/2",
+  "enabled": true,
+  "desktopId": "field-replay-desktop",
+  "deviceId": "field-phone",
+  "pairId": "REPLACE-WITH-NEW-PUBLIC-PAIR-ID",
+  "identityAlias": "field-replay-desktop",
+  "identityProtectionTimeoutMs": 10000,
+  "world": {
+    "path": "D:/Temp/REPLACE-WITH-EXPLICIT-ISOLATED-WORLD",
+    "mode": "create",
+    "maxAdmissionRecords": 1024,
+    "lockWaitMs": 2000
+  },
+  "audience": "dsh.devinho.me",
+  "grantTtlMs": 1800000,
+  "enrollmentTtlMs": 600000,
+  "maxIssues": 8,
+  "auth": {
+    "maxGrantTtlMs": 1800000,
+    "maxConnectionTtlMs": 1800000,
+    "challengeTtlMs": 15000,
+    "maxDevices": 1,
+    "maxChallengeIssues": 64,
+    "maxSessions": 1,
+    "maxProofBytes": 16384
+  },
+  "relay": {
+    "maxProofs": 64,
+    "maxQueuedBytes": 4194304,
+    "maxChallengeTtlMs": 15000,
+    "maxRoomTtlMs": 60000,
+    "handshakeMs": 10000,
+    "e2e": {
+      "maxFrameBytes": 2097152,
+      "maxPlaintextBytes": 1048576,
+      "maxFrames": 4096
+    }
+  },
+  "wss": {
+    "host": "dsh.devinho.me",
+    "handshakeMs": 10000,
+    "maxFrameBytes": 2097152,
+    "maxBufferedBytes": 4194304,
+    "maxControlFrames": 64
+  },
+  "sweepIntervalMs": 1000,
+  "recovery": {
+    "maxAttempts": 8,
+    "retryDelayMs": 500
+  },
+  "connectReady": {
+    "path": "/SELECT/approved/phone-ready.json",
+    "planSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "targetRef": "SELECT-approved-target",
+    "bundle": "local.dsh.mobile.offlineproduct",
+    "maxAgeMs": 60000
+  }
+}

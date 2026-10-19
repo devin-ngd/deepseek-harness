@@ -1,0 +1,9 @@
+# DSH Harmony client lab
+
+All client writes stay in `clients/harmony-mobile`; preserve the existing dirty DSH files. Treat `source.json` as a read-only dependency locator. Never modify or restart the installed DSH app or its profiles. Changing packages or app profiles requires a separately isolated checkout and the applicable repository instructions.
+
+Only mock/replay operations are enabled. The third batch authorizes real DSH service composition solely with the existing offline entry, dispatch block, upload disablement, exact four-response replay budget and isolated synthetic Sessions. The phase-eight user approval permits official DevEco Studio 26 and necessary official SDK/build components; see `docs/phase8-installation.md` for the current human steps and approval limits. No real model, user Session, installed DSH process, account or credential access, pairing activation, network listener outside loopback, firewall change, tunnel, signing, or publication is authorized here. Offline tests may create an ephemeral listener on 127.0.0.1 and must close it. Live integration requires specific user approval and a separate implementation review.
+
+Reuse rich-inline types, validation and guest SDK from source. Generated files belong to `.build` or the HAP rawfile assets with a source hash manifest; do not fork the guest SDK. The installed approved API26 toolchain compiles ArkTS/ArkUI; execution still needs its own evidence. The explicit offline ESM face may compose synthetic services only. Native owns selection, byte/cache IO and port lifetimes; guests get only the existing scoped rich SDK. Node/browser/SDK-substitute results cannot establish native FS, HTTP, ArkWeb isolation or device acceptance.
+
+Keep evidence and remaining work in `docs/acceptance.md` and `docs/tasks.md`. Do not silently expand permissions when the user is away. Do not commit or push without authorization. No subagents are required.

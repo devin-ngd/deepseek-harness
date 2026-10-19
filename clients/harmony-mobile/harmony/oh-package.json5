@@ -1,0 +1,10 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "dsh-mobile-lab",
+  "version": "0.0.0",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hvigor": "6.26.8",
+    "@ohos/hvigor-ohos-plugin": "6.26.8"
+  }
+}

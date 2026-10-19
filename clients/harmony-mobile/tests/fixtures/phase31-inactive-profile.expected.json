@@ -1,0 +1,18 @@
+{
+  "owner": "mock-session-a",
+  "promptCalls": 1,
+  "reconciled": {
+    "accepted": true,
+    "state": "accepted",
+    "requestId": "phase31-request"
+  },
+  "actionAdmissions": 1,
+  "duplicateReceipt": true,
+  "actionState": "accepted",
+  "cancel": {
+    "accepted": true
+  },
+  "finalTask": "cancelled",
+  "responseAdvertised": false,
+  "generation": "phase31-generation-2"
+}

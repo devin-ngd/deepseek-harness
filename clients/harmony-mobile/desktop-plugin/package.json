@@ -1,0 +1,89 @@
+{
+  "name": "@deepseek-ai/dsh-experimental-harmony-mobile",
+  "version": "0.0.0-normal-controls.1",
+  "private": true,
+  "type": "module",
+  "description": "Default-disabled private Harmony mobile profile adapter with independent authenticated peer admission",
+  "license": "MIT",
+  "main": "lib/index.js",
+  "types": "lib/types/desktop-plugin/src/index.d.ts",
+  "exports": {
+    "./product": {
+      "types": "./lib/types/desktop-plugin/src/product.d.ts",
+      "default": "./lib/product.js"
+    },
+    ".": {
+      "types": "./lib/types/desktop-plugin/src/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./admission": {
+      "types": "./lib/types/desktop-plugin/src/admission.d.ts",
+      "default": "./lib/admission.js"
+    },
+    "./transport": {
+      "types": "./lib/types/desktop-plugin/src/transport.d.ts",
+      "default": "./lib/transport.js"
+    },
+    "./package.json": "./package.json",
+    "./pairing": {
+      "types": "./lib/types/desktop-plugin/src/pairing.d.ts",
+      "default": "./lib/pairing.js"
+    },
+    "./test-session": {
+      "types": "./lib/types/desktop-plugin/src/test-session.d.ts",
+      "default": "./lib/test-session.js"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "licenses",
+    "build-info.json",
+    "pairing.enabled.example.json",
+    "test-session.enabled.example.json"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dependencies": {
+    "ws": "8.21.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.5-alpha.2",
+    "@deepseek-ai/schemastery": "3.18.5-alpha.2",
+    "@deepseek-ai/dsh": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-app-boot": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-credentials": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-authorization": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-scope": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-experimental-rich-inline": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-typert-registry": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-storage-domain": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-agent": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-brand": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-util-values": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-user-approval": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-client-connection": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-api-gateway": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-api-workspace-controller": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-attachment": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-workspace": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-session-persistence": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-commands": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-user-questions": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-llm": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-tools": "0.2.1-alpha.4",
+    "@deepseek-ai/dsh-session-projection": "0.2.1-alpha.4"
+  }
+}

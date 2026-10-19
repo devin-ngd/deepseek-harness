@@ -1,0 +1,10 @@
+{
+  "observedAt": null,
+  "targetRef": "target-54cfb7ac",
+  "documentSha256": null,
+  "originalIdentityMatched": false,
+  "publicReadSucceeded": false,
+  "existingLockObserved": null,
+  "ownTemporaryLockReleased": false,
+  "normalExitCompleted": false
+}

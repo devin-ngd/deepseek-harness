@@ -1,0 +1,7 @@
+{
+  "name": "local-dsh-harmony-relay-disabled",
+  "private": true,
+  "type": "module",
+  "dsh": { "profile": { "bundles": [] } },
+  "dependencies": { "@deepseek-ai/dsh-experimental-harmony-relay": "file:REPLACE_APPROVED_ARTIFACT_PATH.tgz" }
+}

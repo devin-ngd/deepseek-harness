@@ -1,0 +1,11 @@
+{
+  "savedBefore": 3,
+  "missed": 5,
+  "savedAfter": 7,
+  "retained": [1, 3, 5],
+  "revokedFloor": 6,
+  "pairing": "paired",
+  "connection": "disconnected",
+  "writes": 1,
+  "sockets": 0
+}

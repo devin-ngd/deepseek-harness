@@ -1,0 +1,87 @@
+[
+  {
+    "resource": "app.string.cancel",
+    "enabled": "(this.view.selected.length > 0 && !this.view.readOnly && !this.busy)",
+    "onClick": "(() => this.run(() => this.product.cancel()))"
+  },
+  {
+    "resource": "app.string.product_all_sessions",
+    "enabled": null,
+    "onClick": "(() => { this.project = ''; })"
+  },
+  {
+    "resource": "app.string.product_confirm_pair",
+    "enabled": "(this.networkApproved && this.compared && this.preview.desktopFingerprint.length > 0 && !this.busy)",
+    "onClick": "(() => this.run(async () => { await this.product.pairWithConnection(this.publicOffer, this.compared, this.networkApproved); this.connectionEnabled = this.product.connectionEnabled(); }))"
+  },
+  {
+    "resource": "app.string.product_confirm_revoke",
+    "enabled": null,
+    "onClick": "(() => this.run(async () => { await this.product.revoke(); this.revokePending = false; }))"
+  },
+  {
+    "resource": "app.string.product_connect",
+    "enabled": "(this.connectionEnabled && this.view.pairing === 'paired' && this.view.connection === 'disconnected' && !this.busy)",
+    "onClick": "(() => this.run(() => this.product.connect()))"
+  },
+  {
+    "resource": "app.string.product_enrollment_preview",
+    "enabled": "(!this.busy && this.enrollmentOffer.length > 0)",
+    "onClick": "(() => this.run(async () => { this.enrollmentPreview = JSON.parse(await this.product.previewEnrollment(this.enrollmentOffer)) as ProductPairingPreview; }))"
+  },
+  {
+    "resource": "app.string.product_enrollment_sign",
+    "enabled": "(!this.busy && this.enrollmentCompared && this.enrollmentPreview.desktopFingerprint.length > 0)",
+    "onClick": "(() => this.run(async () => { this.enrollmentReply = await this.product.signEnrollment(this.enrollmentOffer, this.enrollmentCompared); this.enrollmentCompared = false; }))"
+  },
+  {
+    "resource": "app.string.product_exit",
+    "enabled": null,
+    "onClick": "(() => this.run(async () => { await this.rich.close(); await this.product.close(); const context = this.getUIContext().getHostContext() as common.UIAbilityContext; await context.terminateSelf(); }))"
+  },
+  {
+    "resource": "app.string.product_identity_begin",
+    "enabled": "(this.identityAlias.length > 0 && !this.busy)",
+    "onClick": "(() => { this.identityPending = true; })"
+  },
+  {
+    "resource": "app.string.product_identity_confirm",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(async () => { this.identityPending = false; this.identityPublic = await this.product.initializeIdentity(this.identityAlias, true); }))"
+  },
+  {
+    "resource": "app.string.product_identity_deny",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => { this.identityPending = false; })"
+  },
+  {
+    "resource": "app.string.product_identity_existing",
+    "enabled": "(this.identityAlias.length > 0 && !this.busy)",
+    "onClick": "(() => this.run(async () => { this.identityPublic = await this.product.publicIdentity(this.identityAlias); }))"
+  },
+  {
+    "resource": "app.string.product_keep_pair",
+    "enabled": null,
+    "onClick": "(() => { this.revokePending = false; })"
+  },
+  {
+    "resource": "app.string.product_reconcile",
+    "enabled": "(this.lastRequest.length > 0 && this.view.selected.length > 0 && !this.busy)",
+    "onClick": "(() => this.run(async () => { await this.product.receipt(this.lastRequest); }))"
+  },
+  {
+    "resource": "app.string.product_restore_saved",
+    "enabled": "(!this.busy && (!this.connectionEnabled || this.view.error === 'public-trust-expired'))",
+    "onClick": "(() => this.run(async () => { this.publicOffer = await this.product.savedPairing(true); this.preview = JSON.parse(this.product.preview(this.publicOffer)) as ProductPairingPreview; this.compared = false; this.networkApproved = false; }))"
+  },
+  {
+    "resource": "app.string.product_revoke",
+    "enabled": "(this.view.pairing === 'paired' && !this.busy)",
+    "onClick": "(() => { this.revokePending = true; })"
+  },
+  {
+    "resource": "app.string.send",
+    "enabled": "(this.view.selected.length > 0 && !this.view.readOnly && this.view.connection === 'connected' && !this.busy && this.draft.trim().length > 0)",
+    "onClick": "(() => this.run(async () => { this.lastRequest = util.generateRandomUUID(false); await this.product.submit(this.lastRequest, this.draft); this.draft = ''; }))"
+  }
+]

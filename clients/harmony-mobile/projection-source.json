@@ -1,0 +1,10 @@
+{
+  "schema": "mobile-projection-source/1",
+  "checkout": "D:/Temp/dsh-harmony-alpha4-source-20261016",
+  "baseCommit": "b23972eb7145ab0bb923c45dc28ffcd9f6556412",
+  "qualification": "alpha4-source-extraction-under-test",
+  "entry": "packages/experimental/rich-inline/src/shared/message-projections.ts",
+  "digestPackage": "@noble/hashes",
+  "digestVersion": "2.4.0",
+  "registryEntry": "packages/typert/registry/src/index.ts"
+}

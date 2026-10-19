@@ -1,0 +1,201 @@
+{
+  "schema": "mobile-view/1",
+  "mode": "fixture-only",
+  "views": [
+    {
+      "sessionId": "phase3-session",
+      "desktopId": "phase5-desktop",
+      "cursor": 10,
+      "hasMore": false,
+      "readOnly": false,
+      "connection": "connected",
+      "task": "running",
+      "error": null,
+      "notices": [],
+      "messages": [
+        {
+          "id": "1db49592-4a9a-4d7b-92f7-1f8a24f225eb",
+          "seq": 5,
+          "role": "user",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Show the fixed replay mobile forms."
+            }
+          ],
+          "rich": []
+        },
+        {
+          "id": "564bd556-d534-42c5-8cc7-319bb37fa9e8",
+          "seq": 6,
+          "role": "context",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"D:\\\\workspace\\\\agents\\\\deepseek-harness\\\\clients\\\\harmony-mobile\\\\.build\\\\phase3-world-VOZWkP\\\\real-link\"."
+            }
+          ],
+          "rich": []
+        },
+        {
+          "id": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+          "seq": 9,
+          "role": "assistant",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "\n\n"
+            }
+          ],
+          "rich": [
+            {
+              "sessionId": "phase3-session",
+              "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+              "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-phone-form",
+              "fallback": "Fixed mobile replay form"
+            },
+            {
+              "sessionId": "phase3-session",
+              "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+              "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-other-form",
+              "fallback": "Fixed mobile replay form"
+            }
+          ]
+        }
+      ],
+      "liveText": "",
+      "tools": [],
+      "rich": []
+    },
+    {
+      "sessionId": "phase3-session",
+      "desktopId": "phase5-desktop",
+      "cursor": 10,
+      "hasMore": false,
+      "readOnly": false,
+      "connection": "disconnected",
+      "task": "running",
+      "error": null,
+      "notices": [],
+      "messages": [
+        {
+          "id": "1db49592-4a9a-4d7b-92f7-1f8a24f225eb",
+          "seq": 5,
+          "role": "user",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Show the fixed replay mobile forms."
+            }
+          ],
+          "rich": []
+        },
+        {
+          "id": "564bd556-d534-42c5-8cc7-319bb37fa9e8",
+          "seq": 6,
+          "role": "context",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"D:\\\\workspace\\\\agents\\\\deepseek-harness\\\\clients\\\\harmony-mobile\\\\.build\\\\phase3-world-VOZWkP\\\\real-link\"."
+            }
+          ],
+          "rich": []
+        },
+        {
+          "id": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+          "seq": 9,
+          "role": "assistant",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "\n\n"
+            }
+          ],
+          "rich": [
+            {
+              "sessionId": "phase3-session",
+              "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+              "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-phone-form",
+              "fallback": "Fixed mobile replay form"
+            },
+            {
+              "sessionId": "phase3-session",
+              "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+              "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-other-form",
+              "fallback": "Fixed mobile replay form"
+            }
+          ]
+        }
+      ],
+      "liveText": "",
+      "tools": [],
+      "rich": []
+    },
+    {
+      "sessionId": "phase3-session",
+      "desktopId": "phase5-desktop",
+      "cursor": 11,
+      "hasMore": false,
+      "readOnly": false,
+      "connection": "connected",
+      "task": "pending_confirmation",
+      "error": null,
+      "notices": [],
+      "messages": [
+        {
+          "id": "1db49592-4a9a-4d7b-92f7-1f8a24f225eb",
+          "seq": 5,
+          "role": "user",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Show the fixed replay mobile forms."
+            }
+          ],
+          "rich": []
+        },
+        {
+          "id": "564bd556-d534-42c5-8cc7-319bb37fa9e8",
+          "seq": 6,
+          "role": "context",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"D:\\\\workspace\\\\agents\\\\deepseek-harness\\\\clients\\\\harmony-mobile\\\\.build\\\\phase3-world-VOZWkP\\\\real-link\"."
+            }
+          ],
+          "rich": []
+        },
+        {
+          "id": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+          "seq": 9,
+          "role": "assistant",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "\n\n"
+            }
+          ],
+          "rich": [
+            {
+              "sessionId": "phase3-session",
+              "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+              "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-phone-form",
+              "fallback": "Fixed mobile replay form"
+            },
+            {
+              "sessionId": "phase3-session",
+              "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+              "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-other-form",
+              "fallback": "Fixed mobile replay form"
+            }
+          ]
+        }
+      ],
+      "liveText": "",
+      "tools": [],
+      "rich": []
+    }
+  ]
+}

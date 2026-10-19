@@ -1,0 +1,9 @@
+{
+  "pairing": "paired",
+  "connection": "blocked",
+  "error": "connection-stopped",
+  "notice": "连接已停止。请退出后检查配对、网络和授权状态。",
+  "attempts": 2,
+  "publicWrites": 0,
+  "selectedSession": ""
+}

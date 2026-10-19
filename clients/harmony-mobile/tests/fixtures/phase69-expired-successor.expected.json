@@ -1,0 +1,9 @@
+{
+  "pairing": "blocked",
+  "error": "public-trust-expired",
+  "priorGrant": 1,
+  "revokedEpoch": 2,
+  "nextGrant": 3,
+  "preservedHistory": 1,
+  "implicitConnections": 0
+}

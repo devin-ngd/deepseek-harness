@@ -1,0 +1,39 @@
+{
+  "enabled": true,
+  "host": "127.0.0.1",
+  "port": 17846,
+  "publicHost": "dsh.devinho.me",
+  "sweepIntervalMs": 1000,
+  "maxControlFrames": 64,
+  "maxConnections": 16,
+  "shutdownTimeoutMs": 5000,
+  "requestTimeoutMs": 10000,
+  "headersTimeoutMs": 5000,
+  "connectionCheckIntervalMs": 1000,
+  "maxHeaderBytes": 8192,
+  "maxRooms": 2,
+  "maxRoomTtlMs": 30000,
+  "pairTimeoutMs": 30000,
+  "maxFrameBytes": 2097152,
+  "maxBufferedBytes": 4194304,
+  "maxFrames": 4096,
+  "idleTimeoutMs": 60000,
+  "broker": {
+    "maxOwnerRoomIssues": 64,
+    "pairs": [],
+    "roomTtlMs": 30000,
+    "maxPairs": 1,
+    "issueWindowMs": 60000,
+    "maxControlPayloadBytes": 16384,
+    "maxChallengesPerConnection": 64,
+    "maxControlQueuedBytes": 32768,
+    "maxRoomIssuesPerWindow": 16,
+    "enabled": true,
+    "challengeTtlMs": 10000
+  },
+  "publicTrust": {
+    "path": "/SELECT/approved/public-state/replay-v1.jsonl",
+    "maxBytes": 65536,
+    "maxRecords": 16
+  }
+}

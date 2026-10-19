@@ -1,0 +1,20 @@
+{
+  "targetDevice": "Mate90 Pro Max",
+  "targetOs": "HarmonyOS 7",
+  "candidateMinimumApi": 12,
+  "officialIdeCandidate": "DevEco Studio 26.0.0 Release (26.0.0.851)",
+  "officialSdkCandidate": "HarmonyOS SDK 26.0.0 Release",
+  "installedToolchainConfirmed": true,
+  "installedIdeDirectory": "D:/Program Files/HuaWei/DevEco Studio",
+  "installedIdeVersion": "26.0.0.851",
+  "installedSdkVersion": "26.0.0.105",
+  "installedSdkApi": 26,
+  "installedOhpmVersion": "26.0.0.630",
+  "installedHdcVersion": "3.2.0f",
+  "deviceApiConfirmed": false,
+  "compileSdkVersion": "26.0.0",
+  "targetSdkVersion": "26.0.0",
+  "compatibleSdkVersion": "5.0.0(12)",
+  "hvigorVersion": "6.26.8",
+  "ohosPluginVersion": "6.26.8"
+}

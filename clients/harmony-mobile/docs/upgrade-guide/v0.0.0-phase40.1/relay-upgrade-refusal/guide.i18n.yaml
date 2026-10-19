@@ -1,0 +1,17 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write clients/harmony-mobile/docs/upgrade-guide/v0.0.0-phase40.1/relay-upgrade-refusal/guide.md
+/:
+  en: 642a6b279707e5c9
+  zh: 3833481990a15593
+/relay-upgrade-refusal:
+  en: 30e66fbfbaf42778
+  zh: 5b50cf4a531588ce
+/relay-upgrade-refusal/change:
+  en: cd4f130ca90e0537
+  zh: 42ec884b806896e0
+/relay-upgrade-refusal/migration:
+  en: 1d75872108ec26d1
+  zh: b80867a676084dc3
+# Private-package guide is outside repo CLI corpus; regenerate with node scripts/relay-denial-record-pair.mjs

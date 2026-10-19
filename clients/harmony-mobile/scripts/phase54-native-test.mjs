@@ -1,0 +1,12 @@
+/** Rebuild actual ETS crypto with SDK substitutes whose absent-key semantics match official API26; records only this phase's evidence. */
+import { createRequire } from 'node:module'
+import { readFile, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { projectionTsconfig } from './projection-source.mjs'
+const root = JSON.parse(await readFile('source.json', 'utf8')).dshRoot, require = createRequire(resolve(root, 'package.json')), esbuild = require(require.resolve('esbuild', { paths: [resolve(root, 'node_modules/.pnpm')] })), red = process.argv.includes('--red')
+await writeFile('.build/phase54-native-entry.ts', ['NativeDeviceKeys', 'NativeCryptoPrimitives', 'NativeTransientAgreement'].map(name => `export * from '../harmony/entry/src/main/ets/native/${name}.ets';`).join('\n') + "\nexport * from '../tests/helpers/phase35-native-sdk.mjs';\n")
+await esbuild.build({ entryPoints: [resolve('.build/phase54-native-entry.ts')], outfile: resolve('.build/phase35-native-crypto.js'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', loader: { '.ets': 'ts' }, resolveExtensions: ['.ets', '.ts', '.mjs', '.js'], plugins: [{ name: 'documented-sdk-only', setup(build) { build.onResolve({ filter: /^@kit\./ }, () => ({ path: resolve('tests/helpers/phase35-native-sdk.mjs') })) } }] })
+await esbuild.build({ entryPoints: [resolve('src/e2e-channel.ts')], outfile: resolve('.build/phase35-browser-channel.js'), bundle: true, format: 'esm', platform: 'browser', target: 'es2022', tsconfig: await projectionTsconfig(resolve('.'), root) })
+const args = ['--test', ...(red ? ['--test-name-pattern', 'documented absent-key'] : []), 'tests/phase35-native-crypto.test.mjs'], result = spawnSync(process.execPath, args, { encoding: 'utf8', windowsHide: true, timeout: 60000 }), output = result.stdout + result.stderr
+await writeFile('evidence/phase54-native-' + (red ? 'red' : 'green') + '.log', output); await writeFile('evidence/phase54-native-' + (red ? 'red' : 'green') + '.json', JSON.stringify({ command: [process.execPath, ...args], exitCode: result.status, expectedFailure: red, nativeExecution: false, sdkAbsenceMatchesInstalledDeclaration: true, realModels: 0 }, null, 2) + '\n'); console.log(output); if (result.error || (red ? result.status === 0 : result.status !== 0)) throw new Error('unexpected native regression outcome')

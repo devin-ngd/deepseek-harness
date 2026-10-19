@@ -1,0 +1,233 @@
+{
+  "schema": "dsh-harmony-acceptance-ledger/1",
+  "asOfPhase": 28,
+  "applicationSourceVersion": 27,
+  "orchestrationVersion": 28,
+  "currentHap": {
+    "path": "D:/Temp/dsh-harmony-mobile-20261013-v27-diagnostics-unsigned.hap",
+    "bytes": 1986138,
+    "sha256": "aa5f1eadeb812636640e8f298082d6884c3feade6fe3511002518f5fa91613ec",
+    "unchangedFromPhase27": true
+  },
+  "fullCurrentRegressionClaimed": false,
+  "lastCompleteOfflineSet": {
+    "version": 17,
+    "node": 167,
+    "source": 12,
+    "bff": 18,
+    "independent": 197,
+    "embeddedAlreadyIncluded": 3,
+    "chromeGroups": 87
+  },
+  "counting": "Per-version/per-layer cases are not additive; focused passes do not establish a current full suite or combine old HAPs into one acceptance.",
+  "rows": [
+    {
+      "id": "ts-core",
+      "capability": "共享wire/domain/PhoneCore、权限范围、幂等与时钟",
+      "layer": "TS/Node、源码replay/BFF、Chrome",
+      "observed": "v17完整197项/87组Chrome；v27相关131项有通过记录，最后22项复测",
+      "status": "historical-and-focused",
+      "laterChanges": "v23时钟；v25/v27观测和关闭；v28仅编排",
+      "currentLimit": "不是当前全量回归",
+      "minRegression": "先按R1复核改动面；接入插件后跑R2",
+      "evidence": [
+        "evidence/phase17-summary.json",
+        "evidence/phase27-checks.json"
+      ]
+    },
+    {
+      "id": "read-catalog",
+      "capability": "项目/会话/历史/图片有界读取",
+      "layer": "TS/BFF/Chrome",
+      "observed": "v6/v17合成读目录、稳定页、附件scope",
+      "status": "historical",
+      "laterChanges": "之后PhoneCore/解析/配置变化；未接实际Workspace及用户目录",
+      "currentLimit": "原生项目列表尚无当前证据",
+      "minRegression": "接入假Host端口的目录/权限过滤；原生UI未来R3",
+      "evidence": [
+        "evidence/phase6-network.json",
+        "evidence/phase17-summary.json"
+      ]
+    },
+    {
+      "id": "native-offline",
+      "capability": "原生FS/cache、私有文档/port、负向隔离",
+      "layer": "API26本机模拟器",
+      "observed": "v10/v11离线HAP与v13网络HAP/v16 run3的部分隔离观察",
+      "status": "historical-partial",
+      "laterChanges": "后来启用INTERNET私有HTTP、改NativeAppHost/close/观测",
+      "currentLimit": "旧权限包结果不覆盖v27全部隔离或cache",
+      "minRegression": "当前HAP执行缓存与关键guest否认组；完整资源隔离另立范围",
+      "evidence": [
+        "evidence/phase11-summary.json",
+        "evidence/phase16-native-run3-summary.json"
+      ]
+    },
+    {
+      "id": "native-basic",
+      "capability": "任务→流式→rich表单/draft/action→取消/历史重开",
+      "layer": "API26本机模拟器+生产服务隔离replay",
+      "observed": "v13网络HAP在v14/v16 run3部分通过；v17 HAP在v18四个基础checkpoint通过",
+      "status": "historical-pass-with-failures",
+      "laterChanges": "v23 command lifetime、v25/v27诊断/关闭/列表定位影响相同宿主",
+      "currentLimit": "v27未复验完整基础闭环",
+      "minRegression": "未来R3同一v27或后继hash一次执行四组；不复用旧pass",
+      "evidence": [
+        "evidence/phase16-native-run3-summary.json",
+        "evidence/phase18-round4-summary.json"
+      ]
+    },
+    {
+      "id": "native-cache",
+      "capability": "save→disconnect→readonly cache.restore→reconnect",
+      "layer": "API26本机模拟器",
+      "observed": "v16失败保留，离线修后v17 HAP/v18通过",
+      "status": "historical-pass",
+      "laterChanges": "v27 close publication路径/日志隔离改变",
+      "currentLimit": "当前v27未复验该序列",
+      "minRegression": "R3基础组内一次cache/Session切换/close复核",
+      "evidence": [
+        "evidence/phase16-postrun-summary.json",
+        "evidence/phase18-round4-summary.json"
+      ]
+    },
+    {
+      "id": "native-generation",
+      "capability": "服务重开、旧mount拒绝、原receipt不重发",
+      "layer": "API26本机模拟器",
+      "observed": "v17 HAP/v18第四checkpoint通过",
+      "status": "historical-pass",
+      "laterChanges": "v23时钟与v27 observation wrapper变化",
+      "currentLimit": "v28未重开服务，只是socket恢复",
+      "minRegression": "R3一组重开+旧mount/status/草稿状态+零派发",
+      "evidence": [
+        "evidence/phase18-round4-summary.json"
+      ]
+    },
+    {
+      "id": "native-malformed",
+      "capability": "invalid/truncated JSON、required unknown、read budget耗尽",
+      "layer": "API26本机模拟器",
+      "observed": "v17 HAP/v20四pass，整轮4pass/3fail",
+      "status": "historical-pass-with-failures",
+      "laterChanges": "v23 clock、v27解析观测/关闭变化",
+      "currentLimit": "当前v27尚未运行四组",
+      "minRegression": "未来R3的六个非socket故障组；原readonly/控件/零派发判据保持",
+      "evidence": [
+        "evidence/phase20-round5-summary.json"
+      ]
+    },
+    {
+      "id": "native-cursor",
+      "capability": "cursor-gap/cursor-conflict",
+      "layer": "API26本机模拟器",
+      "observed": "v17/v20失败；v22时钟阻断；v23 HAP/v24两pass",
+      "status": "historical-pass-with-failures",
+      "laterChanges": "v25/v27观测变化尤其初始reset -1",
+      "currentLimit": "当前v27不能沿用v23 pass",
+      "minRegression": "未来R3六个非socket故障组内运行这两项",
+      "evidence": [
+        "evidence/phase22-round6-summary.json",
+        "evidence/phase24-summary.json"
+      ]
+    },
+    {
+      "id": "native-socket",
+      "capability": "初始-1→socket loss→新follow→准确最新原生探针",
+      "layer": "API26本机模拟器+生产服务隔离replay",
+      "observed": "v17/v18/v20、v23/v24失败；v25/v26初始诊断阻断；v27 HAP/v28 1/1通过",
+      "status": "current-native-pass",
+      "laterChanges": "v28不改HAP，仅编排；之后任何app/transport变化会使结果成为旧版",
+      "currentLimit": "当前只此用例有v27原生通过证据",
+      "minRegression": "本离线阶段不重跑；仅将来app/transport变化时复验",
+      "evidence": [
+        "evidence/phase28-summary.json",
+        "evidence/phase28-final-seal.json"
+      ]
+    },
+    {
+      "id": "clock",
+      "capability": "53s wire TTL、60s桌面cap、sticky单调时钟失败",
+      "layer": "TS定向及原生采样",
+      "observed": "v23离线预算/跳变负例；v24/v28 trusted/无expiry拒绝",
+      "status": "focused-pass",
+      "laterChanges": "生产WAN校时/认证/grant持久epoch不存在",
+      "currentLimit": "固定回放的受控时差，不是WAN协议",
+      "minRegression": "R1保留clock负例；生产时间/重放单测和设计评审独立于部署",
+      "evidence": [
+        "evidence/phase23-clock-review.json",
+        "evidence/phase27-checks.json",
+        "evidence/phase28-summary.json"
+      ]
+    },
+    {
+      "id": "approvals",
+      "capability": "审批显示与人工决定",
+      "layer": "TS假端口及来源代码",
+      "observed": "当前realReplayPorts.approvals.list返回[]；无reply操作",
+      "status": "unverified",
+      "laterChanges": "尚未映射真实Agent-scoped waterfall及pending生命周期",
+      "currentLimit": "空列表测试不证明真实审批显示/响应",
+      "minRegression": "R2假approval/eventId生命周期；后续明确原生可信决定测试",
+      "evidence": [
+        "integration/replay-host.ts",
+        "src/desktop-adapter.ts"
+      ]
+    },
+    {
+      "id": "installed-desktop",
+      "capability": "官方desktop profile、实际路由/插件/用户身份",
+      "layer": "只读源码审计",
+      "observed": "所有现有服务测试为隔离Context；未接用户安装",
+      "status": "unverified",
+      "laterChanges": "源码有用户dirty变更，另有v15 projection副本；安装版本未核实",
+      "currentLimit": "不是已安装实例兼容证据",
+      "minRegression": "安装前公开runtime manifest/导出/插件版本核对，再受控接入",
+      "evidence": [
+        "source.json",
+        "projection-source.json"
+      ]
+    },
+    {
+      "id": "stdio-sdk",
+      "capability": "现有SDK stdio runtime",
+      "layer": "源码及已有SDK接口",
+      "observed": "方法为initialize/prompt/wait/cwd/shutdown；另起runtime",
+      "status": "not-target-route",
+      "laterChanges": "无attach现有desktop/cancel/rich/approval通道",
+      "currentLimit": "不能用新SDK进程代替用户桌面会话",
+      "minRegression": "采用existing profile插件与Remote服务；SDK用于隔离测试而非本机桌面attach",
+      "evidence": [
+        "../../../packages/sdk/protocol/src/types.ts"
+      ]
+    },
+    {
+      "id": "remote-auth",
+      "capability": "配对/撤销/持续访问、WAN",
+      "layer": "仅mock与未激活设计",
+      "observed": "MockDeviceRegistry、fixed-replay身份/loopback限定",
+      "status": "unverified",
+      "laterChanges": "operator cookie不是设备grant；configured-https仍拒绝",
+      "currentLimit": "无长期密钥/网络入口/真实认证",
+      "minRegression": "可离线开发grant/capability/撤销/expiry；激活需批准",
+      "evidence": [
+        "src/link-protocol.ts",
+        "src/network-phone.ts"
+      ]
+    },
+    {
+      "id": "device",
+      "capability": "真实手机/OS/ArkWeb/IME/签名",
+      "layer": "未执行",
+      "observed": "source.json deviceBuildConfirmed=false；API26仅模拟器",
+      "status": "unverified",
+      "laterChanges": "设备目标记录不证明已装OS/API版本",
+      "currentLimit": "真机不合格，不能从Web或模拟器推断",
+      "minRegression": "先参数化兼容与设备公开版本；签名/安装/权限各获批准",
+      "evidence": [
+        "source.json",
+        "evidence/phase28-final-seal.json"
+      ]
+    }
+  ]
+}

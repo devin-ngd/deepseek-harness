@@ -1,0 +1,12 @@
+[
+  {
+    "file": "PairedCore.js",
+    "module": "@ohos:util",
+    "binding": "default"
+  },
+  {
+    "file": "ProductCore.js",
+    "module": "@ohos:util",
+    "binding": "default"
+  }
+]

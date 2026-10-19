@@ -1,0 +1,11 @@
+/** Single trusted runtime export face for future native providers; guests receive only the maintained rich SDK. */
+export { PhoneCore } from './phone-core.ts'
+export { DisabledNativeProvider } from './native-disabled.ts'
+export { NativePortHttpBytePort } from './native-port-http.ts'
+export type { NativePortHttpPolicy, NativeHttpHandle } from './native-port-http.ts'
+export { SemanticPhone } from './semantic-phone.ts'
+export { PhoneLibrary, MessageWindow } from './phone-library.ts'
+export type { CacheStorage, ImageView } from './phone-library.ts'
+export type { NativeProvider, PhoneCoreConfig } from './phone-core.ts'
+export type { PhoneView } from './semantic-phone.ts'
+export type { NativeRichPort } from './rich-renderer.ts'

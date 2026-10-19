@@ -1,0 +1,7 @@
+/** Check only this batch's private evidence reference and current navigation; historical lab debt remains separately reported. */
+import assert from 'node:assert/strict'
+import { readFile, writeFile, access } from 'node:fs/promises'
+import { resolve, dirname } from 'node:path'
+assert.ok(process.argv[2]===undefined||process.argv[2]==='final');const output=process.argv[2]==='final'?'evidence/phase72-focused-docs-final.json':'evidence/phase72-focused-docs.json',files=['docs/phase72-native-data-closeout.md','README.md','docs/acceptance.md','docs/tasks.md'],reports=[]
+for(const file of files){const text=await readFile(file,'utf8');assert.match(text,/[^\n]\n$/);assert.equal(text.endsWith('\n\n'),false);assert.equal(text.includes('\ufffd'),false);let links=0;for(const match of text.matchAll(/\[[^\]]+\]\(([^)#]+)(?:#[^)]*)?\)/g)){const path=match[1];if(/^[a-z]+:/.test(path))continue;await access(resolve(dirname(file),path));links++}if(file.includes('phase72-native')){assert.match(text,/kind: reference/);assert.match(text,/## Summary/);assert.match(text,/## Table of Contents/);assert.match(text,/epoch4/);assert.match(text,/端到端未通过/);assert.match(text,/首次 data 关闭原因仍未知/)}reports.push({file,relativeLinksChecked:links})}
+const report={at:new Date().toISOString(),passed:true,scope:'phase72 reference and touched private navigation',reports};await writeFile(output,JSON.stringify(report,null,2)+'\n',{flag:'wx'});console.log(JSON.stringify(report))

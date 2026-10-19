@@ -1,0 +1,1341 @@
+{
+  "schema": "dsh-harmony-phase28-native/1",
+  "passed": true,
+  "criterionChanged": false,
+  "approvedRound": 9,
+  "hap": {
+    "path": "D:/Temp/dsh-harmony-mobile-20261013-v27-diagnostics-unsigned.hap",
+    "bytes": 1986138,
+    "sha256": "aa5f1eadeb812636640e8f298082d6884c3feade6fe3511002518f5fa91613ec",
+    "build": "evidence/native-build/2026-10-13T02-18-45-738Z.json",
+    "unsigned": true,
+    "signed": false,
+    "installed": false,
+    "nativeExecuted": false,
+    "forwardCreated": false,
+    "bundle": "local.dsh.mobile.netreplay",
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.INTERNET"
+      }
+    ],
+    "toolchain": {
+      "ide": "26.0.0.851",
+      "sdk": "26.0.0.105",
+      "api": 26,
+      "hvigor": "6.26.8",
+      "plugin": "6.26.8"
+    },
+    "checkpointDiagnostics": 1,
+    "cancelledTaskText": "演示已取消",
+    "nominalTtlMs": 60000,
+    "wireTtlMs": 53000,
+    "desktopCapMs": 60000,
+    "previousArtifactsModified": false,
+    "sourcePhase": 27
+  },
+  "attempts": [
+    {
+      "world": "D:\\Temp\\dsh-harmony-phase28-native-20261013-round9",
+      "windowOpened": false,
+      "firstForwardAt": null,
+      "cleanupAt": "2026-10-13T02:43:41.167Z",
+      "cleanupPassed": true,
+      "cleanupOperations": 9,
+      "licenses": [
+        {
+          "phase": "before-start",
+          "path": "C:/Users/wpdev/AppData/Local/Huawei/Emulator26.0/.emu_config",
+          "bytes": 75,
+          "sha256": "4bc31a223ddc953bbddd05fed2f7d88b8f00fdf800de7647a0ea33eb4ccbefe4",
+          "modifiedUtc": "2026-10-12T02:57:25.618Z",
+          "createdUtc": "2026-10-11T06:10:40.059Z",
+          "fields": {
+            "HarmonyOS_Software_Service_Agreement": "agree",
+            "HarmonyOS_SDK_Agreement": "agree"
+          },
+          "stableBetweenReads": true,
+          "rawFileCopied": false
+        },
+        {
+          "phase": "after-start",
+          "path": "C:/Users/wpdev/AppData/Local/Huawei/Emulator26.0/.emu_config",
+          "bytes": 75,
+          "sha256": "4bc31a223ddc953bbddd05fed2f7d88b8f00fdf800de7647a0ea33eb4ccbefe4",
+          "modifiedUtc": "2026-10-12T02:57:25.618Z",
+          "createdUtc": "2026-10-11T06:10:40.059Z",
+          "fields": {
+            "HarmonyOS_Software_Service_Agreement": "agree",
+            "HarmonyOS_SDK_Agreement": "agree"
+          },
+          "stableBetweenReads": true,
+          "rawFileCopied": false
+        },
+        {
+          "phase": "before-stop",
+          "path": "C:/Users/wpdev/AppData/Local/Huawei/Emulator26.0/.emu_config",
+          "bytes": 75,
+          "sha256": "4bc31a223ddc953bbddd05fed2f7d88b8f00fdf800de7647a0ea33eb4ccbefe4",
+          "modifiedUtc": "2026-10-12T02:57:25.618Z",
+          "createdUtc": "2026-10-11T06:10:40.059Z",
+          "fields": {
+            "HarmonyOS_Software_Service_Agreement": "agree",
+            "HarmonyOS_SDK_Agreement": "agree"
+          },
+          "stableBetweenReads": true,
+          "rawFileCopied": false
+        },
+        {
+          "phase": "after-stop",
+          "path": "C:/Users/wpdev/AppData/Local/Huawei/Emulator26.0/.emu_config",
+          "bytes": 75,
+          "sha256": "4bc31a223ddc953bbddd05fed2f7d88b8f00fdf800de7647a0ea33eb4ccbefe4",
+          "modifiedUtc": "2026-10-12T02:57:25.618Z",
+          "createdUtc": "2026-10-11T06:10:40.059Z",
+          "fields": {
+            "HarmonyOS_Software_Service_Agreement": "agree",
+            "HarmonyOS_SDK_Agreement": "agree"
+          },
+          "stableBetweenReads": true,
+          "rawFileCopied": false
+        }
+      ],
+      "source": {
+        "mode": "reopen",
+        "counts": {
+          "realCalls": 0,
+          "replay": [
+            {
+              "expectedCalls": 4,
+              "calls": 0,
+              "blockedCalls": 0,
+              "realCalls": 0
+            }
+          ]
+        },
+        "promptCalls": 0,
+        "uploadCalls": 0,
+        "carrier": {
+          "requests": 0,
+          "follows": 0,
+          "active": 0,
+          "drainWaits": 0,
+          "disconnected": 0,
+          "gatewayErrors": 0
+        },
+        "faults": {
+          "armed": null,
+          "consumed": [],
+          "written": [],
+          "discarded": [],
+          "checkpoint": null,
+          "checkpointFrame": null
+        },
+        "commandExpiry": {
+          "elapsed": 0,
+          "futureLimit": 0,
+          "last": null
+        },
+        "commandAudit": {
+          "dropped": 0,
+          "records": []
+        },
+        "commandClock": "trusted",
+        "instance": "phase11-a12d3afd-e92e-4316-bd0d-1d609ef31926",
+        "sourceOffloadSeen": true,
+        "closedCounts": {
+          "realCalls": 0,
+          "replay": [
+            {
+              "expectedCalls": 4,
+              "calls": 0,
+              "blockedCalls": 0,
+              "realCalls": 0
+            }
+          ]
+        },
+        "listenerClosed": true
+      }
+    },
+    {
+      "world": "D:\\Temp\\dsh-harmony-phase28-native-20261013-round9-resume1",
+      "windowOpened": true,
+      "firstForwardAt": "2026-10-13T02:50:01.658Z",
+      "cleanupAt": "2026-10-13T02:50:43.590Z",
+      "cleanupPassed": true,
+      "cleanupOperations": 10,
+      "licenses": [
+        {
+          "phase": "before-start",
+          "path": "C:/Users/wpdev/AppData/Local/Huawei/Emulator26.0/.emu_config",
+          "bytes": 75,
+          "sha256": "4bc31a223ddc953bbddd05fed2f7d88b8f00fdf800de7647a0ea33eb4ccbefe4",
+          "modifiedUtc": "2026-10-12T02:57:25.618Z",
+          "createdUtc": "2026-10-11T06:10:40.059Z",
+          "fields": {
+            "HarmonyOS_Software_Service_Agreement": "agree",
+            "HarmonyOS_SDK_Agreement": "agree"
+          },
+          "stableBetweenReads": true,
+          "rawFileCopied": false
+        },
+        {
+          "phase": "after-start",
+          "path": "C:/Users/wpdev/AppData/Local/Huawei/Emulator26.0/.emu_config",
+          "bytes": 75,
+          "sha256": "4bc31a223ddc953bbddd05fed2f7d88b8f00fdf800de7647a0ea33eb4ccbefe4",
+          "modifiedUtc": "2026-10-12T02:57:25.618Z",
+          "createdUtc": "2026-10-11T06:10:40.059Z",
+          "fields": {
+            "HarmonyOS_Software_Service_Agreement": "agree",
+            "HarmonyOS_SDK_Agreement": "agree"
+          },
+          "stableBetweenReads": true,
+          "rawFileCopied": false
+        },
+        {
+          "phase": "before-stop",
+          "path": "C:/Users/wpdev/AppData/Local/Huawei/Emulator26.0/.emu_config",
+          "bytes": 75,
+          "sha256": "4bc31a223ddc953bbddd05fed2f7d88b8f00fdf800de7647a0ea33eb4ccbefe4",
+          "modifiedUtc": "2026-10-12T02:57:25.618Z",
+          "createdUtc": "2026-10-11T06:10:40.059Z",
+          "fields": {
+            "HarmonyOS_Software_Service_Agreement": "agree",
+            "HarmonyOS_SDK_Agreement": "agree"
+          },
+          "stableBetweenReads": true,
+          "rawFileCopied": false
+        },
+        {
+          "phase": "after-stop",
+          "path": "C:/Users/wpdev/AppData/Local/Huawei/Emulator26.0/.emu_config",
+          "bytes": 75,
+          "sha256": "4bc31a223ddc953bbddd05fed2f7d88b8f00fdf800de7647a0ea33eb4ccbefe4",
+          "modifiedUtc": "2026-10-12T02:57:25.618Z",
+          "createdUtc": "2026-10-11T06:10:40.059Z",
+          "fields": {
+            "HarmonyOS_Software_Service_Agreement": "agree",
+            "HarmonyOS_SDK_Agreement": "agree"
+          },
+          "stableBetweenReads": true,
+          "rawFileCopied": false
+        }
+      ],
+      "source": {
+        "mode": "reopen",
+        "counts": {
+          "realCalls": 0,
+          "replay": [
+            {
+              "expectedCalls": 4,
+              "calls": 0,
+              "blockedCalls": 0,
+              "realCalls": 0
+            }
+          ]
+        },
+        "promptCalls": 0,
+        "uploadCalls": 0,
+        "carrier": {
+          "requests": 4,
+          "follows": 9,
+          "active": 0,
+          "drainWaits": 14,
+          "disconnected": 2,
+          "gatewayErrors": 1
+        },
+        "faults": {
+          "armed": null,
+          "consumed": [
+            "transport-reset",
+            "reset-snapshot"
+          ],
+          "written": [
+            "transport-reset",
+            "reset-snapshot"
+          ],
+          "discarded": [],
+          "checkpoint": "DSH read checkpoint native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+          "checkpointFrame": {
+            "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+            "instance": "phase11-2f9dc1a9-3102-4881-8c62-35c080c4ae5a",
+            "relayCursor": -1,
+            "domainCursor": 35,
+            "bytes": 76322,
+            "payloadSha256": "e5d240c197e614c1a18bd3f6c9fc5f661f3970f4edffe4b7b0f2082dff004e54",
+            "textSha256": "9647149321c54a2263871f7db384303f2db66c08742e22e79b160bb3bb1f6a1b"
+          }
+        },
+        "commandExpiry": {
+          "elapsed": 0,
+          "futureLimit": 0,
+          "last": null
+        },
+        "commandAudit": {
+          "dropped": 0,
+          "records": [
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+              "expiresAt": 1791859861153,
+              "at": 1791859808633,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+              "expiresAt": 1791859861153,
+              "at": 1791859808647,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-2",
+              "expiresAt": 1791859862291,
+              "at": 1791859809428,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-2",
+              "expiresAt": 1791859862291,
+              "at": 1791859809429,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-3",
+              "expiresAt": 1791859865255,
+              "at": 1791859812242,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-3",
+              "expiresAt": 1791859865255,
+              "at": 1791859812244,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-4",
+              "expiresAt": 1791859867916,
+              "at": 1791859814892,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-4",
+              "expiresAt": 1791859867916,
+              "at": 1791859814892,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-5",
+              "expiresAt": 1791859871918,
+              "at": 1791859818935,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-5",
+              "expiresAt": 1791859871918,
+              "at": 1791859818936,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-6",
+              "expiresAt": 1791859872263,
+              "at": 1791859819418,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-6",
+              "expiresAt": 1791859872263,
+              "at": 1791859819425,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+              "expiresAt": 1791859875510,
+              "at": 1791859822487,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "fault-taken",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+              "expiresAt": 1791859875510,
+              "at": 1791859822488,
+              "outcome": "taken",
+              "fault": "transport-reset",
+              "faultIndex": 1,
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+              "expiresAt": 1791859875510,
+              "at": 1791859822488,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "fault-written",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+              "expiresAt": 1791859875510,
+              "at": 1791859822495,
+              "outcome": "written",
+              "fault": "transport-reset",
+              "faultIndex": 1,
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-8",
+              "expiresAt": 1791859876147,
+              "at": 1791859823116,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-8",
+              "expiresAt": 1791859876147,
+              "at": 1791859823118,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+              "expiresAt": 1791859879701,
+              "at": 1791859826675,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "fault-taken",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+              "expiresAt": 1791859879701,
+              "at": 1791859826676,
+              "outcome": "taken",
+              "fault": "reset-snapshot",
+              "faultIndex": 2,
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+              "expiresAt": 1791859879701,
+              "at": 1791859826677,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "fault-written",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+              "expiresAt": 1791859879701,
+              "at": 1791859826722,
+              "outcome": "written",
+              "fault": "reset-snapshot",
+              "faultIndex": 2,
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-10",
+              "expiresAt": 1791859879989,
+              "at": 1791859826971,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-10",
+              "expiresAt": 1791859879989,
+              "at": 1791859826983,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-11",
+              "expiresAt": 1791859880562,
+              "at": 1791859827544,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-11",
+              "expiresAt": 1791859880562,
+              "at": 1791859827547,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-12",
+              "expiresAt": 1791859884212,
+              "at": 1791859831183,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-12",
+              "expiresAt": 1791859884212,
+              "at": 1791859831184,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "received",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-13",
+              "expiresAt": 1791859887765,
+              "at": 1791859834743,
+              "outcome": "received",
+              "clockSource": "desktop Date.now",
+              "unit": "epoch-ms"
+            },
+            {
+              "stage": "checked",
+              "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-13",
+              "expiresAt": 1791859887765,
+              "at": 1791859834743,
+              "outcome": "admitted",
+              "clockSource": "desktop monotonic epoch",
+              "unit": "epoch-ms"
+            }
+          ]
+        },
+        "commandClock": "trusted",
+        "instance": "phase11-2f9dc1a9-3102-4881-8c62-35c080c4ae5a",
+        "sourceOffloadSeen": true,
+        "closedCounts": {
+          "realCalls": 0,
+          "replay": [
+            {
+              "expectedCalls": 4,
+              "calls": 0,
+              "blockedCalls": 0,
+              "realCalls": 0
+            }
+          ]
+        },
+        "listenerClosed": true
+      }
+    }
+  ],
+  "window": {
+    "startedAt": "2026-10-13T02:50:01.658Z",
+    "expiresAt": "2026-10-13T03:20:01.658Z",
+    "cleanupReserveAt": "2026-10-13T03:17:01.658Z",
+    "driverDeadline": "2026-10-13T03:10:02.471Z",
+    "completedCleanupAt": "2026-10-13T02:50:43.590Z",
+    "elapsedMs": 41932,
+    "mappingActivations": 1,
+    "simultaneousMappings": 1,
+    "reset": false
+  },
+  "matrix": {
+    "planned": 1,
+    "passed": 1,
+    "failed": 0,
+    "blocked": 0
+  },
+  "initial": {
+    "decoded": {
+      "probe": "follow-decoded",
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+      "instance": "phase11-2f9dc1a9-3102-4881-8c62-35c080c4ae5a",
+      "relayCursor": -1,
+      "kind": "reset",
+      "payloadSha256": "83ce808ccdd5457ed14e8fd8491c0c89e8848eb4860e7e7b26a84c80a5f25354"
+    },
+    "admitted": {
+      "probe": "follow-admitted",
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+      "instance": "phase11-2f9dc1a9-3102-4881-8c62-35c080c4ae5a",
+      "relayCursor": -1,
+      "domainCursor": 35,
+      "connection": "connected",
+      "readOnly": false,
+      "liveTextBytes": 0,
+      "liveTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "delivery": {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+      "receivedBytes": 76088,
+      "deliveredBytes": 76088,
+      "ended": true,
+      "code": ""
+    }
+  },
+  "socket": {
+    "written": {
+      "stage": "fault-written",
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+      "expiresAt": 1791859875510,
+      "at": 1791859822495,
+      "outcome": "written",
+      "fault": "transport-reset",
+      "faultIndex": 1,
+      "clockSource": "desktop Date.now",
+      "unit": "epoch-ms"
+    },
+    "deliveryFailure": {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+      "receivedBytes": 76009,
+      "deliveredBytes": 76009,
+      "ended": false,
+      "code": "transport-lost"
+    },
+    "recovered": {
+      "probe": "follow-admitted",
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+      "instance": "phase11-2f9dc1a9-3102-4881-8c62-35c080c4ae5a",
+      "relayCursor": -1,
+      "domainCursor": 35,
+      "connection": "connected",
+      "readOnly": false,
+      "liveTextBytes": 70,
+      "liveTextSha256": "9647149321c54a2263871f7db384303f2db66c08742e22e79b160bb3bb1f6a1b"
+    }
+  },
+  "checkpoint": {
+    "passed": true,
+    "missing": null,
+    "stages": {
+      "built": true,
+      "written": true,
+      "delivered": true,
+      "decoded": true,
+      "admitted": true,
+      "published": true,
+      "visible": true,
+      "taskVisible": true
+    },
+    "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+    "nativeText": {
+      "accessibilityId": "156",
+      "backgroundColor": "#00000000",
+      "backgroundImage": "empty source",
+      "blur": "",
+      "bounds": "[48,876][1032,1044]",
+      "checkable": "false",
+      "checked": "false",
+      "clickable": "true",
+      "clip": "false",
+      "description": "",
+      "displayId": "0",
+      "enabled": "true",
+      "focused": "false",
+      "hashcode": "28:156",
+      "hierarchy": "ROOT28,0,7,0,0,1",
+      "hint": "",
+      "hitTestBehavior": "HitTestMode.Default",
+      "hostWindowId": "28",
+      "id": "dsh-message-native-live-phase11-session",
+      "key": "dsh-message-native-live-phase11-session",
+      "longClickable": "true",
+      "opacity": "1.000000",
+      "origBounds": "[48,876][1032,1044]",
+      "originalText": "DSH read checkpoint native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+      "scrollable": "false",
+      "selected": "false",
+      "text": "DSH read checkpoint native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+      "type": "Text",
+      "visible": "true",
+      "zIndex": "0"
+    },
+    "diagnostics": {
+      "delivered": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+        "receivedBytes": 76322,
+        "deliveredBytes": 76322,
+        "ended": true,
+        "code": ""
+      },
+      "decoded": {
+        "probe": "follow-decoded",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+        "instance": "phase11-2f9dc1a9-3102-4881-8c62-35c080c4ae5a",
+        "relayCursor": -1,
+        "kind": "reset",
+        "payloadSha256": "e5d240c197e614c1a18bd3f6c9fc5f661f3970f4edffe4b7b0f2082dff004e54"
+      },
+      "admitted": {
+        "probe": "follow-admitted",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+        "instance": "phase11-2f9dc1a9-3102-4881-8c62-35c080c4ae5a",
+        "relayCursor": -1,
+        "domainCursor": 35,
+        "connection": "connected",
+        "readOnly": false,
+        "liveTextBytes": 70,
+        "liveTextSha256": "9647149321c54a2263871f7db384303f2db66c08742e22e79b160bb3bb1f6a1b"
+      },
+      "published": {
+        "sessionId": "phase11-session",
+        "messageId": "native-live-phase11-session",
+        "text": "DSH read checkpoint native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+        "connection": "connected",
+        "readOnly": false,
+        "task": "cancelled",
+        "error": ""
+      }
+    },
+    "nativeLayout": "evidence/phase28-native/round9-resume1/checkpoint-native-layout.json",
+    "observationTime": "2026-10-13T02:50:35.914Z"
+  },
+  "commandPairs": [
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+        "operation": "session.sync",
+        "generatedAt": 1791859808153,
+        "expiresAt": 1791859861153,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+        "expiresAt": 1791859861153,
+        "sentAt": 1791859808259,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+          "expiresAt": 1791859861153,
+          "at": 1791859808633,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-1",
+          "expiresAt": 1791859861153,
+          "at": 1791859808647,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 52506
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-2",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-2",
+        "operation": "rich.mount",
+        "generatedAt": 1791859809291,
+        "expiresAt": 1791859862291,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-2",
+        "expiresAt": 1791859862291,
+        "sentAt": 1791859809351,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-2",
+          "expiresAt": 1791859862291,
+          "at": 1791859809428,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-2",
+          "expiresAt": 1791859862291,
+          "at": 1791859809429,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 52862
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-3",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-3",
+        "operation": "session.sync",
+        "generatedAt": 1791859812255,
+        "expiresAt": 1791859865255,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-3",
+        "expiresAt": 1791859865255,
+        "sentAt": 1791859812265,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-3",
+          "expiresAt": 1791859865255,
+          "at": 1791859812242,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-3",
+          "expiresAt": 1791859865255,
+          "at": 1791859812244,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 53011
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-4",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-4",
+        "operation": "rich.dispose",
+        "generatedAt": 1791859814916,
+        "expiresAt": 1791859867916,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-4",
+        "expiresAt": 1791859867916,
+        "sentAt": 1791859814925,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-4",
+          "expiresAt": 1791859867916,
+          "at": 1791859814892,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-4",
+          "expiresAt": 1791859867916,
+          "at": 1791859814892,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 53024
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-5",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-5",
+        "operation": "session.sync",
+        "generatedAt": 1791859818918,
+        "expiresAt": 1791859871918,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-5",
+        "expiresAt": 1791859871918,
+        "sentAt": 1791859818971,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-5",
+          "expiresAt": 1791859871918,
+          "at": 1791859818935,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-5",
+          "expiresAt": 1791859871918,
+          "at": 1791859818936,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 52982
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-6",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-6",
+        "operation": "rich.mount",
+        "generatedAt": 1791859819263,
+        "expiresAt": 1791859872263,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-6",
+        "expiresAt": 1791859872263,
+        "sentAt": 1791859819290,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-6",
+          "expiresAt": 1791859872263,
+          "at": 1791859819418,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-6",
+          "expiresAt": 1791859872263,
+          "at": 1791859819425,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 52838
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+        "operation": "session.sync",
+        "generatedAt": 1791859822510,
+        "expiresAt": 1791859875510,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+        "expiresAt": 1791859875510,
+        "sentAt": 1791859822515,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+          "expiresAt": 1791859875510,
+          "at": 1791859822487,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "fault-taken",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+          "expiresAt": 1791859875510,
+          "at": 1791859822488,
+          "outcome": "taken",
+          "fault": "transport-reset",
+          "faultIndex": 1,
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+          "expiresAt": 1791859875510,
+          "at": 1791859822488,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "fault-written",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-7",
+          "expiresAt": 1791859875510,
+          "at": 1791859822495,
+          "outcome": "written",
+          "fault": "transport-reset",
+          "faultIndex": 1,
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 53022
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-8",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-8",
+        "operation": "session.sync",
+        "generatedAt": 1791859823147,
+        "expiresAt": 1791859876147,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-8",
+        "expiresAt": 1791859876147,
+        "sentAt": 1791859823150,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-8",
+          "expiresAt": 1791859876147,
+          "at": 1791859823116,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-8",
+          "expiresAt": 1791859876147,
+          "at": 1791859823118,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 53029
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+        "operation": "session.sync",
+        "generatedAt": 1791859826701,
+        "expiresAt": 1791859879701,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+        "expiresAt": 1791859879701,
+        "sentAt": 1791859826704,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+          "expiresAt": 1791859879701,
+          "at": 1791859826675,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "fault-taken",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+          "expiresAt": 1791859879701,
+          "at": 1791859826676,
+          "outcome": "taken",
+          "fault": "reset-snapshot",
+          "faultIndex": 2,
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+          "expiresAt": 1791859879701,
+          "at": 1791859826677,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "fault-written",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-9",
+          "expiresAt": 1791859879701,
+          "at": 1791859826722,
+          "outcome": "written",
+          "fault": "reset-snapshot",
+          "faultIndex": 2,
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 53024
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-10",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-10",
+        "operation": "rich.snapshot",
+        "generatedAt": 1791859826989,
+        "expiresAt": 1791859879989,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-10",
+        "expiresAt": 1791859879989,
+        "sentAt": 1791859827000,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-10",
+          "expiresAt": 1791859879989,
+          "at": 1791859826971,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-10",
+          "expiresAt": 1791859879989,
+          "at": 1791859826983,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 53006
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-11",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-11",
+        "operation": "session.sync",
+        "generatedAt": 1791859827562,
+        "expiresAt": 1791859880562,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-11",
+        "expiresAt": 1791859880562,
+        "sentAt": 1791859827572,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-11",
+          "expiresAt": 1791859880562,
+          "at": 1791859827544,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-11",
+          "expiresAt": 1791859880562,
+          "at": 1791859827547,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 53015
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-12",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-12",
+        "operation": "session.sync",
+        "generatedAt": 1791859831212,
+        "expiresAt": 1791859884212,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-12",
+        "expiresAt": 1791859884212,
+        "sentAt": 1791859831216,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-12",
+          "expiresAt": 1791859884212,
+          "at": 1791859831183,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-12",
+          "expiresAt": 1791859884212,
+          "at": 1791859831184,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 53028
+    },
+    {
+      "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-13",
+      "generated": {
+        "probe": "command-generation",
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-13",
+        "operation": "session.sync",
+        "generatedAt": 1791859834765,
+        "expiresAt": 1791859887765,
+        "ttlMs": 53000,
+        "clockSource": "ArkWeb monotonic epoch",
+        "unit": "epoch-ms"
+      },
+      "sent": {
+        "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-13",
+        "expiresAt": 1791859887765,
+        "sentAt": 1791859834776,
+        "clockSource": "ArkTS Date.now",
+        "unit": "epoch-ms"
+      },
+      "audit": [
+        {
+          "stage": "received",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-13",
+          "expiresAt": 1791859887765,
+          "at": 1791859834743,
+          "outcome": "received",
+          "clockSource": "desktop Date.now",
+          "unit": "epoch-ms"
+        },
+        {
+          "stage": "checked",
+          "commandId": "native-core-c9c04fdb-318b-419e-a628-4e9b9509b36a-13",
+          "expiresAt": 1791859887765,
+          "at": 1791859834743,
+          "outcome": "admitted",
+          "clockSource": "desktop monotonic epoch",
+          "unit": "epoch-ms"
+        }
+      ],
+      "remainingMs": 53022
+    }
+  ],
+  "shutdown": {
+    "beforeCleanupGatewayErrors": 0,
+    "retainedFinalGatewayErrors": 1,
+    "active": 0,
+    "listenerClosed": true
+  },
+  "sharedHdcPid": 33004,
+  "ideStarted": false,
+  "authenticationAttempted": false,
+  "settingsChanged": false,
+  "realModels": 0,
+  "replayCalls": 0,
+  "promptCalls": 0,
+  "uploads": 0,
+  "nativeEmulatorSocketQualified": true,
+  "deviceQualified": false,
+  "wanQualified": false,
+  "installedDesktopQualified": false,
+  "priorFailuresReclassified": false,
+  "remaining": [
+    "Real phone and OS compatibility",
+    "Authenticated remote transport and pairing",
+    "Installed desktop execution and rich action end-to-end acceptance"
+  ]
+}

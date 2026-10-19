@@ -1,0 +1,18 @@
+/** Execute the portable source profile in a fresh external environment; missing assets and unsafe argv never select a live fallback. */
+import { cp, mkdtemp, readFile, writeFile, rename, readdir, realpath } from 'node:fs/promises'
+import { join, resolve, relative } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import assert from 'node:assert/strict'
+const project=resolve('.'),world=await mkdtemp('D:/Temp/harmony-detached-profile-'),candidate=join(world,'candidate')
+await cp('.build/source-replay-candidate',candidate,{recursive:true,dereference:false})
+async function verify(directory){for(const item of await readdir(directory,{withFileTypes:true})){assert.equal(item.isSymbolicLink(),false);const path=join(directory,item.name);assert.ok(!relative(candidate,await realpath(path)).startsWith('..'));if(item.isDirectory())await verify(path)}}await verify(candidate)
+const env={PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,WINDIR:process.env.WINDIR,ComSpec:process.env.ComSpec,TEMP:world,TMP:world,NO_COLOR:'1',DEEPSEEK_API_KEY:'synthetic-env-must-be-dropped',NODE_PATH:join(project,'nonexistent-never-use')}
+const run=()=>spawnSync(process.execPath,[join(candidate,'launch.mjs')],{cwd:world,env,windowsHide:true,encoding:'utf8',timeout:45000})
+const positive=run();await writeFile(join(world,'positive.log'),positive.stdout+positive.stderr);if(positive.status!==0)throw new Error('Detached profile failed: '+positive.stderr)
+const result=JSON.parse(positive.stdout.trim().split(/\r?\n/).at(-1));assert.equal(result.replayCalls,4);assert.equal(result.realModels,0);assert.equal(result.uploads,0);assert.equal(result.desktopDispatches,1);assert.ok(result.liveStreamFrames>0)
+const entry=join(candidate,'runtime/node_modules/@deepseek-ai/dsh/lib/bin.js'),unsafe=spawnSync(process.execPath,[entry,'--profile','desktop'],{cwd:world,env:{...env,DSH_SNAPSHOT:'live',DSH_SNAPSHOT_REPLAY_ONLY:'0'},windowsHide:true,encoding:'utf8',timeout:15000});assert.notEqual(unsafe.status,0);assert.match(unsafe.stderr,/isolated fixed replay launcher/)
+const fixture=join(candidate,'runtime/node_modules/@local/dsh-harmony-replay/assets/offline-four.v4.jsonl'),held=join(world,'held-fixture');assert.ok(!relative(world,fixture).startsWith('..'));await rename(fixture,held)
+let missing;try{missing=run();assert.notEqual(missing.status,0)}finally{await rename(held,fixture)}
+const failedHome=missing.stderr.match(/^Error: Fixed replay profile failed with exit [^;]+; isolated diagnostics: ([^\r\n]+)$/m)?.[1];if(!failedHome||relative(world,failedHome).startsWith('..'))throw new Error('Missing fixture failure report unavailable');const failure=JSON.parse(await readFile(join(failedHome,'failure.json'),'utf8'));assert.ok(failure.messages.some(message=>message.includes('ENOENT')))
+const report={schema:'harmony-detached-profile/1',world,candidate,result,engine:process.version,symlinks:false,parentNodeModules:false,ambientModelCredentialDropped:true,unsafeModeRefused:true,missingFixtureRefused:true,missingFixtureFailure:failure.code,realModels:0,uploads:0,currentDesktopChanged:false,serverChanged:false}
+await writeFile(join(project,'evidence/detached-replay-profile.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({world,positive:result,unsafeModeRefused:true,missingFixtureRefused:true}))

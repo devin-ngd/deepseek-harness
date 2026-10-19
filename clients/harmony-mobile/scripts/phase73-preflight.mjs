@@ -1,0 +1,9 @@
+/** Preserve client inputs and verify the immutable field candidate without opening identities, grants or devices. */
+import assert from 'node:assert/strict'
+import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
+import { createHash } from 'node:crypto'
+const hash=b=>createHash('sha256').update(b).digest('hex'),root='.build/phase73-preimages',files=['harmony/entry/src/main/ets/native/NativeTransientAgreement.ets','harmony/entry/src/main/ets/native/NativePairedConnectionOwner.ets','harmony/entry/src/main/ets/native/NativeRelaySocket.ets','tests/helpers/phase35-native-sdk.mjs','integration/e2e-socket.ts','src/paired-relay.ts','src/native-paired-bridge.ts','scripts/build-native.mjs','README.md','docs/acceptance.md','docs/tasks.md']
+await mkdir(root);const records=[];for(const file of files){const bytes=await readFile(file),target=join(root,file);await mkdir(dirname(target),{recursive:true});await copyFile(file,target);records.push({file,sha256:hash(bytes)})}
+const frozen=JSON.parse(await readFile('.build/phase69-review-candidate/files.sha256.json','utf8'));for(const file of frozen)assert.equal(hash(await readFile(join('.build/phase69-review-candidate',file.file))),file.sha256);const closeout=JSON.parse(await readFile('evidence/phase72-closeout.json','utf8'));assert.equal(closeout.grant.revokedEpoch,4);assert.equal(closeout.grant.activeCount,0)
+const report={at:new Date().toISOString(),records,frozenFilesMatched:frozen.length,lastObservedRevokedEpoch:4,liveCredentialRead:false,deviceIo:false,grantCreated:false,installedAppChanged:false};await writeFile('evidence/phase73-preflight.json',JSON.stringify(report,null,2)+'\n',{flag:'wx'});console.log(JSON.stringify({preserved:records.length,frozenFilesMatched:frozen.length,liveCredentialRead:false}))

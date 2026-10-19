@@ -1,0 +1,11 @@
+{
+  "dshRoot": "D:/workspace/agents/deepseek-harness",
+  "auditedCommit": "9fa2f1f705",
+  "mode": "mock-only",
+  "integrationMode": "guarded-fixed-replay",
+  "candidateMinimumApi": 12,
+  "device": "Mate90 Pro Max",
+  "targetOs": "HarmonyOS 7",
+  "deviceBuildConfirmed": false,
+  "wanRequired": true
+}

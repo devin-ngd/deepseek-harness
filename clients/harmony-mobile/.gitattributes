@@ -1,0 +1,7 @@
+# Generated bundles embed schema compiler templates whose bytes are hash-checked.
+/handoff/phase29/verify.mjs linguist-generated=true whitespace=-blank-at-eol
+/harmony/entry/src/main/ets/paired/PairedCore.js linguist-generated=true whitespace=-blank-at-eol
+/harmony/entry/src/main/ets/product/ProductCore.js linguist-generated=true whitespace=-blank-at-eol
+/harmony/entry/src/main/resources/rawfile/native-offline-core.js linguist-generated=true whitespace=-blank-at-eol
+/harmony/entry/src/main/resources/rawfile/product-rich-document.js linguist-generated=true whitespace=-blank-at-eol
+/harmony/entry/src/main/resources/rawfile/trusted-phone-core.js linguist-generated=true whitespace=-blank-at-eol

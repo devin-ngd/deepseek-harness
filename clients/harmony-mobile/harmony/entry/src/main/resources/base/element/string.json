@@ -1,0 +1,428 @@
+{
+  "string": [
+    {
+      "name": "transport_disabled",
+      "value": "连接未启用"
+    },
+    {
+      "name": "transport_connecting",
+      "value": "正在连接回放测试服务"
+    },
+    {
+      "name": "transport_disconnected",
+      "value": "回放测试服务已断开；桌面任务状态需重新查询"
+    },
+    {
+      "name": "replay_connected",
+      "value": "回放测试服务已连接 · 蜂窝与真机尚未验收"
+    },
+    {
+      "name": "module_description",
+      "value": "固定合成会话演示，无真实桌面或模型连接"
+    },
+    {
+      "name": "title",
+      "value": "DSH 手机端"
+    },
+    {
+      "name": "mock_notice",
+      "value": "离线合成演示 · 桌面连接未激活"
+    },
+    {
+      "name": "target_device",
+      "value": "主目标：Mate90 Pro Max · HarmonyOS 7"
+    },
+    {
+      "name": "owner",
+      "value": "执行归属：mock-desktop"
+    },
+    {
+      "name": "composer",
+      "value": "输入演示任务；不会执行真实操作"
+    },
+    {
+      "name": "send",
+      "value": "发送演示"
+    },
+    {
+      "name": "cancel",
+      "value": "取消演示"
+    },
+    {
+      "name": "queued",
+      "value": "演示已接收，尚未完成"
+    },
+    {
+      "name": "completed",
+      "value": "固定结果已展示"
+    },
+    {
+      "name": "cancelled",
+      "value": "演示已取消"
+    },
+    {
+      "name": "rich_preview",
+      "value": "富块静态预览 · ArkWeb 交互尚未验收"
+    },
+    {
+      "name": "approval_title",
+      "value": "审批待确认"
+    },
+    {
+      "name": "approval_notice",
+      "value": "演示审批不会确认真实操作。敏感批准必须由可信原生控件完成。"
+    },
+    {
+      "name": "dismiss",
+      "value": "关闭"
+    },
+    {
+      "name": "project_label",
+      "value": "合成项目 · 项目与会话选择"
+    },
+    {
+      "name": "desktop_continues",
+      "value": "连接已断开；电脑任务可能继续。重新连接后核对状态。"
+    },
+    {
+      "name": "task_running",
+      "value": "电脑正在执行"
+    },
+    {
+      "name": "task_idle",
+      "value": "尚无任务"
+    },
+    {
+      "name": "task_failed",
+      "value": "电脑任务失败"
+    },
+    {
+      "name": "cancel_requested",
+      "value": "已请求取消；等待电脑确认"
+    },
+    {
+      "name": "outcome_unknown",
+      "value": "结果未知；先查询原请求，不重复发送"
+    },
+    {
+      "name": "role_user",
+      "value": "我的消息"
+    },
+    {
+      "name": "role_assistant",
+      "value": "电脑回复"
+    },
+    {
+      "name": "image_reference",
+      "value": "图片附件引用；原生下载尚未启用"
+    },
+    {
+      "name": "history_readonly",
+      "value": "继承历史只读；不能提交该富块"
+    },
+    {
+      "name": "demo_connected",
+      "value": "回放状态"
+    },
+    {
+      "name": "demo_disconnected",
+      "value": "断开状态"
+    },
+    {
+      "name": "demo_confirmation",
+      "value": "待确认"
+    },
+    {
+      "name": "owner_prefix",
+      "value": "执行归属："
+    },
+    {
+      "name": "load_older",
+      "value": "读取更早消息"
+    },
+    {
+      "name": "offline_cache",
+      "value": "离线缓存，只读；重新连接后核对远端状态"
+    },
+    {
+      "name": "image_unavailable",
+      "value": "图片暂不可用，尺寸信息已保留"
+    },
+    {
+      "name": "native_demo_a",
+      "value": "原生离线会话 A"
+    },
+    {
+      "name": "native_demo_b",
+      "value": "隔离自检 B"
+    },
+    {
+      "name": "native_runtime_failed",
+      "value": "原生离线运行失败；请重新打开页面，真实桌面保持关闭。"
+    },
+    {
+      "name": "native_cache_save",
+      "value": "保存离线缓存"
+    },
+    {
+      "name": "native_cache_restore",
+      "value": "只读恢复缓存"
+    },
+    {
+      "name": "native_disconnect",
+      "value": "停止本地连接"
+    },
+    {
+      "name": "native_data_unavailable",
+      "value": "当前会话数据不可用；请重新连接并核对状态。"
+    },
+    {
+      "name": "native_fixed_submit",
+      "value": "发送固定测试任务"
+    },
+    {
+      "name": "native_http_probe",
+      "value": "HTTP 权限自检"
+    },
+    {
+      "name": "native_http_denied",
+      "value": "原生 HTTP 已拒绝：未声明网络权限"
+    },
+    {
+      "name": "native_http_unconfirmed",
+      "value": "HTTP 自检未取得预期拒绝；检查测试日志"
+    },
+    {
+      "name": "latest_messages",
+      "value": "最新消息"
+    },
+    {
+      "name": "pairing_preview_title",
+      "value": "配对指纹确认预览"
+    },
+    {
+      "name": "pairing_preview_notice",
+      "value": "仅合成预览；不配对、不生成密钥或授予权限。"
+    },
+    {
+      "name": "pairing_desktop_fingerprint",
+      "value": "电脑身份指纹（请完整比对）"
+    },
+    {
+      "name": "pairing_phone_fingerprint",
+      "value": "手机身份指纹（请完整比对）"
+    },
+    {
+      "name": "pairing_scope",
+      "value": "电脑：%s\n配置：%s\n设备：%s\n会话：%s\n操作：%s\n授权时长（毫秒）：%s"
+    },
+    {
+      "name": "pairing_deadline",
+      "value": "本次确认到期时间戳：%s"
+    },
+    {
+      "name": "pairing_compared",
+      "value": "我已在两台设备上完整比对双方身份指纹"
+    },
+    {
+      "name": "pairing_deny",
+      "value": "拒绝"
+    },
+    {
+      "name": "pairing_confirm",
+      "value": "确认本次合成预览"
+    },
+    {
+      "name": "pairing_preview_finished",
+      "value": "本次预览已关闭，未授予任何真实权限。"
+    },
+    {
+      "name": "product_unpaired",
+      "value": "未配对"
+    },
+    {
+      "name": "product_paired",
+      "value": "已配对"
+    },
+    {
+      "name": "product_revoked",
+      "value": "本机访问已撤销"
+    },
+    {
+      "name": "product_blocked",
+      "value": "配对配置不可用"
+    },
+    {
+      "name": "product_connected",
+      "value": "已连接电脑"
+    },
+    {
+      "name": "product_connecting",
+      "value": "正在连接或恢复"
+    },
+    {
+      "name": "product_disconnected",
+      "value": "未连接"
+    },
+    {
+      "name": "product_disabled",
+      "value": "远程连接尚未启用。可先生成本机身份，或读取已保存配置并重新确认主机。"
+    },
+    {
+      "name": "product_operation_failed",
+      "value": "操作未确认完成。请查看状态；任务可以查询原回执，避免重复发送。"
+    },
+    {
+      "name": "product_local_offer",
+      "value": "使用由电脑本地确认的公开配对配置，并逐项比较双方公钥指纹。不要输入账号密钥。"
+    },
+    {
+      "name": "product_public_offer",
+      "value": "公开配对配置"
+    },
+    {
+      "name": "product_compared",
+      "value": "我已在手机与电脑比较双方公钥指纹，并确认会话和操作范围"
+    },
+    {
+      "name": "product_confirm_pair",
+      "value": "保存本地配对"
+    },
+    {
+      "name": "product_connect",
+      "value": "连接电脑"
+    },
+    {
+      "name": "product_reconcile",
+      "value": "查询原回执"
+    },
+    {
+      "name": "product_exit",
+      "value": "断开并退出"
+    },
+    {
+      "name": "product_all_sessions",
+      "value": "全部授权会话"
+    },
+    {
+      "name": "product_revoke",
+      "value": "撤销本机访问"
+    },
+    {
+      "name": "product_revoke_notice",
+      "value": "这会立即关闭本机连接并保存撤销记录。已交给电脑的任务继续运行；电脑侧撤销需由电脑本地确认。"
+    },
+    {
+      "name": "product_confirm_revoke",
+      "value": "确认撤销"
+    },
+    {
+      "name": "product_keep_pair",
+      "value": "保留配对"
+    },
+    {
+      "name": "product_desktop_fingerprint",
+      "value": "电脑公钥指纹"
+    },
+    {
+      "name": "product_phone_fingerprint",
+      "value": "手机公钥指纹"
+    },
+    {
+      "name": "product_write_scope",
+      "value": "所选会话包含任务或富交互写入权限，请与电脑确认范围。"
+    },
+    {
+      "name": "product_read_scope",
+      "value": "所选会话仅使用确认的读取范围。"
+    },
+    {
+      "name": "product_identity_notice",
+      "value": "首次使用先创建设备身份，已有身份可查看公开信息。此操作不会配对或连接电脑。"
+    },
+    {
+      "name": "product_identity_begin",
+      "value": "创建设备身份"
+    },
+    {
+      "name": "product_identity_existing",
+      "value": "查看已有设备公钥"
+    },
+    {
+      "name": "product_identity_confirm_notice",
+      "value": "确认在本应用 HUKS ECE 中创建一个设备身份？私钥不导出；已有别名不会覆盖。创建结果不明时停止并检查，不自动重试。"
+    },
+    {
+      "name": "product_identity_confirm",
+      "value": "确认创建"
+    },
+    {
+      "name": "product_identity_deny",
+      "value": "暂不创建"
+    },
+    {
+      "name": "product_identity_name",
+      "value": "本机设备身份名称（小写字母、数字或连字符）"
+    },
+    {
+      "name": "product_enrollment_notice",
+      "value": "将电脑生成的公开挑战粘贴到这里。先核验桌面签名并比较双方指纹及限定会话；确认后仅签署这次挑战。"
+    },
+    {
+      "name": "product_enrollment_offer",
+      "value": "桌面公开挑战 JSON"
+    },
+    {
+      "name": "product_enrollment_preview",
+      "value": "核验挑战与指纹"
+    },
+    {
+      "name": "product_enrollment_sign",
+      "value": "确认并签署这次挑战"
+    },
+    {
+      "name": "product_restore_saved",
+      "value": "读取已保存的公开配对配置"
+    },
+    {
+      "name": "product_network_notice",
+      "value": "本次连接只使用下面的公开主机。请另行确认允许联网；保存配对后仍需点击连接。"
+    },
+    {
+      "name": "product_network_allow",
+      "value": "允许本次使用这个主机"
+    },
+    {
+      "value": "挑战截至 %1$s；申请授权 %2$d 分钟",
+      "name": "product_enrollment_deadline"
+    },
+    {
+      "name": "product_connection_stopped",
+      "value": "连接已停止。请退出后检查配对、网络和授权状态。"
+    },
+    {
+      "name": "product_successor_notice",
+      "value": "旧授权已过期。续接需要新签名授权和重新确认；原身份与历史记录会保留。"
+    },
+    {
+      "name": "product_grant_summary",
+      "value": "授权纪元 %d；到期 %s"
+    },
+    {
+      "name": "product_pair_identifier",
+      "value": "中继配对：%s"
+    },
+    {
+      "name": "product_scope_manage",
+      "value": "管理已保存范围（停止当前连接）"
+    },
+    {
+      "name": "product_scope_new_notice",
+      "value": "新范围单独保存，旧记录及撤销历史保留。仅保存已在桌面确认的授权；保存后仍需点击连接。"
+    },
+    {
+      "name": "product_scope_save_new",
+      "value": "确认并另存为新范围"
+    }
+  ]
+}

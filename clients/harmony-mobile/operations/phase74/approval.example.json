@@ -1,0 +1,8 @@
+{
+  "schema": "harmony-phase74-human-approval/1",
+  "approved": false,
+  "planSha256": "REPLACE_WITH_SEALED_PLAN_SHA256_AFTER_HUMAN_APPROVAL",
+  "manifestSha256": "REPLACE_WITH_SEALED_FILE_INVENTORY_SHA256_AFTER_HUMAN_APPROVAL",
+  "sourceHumanMessageId": null,
+  "scopes": ["native-public-read-with-own-lock", "original-signature-in-place-install-and-launch", "original-huks-and-dpapi-signatures", "relay-phase74-directory-unit-and-nginx-maintenance", "one-epoch5-fixed-replay-window-and-epoch6-revocation"]
+}

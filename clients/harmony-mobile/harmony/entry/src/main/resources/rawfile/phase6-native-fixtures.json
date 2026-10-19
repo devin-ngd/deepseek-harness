@@ -1,0 +1,3941 @@
+{
+  "schema": "mobile-native-fixture/1",
+  "mode": "synthetic-only",
+  "maxRows": 20,
+  "sessions": [
+    {
+      "sessionId": "phase3-session",
+      "title": "表单与任务回放",
+      "project": "合成项目",
+      "views": [
+        {
+          "sessionId": "phase3-session",
+          "desktopId": "phase5-desktop",
+          "cursor": 10,
+          "hasMore": false,
+          "readOnly": false,
+          "connection": "connected",
+          "task": "running",
+          "error": null,
+          "notices": [],
+          "messages": [
+            {
+              "id": "1db49592-4a9a-4d7b-92f7-1f8a24f225eb",
+              "seq": 5,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "Show the fixed replay mobile forms."
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "564bd556-d534-42c5-8cc7-319bb37fa9e8",
+              "seq": 6,
+              "role": "context",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"D:\\\\workspace\\\\agents\\\\deepseek-harness\\\\clients\\\\harmony-mobile\\\\.build\\\\phase3-world-VOZWkP\\\\real-link\"."
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+              "seq": 9,
+              "role": "assistant",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "\n\n"
+                }
+              ],
+              "rich": [
+                {
+                  "sessionId": "phase3-session",
+                  "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+                  "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-phone-form",
+                  "fallback": "Fixed mobile replay form"
+                },
+                {
+                  "sessionId": "phase3-session",
+                  "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+                  "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-other-form",
+                  "fallback": "Fixed mobile replay form"
+                }
+              ]
+            }
+          ],
+          "liveText": "",
+          "tools": [],
+          "rich": []
+        },
+        {
+          "sessionId": "phase3-session",
+          "desktopId": "phase5-desktop",
+          "cursor": 10,
+          "hasMore": false,
+          "readOnly": false,
+          "connection": "disconnected",
+          "task": "running",
+          "error": null,
+          "notices": [],
+          "messages": [
+            {
+              "id": "1db49592-4a9a-4d7b-92f7-1f8a24f225eb",
+              "seq": 5,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "Show the fixed replay mobile forms."
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "564bd556-d534-42c5-8cc7-319bb37fa9e8",
+              "seq": 6,
+              "role": "context",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"D:\\\\workspace\\\\agents\\\\deepseek-harness\\\\clients\\\\harmony-mobile\\\\.build\\\\phase3-world-VOZWkP\\\\real-link\"."
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+              "seq": 9,
+              "role": "assistant",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "\n\n"
+                }
+              ],
+              "rich": [
+                {
+                  "sessionId": "phase3-session",
+                  "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+                  "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-phone-form",
+                  "fallback": "Fixed mobile replay form"
+                },
+                {
+                  "sessionId": "phase3-session",
+                  "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+                  "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-other-form",
+                  "fallback": "Fixed mobile replay form"
+                }
+              ]
+            }
+          ],
+          "liveText": "",
+          "tools": [],
+          "rich": []
+        },
+        {
+          "sessionId": "phase3-session",
+          "desktopId": "phase5-desktop",
+          "cursor": 11,
+          "hasMore": false,
+          "readOnly": false,
+          "connection": "connected",
+          "task": "pending_confirmation",
+          "error": null,
+          "notices": [],
+          "messages": [
+            {
+              "id": "1db49592-4a9a-4d7b-92f7-1f8a24f225eb",
+              "seq": 5,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "Show the fixed replay mobile forms."
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "564bd556-d534-42c5-8cc7-319bb37fa9e8",
+              "seq": 6,
+              "role": "context",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"D:\\\\workspace\\\\agents\\\\deepseek-harness\\\\clients\\\\harmony-mobile\\\\.build\\\\phase3-world-VOZWkP\\\\real-link\"."
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+              "seq": 9,
+              "role": "assistant",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "\n\n"
+                }
+              ],
+              "rich": [
+                {
+                  "sessionId": "phase3-session",
+                  "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+                  "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-phone-form",
+                  "fallback": "Fixed mobile replay form"
+                },
+                {
+                  "sessionId": "phase3-session",
+                  "messageId": "3d7b29ff-280a-4662-81ee-9d616a26d479",
+                  "blockId": "inline-3d7b29ff-280a-4662-81ee-9d616a26d479-other-form",
+                  "fallback": "Fixed mobile replay form"
+                }
+              ]
+            }
+          ],
+          "liveText": "",
+          "tools": [],
+          "rich": []
+        }
+      ]
+    },
+    {
+      "sessionId": "phase5-empty",
+      "title": "空会话",
+      "project": "合成项目",
+      "views": [
+        {
+          "sessionId": "phase5-empty",
+          "desktopId": "phase5-desktop",
+          "cursor": -1,
+          "hasMore": false,
+          "readOnly": false,
+          "connection": "connected",
+          "task": "idle",
+          "error": null,
+          "notices": [],
+          "messages": [],
+          "liveText": "",
+          "tools": [],
+          "rich": []
+        },
+        {
+          "sessionId": "phase5-empty",
+          "desktopId": "phase5-desktop",
+          "cursor": -1,
+          "hasMore": false,
+          "readOnly": false,
+          "connection": "disconnected",
+          "task": "idle",
+          "error": null,
+          "notices": [],
+          "messages": [],
+          "liveText": "",
+          "tools": [],
+          "rich": []
+        },
+        {
+          "sessionId": "phase5-empty",
+          "desktopId": "phase5-desktop",
+          "cursor": -1,
+          "hasMore": false,
+          "readOnly": false,
+          "connection": "disconnected",
+          "task": "idle",
+          "error": null,
+          "notices": [],
+          "messages": [],
+          "liveText": "",
+          "tools": [],
+          "rich": []
+        }
+      ]
+    },
+    {
+      "sessionId": "phase6-long-cache",
+      "title": "100 条历史与离线恢复",
+      "project": "合成项目",
+      "views": [
+        {
+          "sessionId": "phase6-long-cache",
+          "desktopId": "phase5-desktop",
+          "cursor": 99,
+          "hasMore": false,
+          "readOnly": false,
+          "connection": "connected",
+          "task": "idle",
+          "error": null,
+          "notices": [],
+          "messages": [
+            {
+              "id": "native-history-0",
+              "seq": 0,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 0"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-1",
+              "seq": 1,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 1"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-2",
+              "seq": 2,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 2"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-3",
+              "seq": 3,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 3"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-4",
+              "seq": 4,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 4"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-5",
+              "seq": 5,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 5"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-6",
+              "seq": 6,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 6"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-7",
+              "seq": 7,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 7"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-8",
+              "seq": 8,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 8"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-9",
+              "seq": 9,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 9"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-10",
+              "seq": 10,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 10"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-11",
+              "seq": 11,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 11"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-12",
+              "seq": 12,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 12"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-13",
+              "seq": 13,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 13"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-14",
+              "seq": 14,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 14"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-15",
+              "seq": 15,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 15"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-16",
+              "seq": 16,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 16"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-17",
+              "seq": 17,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 17"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-18",
+              "seq": 18,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 18"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-19",
+              "seq": 19,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 19"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-20",
+              "seq": 20,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 20"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-21",
+              "seq": 21,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 21"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-22",
+              "seq": 22,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 22"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-23",
+              "seq": 23,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 23"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-24",
+              "seq": 24,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 24"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-25",
+              "seq": 25,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 25"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-26",
+              "seq": 26,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 26"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-27",
+              "seq": 27,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 27"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-28",
+              "seq": 28,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 28"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-29",
+              "seq": 29,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 29"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-30",
+              "seq": 30,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 30"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-31",
+              "seq": 31,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 31"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-32",
+              "seq": 32,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 32"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-33",
+              "seq": 33,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 33"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-34",
+              "seq": 34,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 34"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-35",
+              "seq": 35,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 35"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-36",
+              "seq": 36,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 36"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-37",
+              "seq": 37,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 37"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-38",
+              "seq": 38,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 38"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-39",
+              "seq": 39,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 39"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-40",
+              "seq": 40,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 40"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-41",
+              "seq": 41,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 41"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-42",
+              "seq": 42,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 42"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-43",
+              "seq": 43,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 43"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-44",
+              "seq": 44,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 44"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-45",
+              "seq": 45,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 45"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-46",
+              "seq": 46,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 46"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-47",
+              "seq": 47,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 47"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-48",
+              "seq": 48,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 48"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-49",
+              "seq": 49,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 49"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-50",
+              "seq": 50,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 50"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-51",
+              "seq": 51,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 51"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-52",
+              "seq": 52,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 52"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-53",
+              "seq": 53,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 53"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-54",
+              "seq": 54,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 54"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-55",
+              "seq": 55,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 55"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-56",
+              "seq": 56,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 56"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-57",
+              "seq": 57,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 57"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-58",
+              "seq": 58,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 58"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-59",
+              "seq": 59,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 59"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-60",
+              "seq": 60,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 60"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-61",
+              "seq": 61,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 61"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-62",
+              "seq": 62,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 62"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-63",
+              "seq": 63,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 63"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-64",
+              "seq": 64,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 64"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-65",
+              "seq": 65,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 65"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-66",
+              "seq": 66,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 66"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-67",
+              "seq": 67,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 67"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-68",
+              "seq": 68,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 68"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-69",
+              "seq": 69,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 69"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-70",
+              "seq": 70,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 70"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-71",
+              "seq": 71,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 71"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-72",
+              "seq": 72,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 72"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-73",
+              "seq": 73,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 73"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-74",
+              "seq": 74,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 74"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-75",
+              "seq": 75,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 75"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-76",
+              "seq": 76,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 76"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-77",
+              "seq": 77,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 77"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-78",
+              "seq": 78,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 78"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-79",
+              "seq": 79,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 79"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-80",
+              "seq": 80,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 80"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-81",
+              "seq": 81,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 81"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-82",
+              "seq": 82,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 82"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-83",
+              "seq": 83,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 83"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-84",
+              "seq": 84,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 84"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-85",
+              "seq": 85,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 85"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-86",
+              "seq": 86,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 86"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-87",
+              "seq": 87,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 87"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-88",
+              "seq": 88,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 88"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-89",
+              "seq": 89,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 89"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-90",
+              "seq": 90,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 90"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-91",
+              "seq": 91,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 91"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-92",
+              "seq": 92,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 92"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-93",
+              "seq": 93,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 93"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-94",
+              "seq": 94,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 94"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-95",
+              "seq": 95,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 95"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-96",
+              "seq": 96,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 96"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-97",
+              "seq": 97,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 97"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-98",
+              "seq": 98,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 98"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-99",
+              "seq": 99,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 99"
+                },
+                {
+                  "kind": "image",
+                  "attachmentId": "native-unavailable-image",
+                  "mediaType": "image/png",
+                  "width": 24,
+                  "height": 16
+                }
+              ],
+              "rich": []
+            }
+          ],
+          "liveText": "",
+          "tools": [],
+          "rich": []
+        },
+        {
+          "sessionId": "phase6-long-cache",
+          "desktopId": "phase5-desktop",
+          "cursor": 99,
+          "hasMore": false,
+          "readOnly": true,
+          "connection": "disconnected",
+          "task": "idle",
+          "error": null,
+          "notices": [
+            "offline-cache"
+          ],
+          "messages": [
+            {
+              "id": "native-history-0",
+              "seq": 0,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 0"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-1",
+              "seq": 1,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 1"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-2",
+              "seq": 2,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 2"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-3",
+              "seq": 3,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 3"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-4",
+              "seq": 4,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 4"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-5",
+              "seq": 5,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 5"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-6",
+              "seq": 6,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 6"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-7",
+              "seq": 7,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 7"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-8",
+              "seq": 8,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 8"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-9",
+              "seq": 9,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 9"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-10",
+              "seq": 10,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 10"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-11",
+              "seq": 11,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 11"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-12",
+              "seq": 12,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 12"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-13",
+              "seq": 13,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 13"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-14",
+              "seq": 14,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 14"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-15",
+              "seq": 15,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 15"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-16",
+              "seq": 16,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 16"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-17",
+              "seq": 17,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 17"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-18",
+              "seq": 18,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 18"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-19",
+              "seq": 19,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 19"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-20",
+              "seq": 20,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 20"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-21",
+              "seq": 21,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 21"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-22",
+              "seq": 22,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 22"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-23",
+              "seq": 23,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 23"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-24",
+              "seq": 24,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 24"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-25",
+              "seq": 25,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 25"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-26",
+              "seq": 26,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 26"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-27",
+              "seq": 27,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 27"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-28",
+              "seq": 28,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 28"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-29",
+              "seq": 29,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 29"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-30",
+              "seq": 30,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 30"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-31",
+              "seq": 31,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 31"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-32",
+              "seq": 32,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 32"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-33",
+              "seq": 33,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 33"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-34",
+              "seq": 34,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 34"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-35",
+              "seq": 35,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 35"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-36",
+              "seq": 36,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 36"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-37",
+              "seq": 37,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 37"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-38",
+              "seq": 38,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 38"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-39",
+              "seq": 39,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 39"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-40",
+              "seq": 40,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 40"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-41",
+              "seq": 41,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 41"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-42",
+              "seq": 42,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 42"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-43",
+              "seq": 43,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 43"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-44",
+              "seq": 44,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 44"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-45",
+              "seq": 45,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 45"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-46",
+              "seq": 46,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 46"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-47",
+              "seq": 47,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 47"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-48",
+              "seq": 48,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 48"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-49",
+              "seq": 49,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 49"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-50",
+              "seq": 50,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 50"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-51",
+              "seq": 51,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 51"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-52",
+              "seq": 52,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 52"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-53",
+              "seq": 53,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 53"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-54",
+              "seq": 54,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 54"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-55",
+              "seq": 55,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 55"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-56",
+              "seq": 56,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 56"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-57",
+              "seq": 57,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 57"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-58",
+              "seq": 58,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 58"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-59",
+              "seq": 59,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 59"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-60",
+              "seq": 60,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 60"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-61",
+              "seq": 61,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 61"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-62",
+              "seq": 62,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 62"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-63",
+              "seq": 63,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 63"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-64",
+              "seq": 64,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 64"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-65",
+              "seq": 65,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 65"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-66",
+              "seq": 66,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 66"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-67",
+              "seq": 67,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 67"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-68",
+              "seq": 68,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 68"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-69",
+              "seq": 69,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 69"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-70",
+              "seq": 70,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 70"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-71",
+              "seq": 71,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 71"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-72",
+              "seq": 72,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 72"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-73",
+              "seq": 73,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 73"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-74",
+              "seq": 74,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 74"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-75",
+              "seq": 75,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 75"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-76",
+              "seq": 76,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 76"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-77",
+              "seq": 77,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 77"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-78",
+              "seq": 78,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 78"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-79",
+              "seq": 79,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 79"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-80",
+              "seq": 80,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 80"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-81",
+              "seq": 81,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 81"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-82",
+              "seq": 82,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 82"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-83",
+              "seq": 83,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 83"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-84",
+              "seq": 84,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 84"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-85",
+              "seq": 85,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 85"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-86",
+              "seq": 86,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 86"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-87",
+              "seq": 87,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 87"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-88",
+              "seq": 88,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 88"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-89",
+              "seq": 89,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 89"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-90",
+              "seq": 90,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 90"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-91",
+              "seq": 91,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 91"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-92",
+              "seq": 92,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 92"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-93",
+              "seq": 93,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 93"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-94",
+              "seq": 94,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 94"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-95",
+              "seq": 95,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 95"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-96",
+              "seq": 96,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 96"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-97",
+              "seq": 97,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 97"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-98",
+              "seq": 98,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 98"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-99",
+              "seq": 99,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 99"
+                },
+                {
+                  "kind": "image",
+                  "attachmentId": "native-unavailable-image",
+                  "mediaType": "image/png",
+                  "width": 24,
+                  "height": 16
+                }
+              ],
+              "rich": []
+            }
+          ],
+          "liveText": "",
+          "tools": [],
+          "rich": []
+        },
+        {
+          "sessionId": "phase6-long-cache",
+          "desktopId": "phase5-desktop",
+          "cursor": 99,
+          "hasMore": false,
+          "readOnly": true,
+          "connection": "disconnected",
+          "task": "idle",
+          "error": null,
+          "notices": [
+            "offline-cache"
+          ],
+          "messages": [
+            {
+              "id": "native-history-0",
+              "seq": 0,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 0"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-1",
+              "seq": 1,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 1"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-2",
+              "seq": 2,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 2"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-3",
+              "seq": 3,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 3"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-4",
+              "seq": 4,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 4"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-5",
+              "seq": 5,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 5"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-6",
+              "seq": 6,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 6"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-7",
+              "seq": 7,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 7"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-8",
+              "seq": 8,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 8"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-9",
+              "seq": 9,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 9"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-10",
+              "seq": 10,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 10"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-11",
+              "seq": 11,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 11"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-12",
+              "seq": 12,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 12"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-13",
+              "seq": 13,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 13"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-14",
+              "seq": 14,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 14"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-15",
+              "seq": 15,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 15"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-16",
+              "seq": 16,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 16"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-17",
+              "seq": 17,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 17"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-18",
+              "seq": 18,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 18"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-19",
+              "seq": 19,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 19"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-20",
+              "seq": 20,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 20"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-21",
+              "seq": 21,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 21"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-22",
+              "seq": 22,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 22"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-23",
+              "seq": 23,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 23"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-24",
+              "seq": 24,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 24"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-25",
+              "seq": 25,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 25"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-26",
+              "seq": 26,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 26"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-27",
+              "seq": 27,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 27"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-28",
+              "seq": 28,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 28"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-29",
+              "seq": 29,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 29"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-30",
+              "seq": 30,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 30"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-31",
+              "seq": 31,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 31"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-32",
+              "seq": 32,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 32"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-33",
+              "seq": 33,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 33"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-34",
+              "seq": 34,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 34"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-35",
+              "seq": 35,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 35"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-36",
+              "seq": 36,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 36"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-37",
+              "seq": 37,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 37"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-38",
+              "seq": 38,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 38"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-39",
+              "seq": 39,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 39"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-40",
+              "seq": 40,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 40"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-41",
+              "seq": 41,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 41"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-42",
+              "seq": 42,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 42"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-43",
+              "seq": 43,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 43"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-44",
+              "seq": 44,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 44"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-45",
+              "seq": 45,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 45"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-46",
+              "seq": 46,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 46"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-47",
+              "seq": 47,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 47"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-48",
+              "seq": 48,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 48"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-49",
+              "seq": 49,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 49"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-50",
+              "seq": 50,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 50"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-51",
+              "seq": 51,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 51"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-52",
+              "seq": 52,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 52"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-53",
+              "seq": 53,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 53"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-54",
+              "seq": 54,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 54"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-55",
+              "seq": 55,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 55"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-56",
+              "seq": 56,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 56"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-57",
+              "seq": 57,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 57"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-58",
+              "seq": 58,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 58"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-59",
+              "seq": 59,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 59"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-60",
+              "seq": 60,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 60"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-61",
+              "seq": 61,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 61"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-62",
+              "seq": 62,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 62"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-63",
+              "seq": 63,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 63"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-64",
+              "seq": 64,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 64"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-65",
+              "seq": 65,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 65"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-66",
+              "seq": 66,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 66"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-67",
+              "seq": 67,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 67"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-68",
+              "seq": 68,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 68"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-69",
+              "seq": 69,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 69"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-70",
+              "seq": 70,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 70"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-71",
+              "seq": 71,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 71"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-72",
+              "seq": 72,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 72"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-73",
+              "seq": 73,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 73"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-74",
+              "seq": 74,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 74"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-75",
+              "seq": 75,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 75"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-76",
+              "seq": 76,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 76"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-77",
+              "seq": 77,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 77"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-78",
+              "seq": 78,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 78"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-79",
+              "seq": 79,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 79"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-80",
+              "seq": 80,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 80"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-81",
+              "seq": 81,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 81"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-82",
+              "seq": 82,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 82"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-83",
+              "seq": 83,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 83"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-84",
+              "seq": 84,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 84"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-85",
+              "seq": 85,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 85"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-86",
+              "seq": 86,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 86"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-87",
+              "seq": 87,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 87"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-88",
+              "seq": 88,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 88"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-89",
+              "seq": 89,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 89"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-90",
+              "seq": 90,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 90"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-91",
+              "seq": 91,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 91"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-92",
+              "seq": 92,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 92"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-93",
+              "seq": 93,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 93"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-94",
+              "seq": 94,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 94"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-95",
+              "seq": 95,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 95"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-96",
+              "seq": 96,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 96"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-97",
+              "seq": 97,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 97"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-98",
+              "seq": 98,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 98"
+                }
+              ],
+              "rich": []
+            },
+            {
+              "id": "native-history-99",
+              "seq": 99,
+              "role": "user",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "合成历史消息 99"
+                },
+                {
+                  "kind": "image",
+                  "attachmentId": "native-unavailable-image",
+                  "mediaType": "image/png",
+                  "width": 24,
+                  "height": 16
+                }
+              ],
+              "rich": []
+            }
+          ],
+          "liveText": "",
+          "tools": [],
+          "rich": []
+        }
+      ]
+    }
+  ]
+}

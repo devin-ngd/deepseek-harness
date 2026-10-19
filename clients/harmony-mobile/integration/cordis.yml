@@ -1,0 +1,49 @@
+# Source-mode Loader composition. No provider, upload, credentials, shell, browser or server plugin.
+- name: cordis:llm
+- name: cordis:extensions
+- name: cordis:sessions
+- name: cordis:projections
+- name: cordis:agents
+- name: cordis:systemPrompt
+  config:
+    includeHarnessIdentity: false
+    includeRuntimeContext: false
+- name: cordis:tools
+- name: cordis:agentLoop
+  config:
+    agents: []
+- name: cordis:storage
+- name: cordis:storageJson
+  config:
+    root: '{{storage}}'
+- name: cordis:storageDomain
+  config:
+    backend: json
+- name: cordis:persistence
+  config:
+    root: '{{sessions}}'
+    compression: none
+- name: cordis:query
+- name: cordis:workspaces
+- name: cordis:fs
+- name: cordis:cwd
+- name: cordis:typert
+- name: cordis:remoteAccess
+- name: cordis:commands
+- name: cordis:disabledCarrier
+- name: cordis:attachments
+  config:
+    dshHome: '{{home}}'
+- name: cordis:uploads
+- name: cordis:defaultModel
+  config:
+    provider: rich-inline-replay
+    model: rich-inline-fixed
+- name: cordis:sessionController
+  config:
+    nativeOpen: false
+- name: cordis:richInline
+  config:
+    activePresets: []
+    maxAutoRepairAttempts: 0
+    maxFormatRepairAttempts: 0

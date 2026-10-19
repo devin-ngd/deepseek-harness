@@ -1,0 +1,6 @@
+[
+  { "operation": "create", "purpose": 12 },
+  { "operation": "init", "purpose": 4 },
+  { "operation": "update", "purpose": 4 },
+  { "operation": "finish", "purpose": 4 }
+]

@@ -1,0 +1,8 @@
+/** Apply the maintained per-section pairing helpers only to this isolated private-package guide; the repo corpus CLI excludes clients/. */
+import { createRequire } from 'node:module'
+import { readFile, writeFile } from 'node:fs/promises'
+import { resolve, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import assert from 'node:assert/strict'
+const root=JSON.parse(await readFile('source.json','utf8')).dshRoot,require=createRequire(join(root,'package.json')),esbuild=require(require.resolve('esbuild',{paths:[join(root,'node_modules/.pnpm')]})),output=resolve('.build/protected-world-pair-utils.mjs');await esbuild.build({entryPoints:[join(root,'scripts/translation-pairing-record.ts')],outfile:output,bundle:true,platform:'node',format:'esm',target:'node22'})
+const api=await import(pathToFileURL(output).href),source='clients/harmony-mobile/docs/upgrade-guide/v0.2.1-alpha.2/protected-desktop-world/guide.md',paths=api.translationPairPaths(source),en=await readFile(join(root,paths.source),'utf8'),zh=await readFile(join(root,paths.zh),'utf8'),context={repoRoot:root,isTranslationPairSource:path=>path===source,repositoryFileExists:()=>false},record=api.computeTranslationPairingRecord(paths,en,zh,context),text=api.renderTranslationPairingRecord(paths,record)+'# Private-package guide is outside repo CLI corpus; regenerate with node scripts/protected-world-record-pair.mjs\n';await writeFile(join(root,paths.meta),text);assert.deepEqual(api.translationPairingRecordDiff(api.parseTranslationPairingRecord(text),api.computeTranslationPairingRecord(paths,en,zh,context)),[]);console.log('PASS: isolated bilingual guide canonical section hashes match; repo CLI exclusion unchanged')

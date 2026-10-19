@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "profileId": "desktop",
+  "presetId": "harmony-mobile-link-test",
+  "presetName": "手机链路验收（合成，无模型费用）",
+  "provider": "harmony-link-test",
+  "model": "fixed-three",
+  "responseLimit": 3,
+  "ttlMs": 1800000,
+  "paceMs": 20,
+  "maxTokens": 4096,
+  "contextWindow": 100000
+}

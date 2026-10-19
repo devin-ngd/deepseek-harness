@@ -1,0 +1,23 @@
+- insert:
+    - id: harmony-relay-webserver
+      name: '@deepseek-ai/dsh-host-webserver'
+      disabled: true
+      config:
+        host: 127.0.0.1
+        port: 17846
+    - id: harmony-relay-private
+      name: '@deepseek-ai/dsh-experimental-harmony-relay'
+      disabled: true
+      config:
+        enabled: false
+        publicHost: dsh.devinho.me
+        proxyLoopback: true
+        sweepIntervalMs: 1000
+        maxRooms: 2
+        maxRoomTtlMs: 300000
+        pairTimeoutMs: 30000
+        idleTimeoutMs: 60000
+        maxFrameBytes: 2097152
+        maxBufferedBytes: 4194304
+        maxFrames: 4096
+        maxControlFrames: 64

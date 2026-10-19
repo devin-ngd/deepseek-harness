@@ -1,0 +1,8 @@
+/** Local public JSON preparation only; no listener, credential or public trust activation. */
+import { readFile, lstat, writeFile } from 'node:fs/promises'
+import { pathToFileURL } from 'node:url'
+import { prepareFirstUseRelayConfig } from './first-use.ts'
+async function json(path: string): Promise<unknown> { const stat = await lstat(path); if (!stat.isFile() || stat.isSymbolicLink() || stat.size <= 0 || stat.size > 65536) throw new Error('public input denied'); const bytes = await readFile(path); if (bytes.length > 65536) throw new Error('public capacity exceeded'); return JSON.parse(bytes.toString('utf8')) }
+/** @param argv - selected proposal, public pair, canonical state path new output file and exact endpoint timer document. @returns after an exclusive public JSON write; does not initialize journal/head or start/reload a service. */
+export async function preparePublicConfig(argv: readonly string[]): Promise<void> { if (argv.length !== 10 || argv[0] !== '--config' || argv[2] !== '--pair' || argv[4] !== '--state' || argv[6] !== '--output' || argv[8] !== '--limits') throw new Error('explicit public configuration paths required'); const config = prepareFirstUseRelayConfig(await json(argv[1]!), await json(argv[3]!), argv[5]!, await json(argv[9]!)); await writeFile(argv[7]!, JSON.stringify(config, null, 2) + '\n', { flag: 'wx', mode: 0o600 }) }
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) void preparePublicConfig(process.argv.slice(2)).catch(error => { void error; process.stderr.write('Public proposal refused; existing output is preserved.\n'); process.exitCode = 1 })

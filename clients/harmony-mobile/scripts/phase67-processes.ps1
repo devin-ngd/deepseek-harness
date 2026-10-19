@@ -1,0 +1,8 @@
+# Project only this task's recorded Node runtimes and the original SDK HDC bridge; no process or setting changes.
+$ErrorActionPreference = 'Stop'
+$phase67Rows = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.CommandLine -like '*dsh-harmony-real-field-20261015-lEUAMM*' -or $_.CommandLine -like '*phase66-start-field.mjs*' } | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;parentPid=$_.ParentProcessId;createdAt=$_.CreationDate.ToUniversalTime().ToString('o');launcher=($_.CommandLine -like '*field-launch.mjs*');dshProfile=($_.CommandLine -like '*dsh*lib*bin.js*');taskWrapper=($_.CommandLine -like '*phase66-start-field.mjs*')} })
+$phase67Hdc = @(Get-CimInstance Win32_Process -Filter "Name = 'hdc.exe'" | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;officialExecutable=($_.ExecutablePath -eq 'D:\Program Files\HuaWei\DevEco Studio\sdk\default\openharmony\toolchains\hdc.exe')} })
+$phase67Listeners = @(Get-CimInstance -Namespace root/StandardCimv2 -ClassName MSFT_NetTCPConnection -Filter 'LocalPort = 8710 AND State = 2' | ForEach-Object { [pscustomobject]@{address=$_.LocalAddress;port=$_.LocalPort;pid=$_.OwningProcess} })
+$phase67Report = [ordered]@{at=[DateTime]::UtcNow.ToString('o');fieldProcesses=$phase67Rows;fieldProcessCount=$phase67Rows.Count;hdc=$phase67Hdc;listeners=$phase67Listeners;rawCommandLinesRetained=$false;processMutation=$false}
+[IO.File]::WriteAllText((Join-Path (Get-Location) '.build/phase67-processes-current.json'), (($phase67Report | ConvertTo-Json -Depth 6)+"`n"),[Text.UTF8Encoding]::new($false))
+$phase67Report | ConvertTo-Json -Depth 6

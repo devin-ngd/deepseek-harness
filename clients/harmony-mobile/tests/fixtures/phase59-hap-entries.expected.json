@@ -1,0 +1,241 @@
+{
+  "input": [
+    {
+      "path": "ets/modules.abc",
+      "bytes": 2540036,
+      "sha256": "5b7f156430244cd6df52ff8ee472ebd197b668bde37b0a9367daca1f21a9b8f8"
+    },
+    {
+      "path": "ets/sourceMaps.map",
+      "bytes": 282162,
+      "sha256": "08501216e7776af1a715d82f01a926fbfe46ba38a9647eb74c15658a04624326"
+    },
+    {
+      "path": "module.json",
+      "bytes": 1413,
+      "sha256": "c977ddba2dc9c13029886547903b0760217799fd1af8f26c2a588eb7f0853abd"
+    },
+    {
+      "path": "pack.info",
+      "bytes": 536,
+      "sha256": "a2e1788a196b3f8c3fb7e7e7d772367a85ca0118743feb5a91b31ab37c3a7508"
+    },
+    {
+      "path": "pkgSdkInfo.json",
+      "bytes": 64,
+      "sha256": "2e4962a8bc2b0a386c724fe4f23abdc2541c0073e2e0c19e4cd58f8c0eab42d9"
+    },
+    {
+      "path": "resources.index",
+      "bytes": 8404,
+      "sha256": "726a5301b25deb1240015e87c245d71a13f68e37e8e04628ea045cc3472de391"
+    },
+    {
+      "path": "resources/base/media/app_icon.svg",
+      "bytes": 328,
+      "sha256": "de334a55946f7bf90463746cb09075d01c991230558f835b3bea30e3683ba8ac"
+    },
+    {
+      "path": "resources/base/profile/main_pages.json",
+      "bytes": 23,
+      "sha256": "93846868ae31b5507d3e0675b3a364dab27a9e2ea7edb2a39c9a2bb70846d1f6"
+    },
+    {
+      "path": "resources/rawfile/asset-source-manifest.json",
+      "bytes": 26620,
+      "sha256": "4b18a7294213de6321fdca27e6d78e3714efb7911d861c5fa2c241c2434b34ab"
+    },
+    {
+      "path": "resources/rawfile/fixture-snapshot.json",
+      "bytes": 2006,
+      "sha256": "f90892c97cd99a254e84b0ebac5c036cb4a18db9ddcf309a7e72e3d85839e19e"
+    },
+    {
+      "path": "resources/rawfile/guest-sdk.js",
+      "bytes": 10963,
+      "sha256": "fc1d5ab25183278ff7fd377e0717bce7ec557edd510aa2f0bc024057b019906d"
+    },
+    {
+      "path": "resources/rawfile/mobile-presentation-fixtures.json",
+      "bytes": 6019,
+      "sha256": "ea5dcaa9e2984a72475efab037ea985cc1432186b40c25e5723d24602a0d4ef0"
+    },
+    {
+      "path": "resources/rawfile/native-offline-core.js",
+      "bytes": 805617,
+      "sha256": "c4b0e41d0b07fc8bd64cc61688baaae3c9a27aa75922f91633202c45e998db82"
+    },
+    {
+      "path": "resources/rawfile/native-policy.json",
+      "bytes": 1446,
+      "sha256": "f6b7091a48823d9b0e91d25496b7d32760978f9e49cd6fa9de463af3920187e0"
+    },
+    {
+      "path": "resources/rawfile/native-runtime-placeholder.html",
+      "bytes": 161,
+      "sha256": "a2cbf89341fda82f3fe093009d8843473efa908656873ebae624e55deb67f11c"
+    },
+    {
+      "path": "resources/rawfile/native-runtime-source-manifest.json",
+      "bytes": 23970,
+      "sha256": "c8491e6f81a66af4ff13a13b7e064c01e5db94ad33f0663118234d0e496651f3"
+    },
+    {
+      "path": "resources/rawfile/phase5-mounted-snapshot.json",
+      "bytes": 3159,
+      "sha256": "ac417812a466c1dd8bf471bf8472720e69ab00786a7bfa8038ff96d3f920fbeb"
+    },
+    {
+      "path": "resources/rawfile/phase5-preview-source.json",
+      "bytes": 290,
+      "sha256": "1236a4e22eace10548e244244035c94b776eca5aed8d96d6da1c78a2e42b26cc"
+    },
+    {
+      "path": "resources/rawfile/phase5-rich-preview.html",
+      "bytes": 19243,
+      "sha256": "cb77221f2792e2186d1046c15ac262846615de5e3e817c9ba4b558113a4b6a8e"
+    },
+    {
+      "path": "resources/rawfile/phase6-native-fixtures.json",
+      "bytes": 103977,
+      "sha256": "bec8541ba45646263f5be6dab3f9eda570016342d73b178057d8ef4fff77bd20"
+    },
+    {
+      "path": "resources/rawfile/product-rich-document.js",
+      "bytes": 712671,
+      "sha256": "61d9b65367570ab5fd89e02a7f73f7e6e1a12ce76352437454ad387453fcf3c4"
+    },
+    {
+      "path": "resources/rawfile/rich-preview.html",
+      "bytes": 18926,
+      "sha256": "48c32f2381afc9dfd7ae645239801ad422f41cb60ea14b687a6b360ebc15d51c"
+    },
+    {
+      "path": "resources/rawfile/trusted-phone-core.js",
+      "bytes": 700651,
+      "sha256": "b7e36044960a4d1263a9161def828e5c41814ffcb1c2731fe156eec301ffa359"
+    }
+  ],
+  "signed": [
+    {
+      "path": ".pages.info",
+      "bytes": 312,
+      "sha256": "88e3c89c1ba979b1add12c52918a13488b0dd35b434f6bddaa90b85410bcf675"
+    },
+    {
+      "path": "ets/modules.abc",
+      "bytes": 2540036,
+      "sha256": "5b7f156430244cd6df52ff8ee472ebd197b668bde37b0a9367daca1f21a9b8f8"
+    },
+    {
+      "path": "ets/sourceMaps.map",
+      "bytes": 282162,
+      "sha256": "08501216e7776af1a715d82f01a926fbfe46ba38a9647eb74c15658a04624326"
+    },
+    {
+      "path": "module.json",
+      "bytes": 1413,
+      "sha256": "c977ddba2dc9c13029886547903b0760217799fd1af8f26c2a588eb7f0853abd"
+    },
+    {
+      "path": "pack.info",
+      "bytes": 536,
+      "sha256": "a2e1788a196b3f8c3fb7e7e7d772367a85ca0118743feb5a91b31ab37c3a7508"
+    },
+    {
+      "path": "pkgSdkInfo.json",
+      "bytes": 64,
+      "sha256": "2e4962a8bc2b0a386c724fe4f23abdc2541c0073e2e0c19e4cd58f8c0eab42d9"
+    },
+    {
+      "path": "resources.index",
+      "bytes": 8404,
+      "sha256": "726a5301b25deb1240015e87c245d71a13f68e37e8e04628ea045cc3472de391"
+    },
+    {
+      "path": "resources/base/media/app_icon.svg",
+      "bytes": 328,
+      "sha256": "de334a55946f7bf90463746cb09075d01c991230558f835b3bea30e3683ba8ac"
+    },
+    {
+      "path": "resources/base/profile/main_pages.json",
+      "bytes": 23,
+      "sha256": "93846868ae31b5507d3e0675b3a364dab27a9e2ea7edb2a39c9a2bb70846d1f6"
+    },
+    {
+      "path": "resources/rawfile/asset-source-manifest.json",
+      "bytes": 26620,
+      "sha256": "4b18a7294213de6321fdca27e6d78e3714efb7911d861c5fa2c241c2434b34ab"
+    },
+    {
+      "path": "resources/rawfile/fixture-snapshot.json",
+      "bytes": 2006,
+      "sha256": "f90892c97cd99a254e84b0ebac5c036cb4a18db9ddcf309a7e72e3d85839e19e"
+    },
+    {
+      "path": "resources/rawfile/guest-sdk.js",
+      "bytes": 10963,
+      "sha256": "fc1d5ab25183278ff7fd377e0717bce7ec557edd510aa2f0bc024057b019906d"
+    },
+    {
+      "path": "resources/rawfile/mobile-presentation-fixtures.json",
+      "bytes": 6019,
+      "sha256": "ea5dcaa9e2984a72475efab037ea985cc1432186b40c25e5723d24602a0d4ef0"
+    },
+    {
+      "path": "resources/rawfile/native-offline-core.js",
+      "bytes": 805617,
+      "sha256": "c4b0e41d0b07fc8bd64cc61688baaae3c9a27aa75922f91633202c45e998db82"
+    },
+    {
+      "path": "resources/rawfile/native-policy.json",
+      "bytes": 1446,
+      "sha256": "f6b7091a48823d9b0e91d25496b7d32760978f9e49cd6fa9de463af3920187e0"
+    },
+    {
+      "path": "resources/rawfile/native-runtime-placeholder.html",
+      "bytes": 161,
+      "sha256": "a2cbf89341fda82f3fe093009d8843473efa908656873ebae624e55deb67f11c"
+    },
+    {
+      "path": "resources/rawfile/native-runtime-source-manifest.json",
+      "bytes": 23970,
+      "sha256": "c8491e6f81a66af4ff13a13b7e064c01e5db94ad33f0663118234d0e496651f3"
+    },
+    {
+      "path": "resources/rawfile/phase5-mounted-snapshot.json",
+      "bytes": 3159,
+      "sha256": "ac417812a466c1dd8bf471bf8472720e69ab00786a7bfa8038ff96d3f920fbeb"
+    },
+    {
+      "path": "resources/rawfile/phase5-preview-source.json",
+      "bytes": 290,
+      "sha256": "1236a4e22eace10548e244244035c94b776eca5aed8d96d6da1c78a2e42b26cc"
+    },
+    {
+      "path": "resources/rawfile/phase5-rich-preview.html",
+      "bytes": 19243,
+      "sha256": "cb77221f2792e2186d1046c15ac262846615de5e3e817c9ba4b558113a4b6a8e"
+    },
+    {
+      "path": "resources/rawfile/phase6-native-fixtures.json",
+      "bytes": 103977,
+      "sha256": "bec8541ba45646263f5be6dab3f9eda570016342d73b178057d8ef4fff77bd20"
+    },
+    {
+      "path": "resources/rawfile/product-rich-document.js",
+      "bytes": 712671,
+      "sha256": "61d9b65367570ab5fd89e02a7f73f7e6e1a12ce76352437454ad387453fcf3c4"
+    },
+    {
+      "path": "resources/rawfile/rich-preview.html",
+      "bytes": 18926,
+      "sha256": "48c32f2381afc9dfd7ae645239801ad422f41cb60ea14b687a6b360ebc15d51c"
+    },
+    {
+      "path": "resources/rawfile/trusted-phone-core.js",
+      "bytes": 700651,
+      "sha256": "b7e36044960a4d1263a9161def828e5c41814ffcb1c2731fe156eec301ffa359"
+    }
+  ]
+}

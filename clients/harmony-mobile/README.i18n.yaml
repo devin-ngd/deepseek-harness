@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write clients/harmony-mobile/README.md
+/:
+  en: bb7048d71da5f6ce
+  zh: d0d42ca68f5083ae
+/dsh-harmony-mobile-client-lab:
+  en: 7885e389cae97fab
+  zh: 03a9f2daaf1710d0
+/dsh-harmony-mobile-client-lab/summary:
+  en: 066d127f288c3a85
+  zh: f831a1b93a3724dc
+/dsh-harmony-mobile-client-lab/contents:
+  en: b33369dec084ffba
+  zh: b145c9ec76e3b730
+/dsh-harmony-mobile-client-lab/architecture-and-scope:
+  en: 63af39eed6055d1a
+  zh: 8737c5afe5c0de47
+/dsh-harmony-mobile-client-lab/offline-checks:
+  en: 37455cac49d07995
+  zh: 0b68807944602d04
+/dsh-harmony-mobile-client-lab/qualification-and-safety:
+  en: 3f5a1d25886c34b3
+  zh: 8faa11a45b55dd8c

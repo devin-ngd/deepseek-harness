@@ -1,0 +1,15 @@
+/** Local field-candidate settings; one fixed synthetic Session, bounded grants and no live model route. */
+import { z } from 'zod'
+import { isAbsolute } from 'node:path'
+import { id } from '../../src/protocol.ts'
+import { fieldProfile, fieldSession } from '../../src/first-use-protocol.ts'
+import type { DesktopFirstUsePolicy } from '../../desktop-plugin/src/first-use.ts'
+import { connectReadyPolicySchema } from './connect-readiness.ts'
+const positive = z.number().int().positive().max(0x7fffffff)
+const auth = z.object({ maxGrantTtlMs: positive.max(1800000), maxConnectionTtlMs: positive.max(1800000), challengeTtlMs: positive, maxDevices: z.literal(1), maxChallengeIssues: positive, maxSessions: z.literal(1), maxProofBytes: positive.max(16384) }).strict()
+const relay = z.object({ maxProofs: positive, maxQueuedBytes: positive, maxChallengeTtlMs: positive, maxRoomTtlMs: positive, handshakeMs: positive, e2e: z.object({ maxFrameBytes: positive, maxPlaintextBytes: positive, maxFrames: positive }).strict() }).strict()
+const world = z.object({ path: z.string().min(1).max(4096).refine(isAbsolute), mode: z.enum(['create', 'reopen']), maxAdmissionRecords: positive.max(100000), lockWaitMs: positive.max(30000) }).strict()
+/** Closed local deployment parser, absent/disabled configuration cannot read keys or open sockets. */
+export const fieldConfigSchema = z.discriminatedUnion('enabled', [z.object({ schema: z.enum(['harmony-replay-field/1', 'harmony-replay-field/2']), enabled: z.literal(false) }).strict(), z.object({ schema: z.literal('harmony-replay-field/2'), enabled: z.literal(true), desktopId: z.string().min(1).max(256), deviceId: z.string().min(1).max(256), pairId: z.string().min(1).max(256), identityAlias: z.string().regex(/^[a-z][a-z0-9-]{0,126}$/), identityProtectionTimeoutMs: positive.max(30000), world, audience: z.string().max(253).regex(/^[a-z0-9.-]+$/).refine(host => !host.endsWith('.invalid')), grantTtlMs: positive.max(1800000), publicTrustMaxBytes: positive.max(1048576).default(32768), connectReady: connectReadyPolicySchema, renewal: z.object({ previousPublicPath: z.string().min(1).max(4096).refine(isAbsolute) }).strict().optional(), enrollmentTtlMs: positive.max(600000), maxIssues: positive, auth, relay, wss: z.object({ host: z.string(), handshakeMs: positive, maxFrameBytes: positive, maxBufferedBytes: positive, maxControlFrames: positive }).strict(), sweepIntervalMs: positive, recovery: z.object({ maxAttempts: positive, retryDelayMs: positive }).strict() }).strict()])
+/** @param candidate - explicitly selected local JSON. @returns disabled or complete production policy before any service/key/transport call. */
+export function resolveFieldConfig(candidate: unknown) { const config = fieldConfigSchema.parse(candidate); if (!config.enabled) return config; const policy: DesktopFirstUsePolicy = { ...config, desktopId: id<'mobile-desktop'>(config.desktopId), deviceId: id<'mobile-device'>(config.deviceId), profileId: id<'mobile-profile'>(fieldProfile), sessionId: id<'SessionId'>(fieldSession) }; return { ...config, policy } }

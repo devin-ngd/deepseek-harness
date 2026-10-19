@@ -1,0 +1,27 @@
+{
+  "environment": "synthetic-only",
+  "owner": "mock-session-a",
+  "receipt": {
+    "accepted": true,
+    "state": "accepted",
+    "requestId": "profile-request-1"
+  },
+  "promptCalls": 1,
+  "rich": {
+    "receipt": {
+      "accepted": true,
+      "code": "ACCEPTED",
+      "actionId": "profile-action-1",
+      "state": "accepted",
+      "draftRevision": 1
+    },
+    "duplicateIdentical": true,
+    "state": "accepted",
+    "admittedActions": 1
+  },
+  "cancelled": {
+    "accepted": true
+  },
+  "finalTask": "cancelled",
+  "approvalDisplayOnly": 1
+}

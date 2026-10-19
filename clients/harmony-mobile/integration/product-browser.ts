@@ -1,0 +1,28 @@
+/** Chrome executes the HAP-owned document and maintained guest SDK; only test driver code owns the parent MessagePort. This is not ArkWeb evidence. */
+import { chromium } from 'playwright'
+import { readFile } from 'node:fs/promises'
+import { NativeProductRichOwner, sdk, context, type NativeProductOwner } from '../tests/helpers/product-native-harness.mjs'
+import { object, string } from '../src/domain.ts'
+interface Driver { port: MessagePort; requests: string[]; ready: boolean }
+declare global { interface Window { __dshProductTest: Driver } }
+/** @param app - actual ETS product owner with SDK substitutes. @param mount - admitted native rich JSON. @param policy - same app policy. @returns the actual SDK form's invoke envelope and native canonical receipt, plus mobile layout/isolation evidence. */
+export async function submitProductForm(app: NativeProductOwner, mount: string, policy: string): Promise<{ packet: string; receipt: string; browser: string; actionId: string; widths: number[]; guestHostDenied: boolean }> {
+  const bytes = await readFile(new URL('../harmony/entry/src/main/resources/rawfile/product-rich-document.js', import.meta.url)); sdk.resources.set('product-rich-document.js', bytes)
+  const native = new NativeProductRichOwner(app, policy); native.initialize(context()); native.attached(); native.bind('https://product.dsh.invalid/rich'); const nativePort = native.controller.ports[0]!
+  const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, chromiumSandbox: true }), page = await browser.newPage({ viewport: { width: 360, height: 720 } }); let packet = '', receipt = ''
+  try {
+    await page.route('**/*', route => route.request().url() === 'http://127.0.0.1:60080/product-fixture' ? route.fulfill({ contentType: 'text/html', body: native.controller.html }) : route.abort())
+    await page.goto('http://127.0.0.1:60080/product-fixture')
+    await page.evaluate(raw => { const channel = new MessageChannel(); window.__dshProductTest = { port: channel.port1, requests: [], ready: false }; channel.port1.onmessage = event => { if (typeof event.data !== 'string') return; if (event.data === '{"kind":"rich.ready"}') window.__dshProductTest.ready = true; else window.__dshProductTest.requests.push(event.data) }; channel.port1.start(); window.postMessage(JSON.stringify({ protocol: 'harmony-product-rich/1', policy: JSON.parse(raw) }), '*', [channel.port2]) }, policy)
+    await page.waitForFunction(() => window.__dshProductTest.ready); nativePort.emit('{"kind":"rich.ready"}'); native.setMount(mount); for (const raw of nativePort.posted.splice(0)) await page.evaluate(value => window.__dshProductTest.port.postMessage(value), raw)
+    const frame = page.frameLocator('#rich-frame');
+    for (let attempt = 0; attempt < 300 && !await frame.locator('input[name="title"]').isVisible(); attempt++) { const startup = await page.evaluate(() => window.__dshProductTest.requests.splice(0)); for (const request of startup) nativePort.emit(request); for (const response of nativePort.posted.splice(0)) await page.evaluate(value => window.__dshProductTest.port.postMessage(value), response); await new Promise<void>(resolve => setTimeout(resolve, 10)) }
+    await frame.locator('input[name="title"]').waitFor(); await frame.locator('input[name="title"]').fill('Final mobile input'); await frame.locator('input[name="count"]').fill('7'); await frame.locator('button').click()
+    let invokeId = ''
+    for (let n = 0; n < 300 && receipt === ''; n++) { const pending = await page.evaluate(() => window.__dshProductTest.requests.splice(0)); for (const raw of pending) { const request = object(JSON.parse(raw)); if (request.kind !== 'rich.request') throw new Error('unexpected product rich document packet'); nativePort.emit(raw); if (request.operation === 'rich.invoke') { packet = raw; invokeId = string(request.id, 128) } }; for (const reply of nativePort.posted.splice(0)) { const response = object(JSON.parse(reply)); await page.evaluate(value => window.__dshProductTest.port.postMessage(value), reply); if (response.kind === 'rich.reply' && response.id === invokeId) receipt = reply }; if (receipt === '') await new Promise<void>(resolve => setTimeout(resolve, 10)) }
+    if (packet === '') throw new Error('browser form produced no scoped invoke'); const parsed = object(JSON.parse(packet)), payload = object(parsed.payload); const actionId = string(payload.actionId, 128); if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(actionId) || string(object(payload.values).title, 256) !== 'Final mobile input') throw new Error('unexpected fixed SDK form intent')
+    const guestHostDenied = await frame.locator('form').evaluate(() => { try { return window.parent.__dshProductTest === undefined } catch (error) { void error; return true } }), widths: number[] = []
+    for (const width of [360, 480]) { await page.setViewportSize({ width, height: 720 }); const valid = await frame.locator('form').evaluate(() => { const controls = [...document.querySelectorAll('input,button')]; return document.documentElement.scrollWidth <= window.innerWidth + 1 && controls.every(control => control.getBoundingClientRect().height >= 44) }); if (!valid) throw new Error('mobile rich form overflow or undersized controls'); widths.push(width) }
+    await page.evaluate(() => { window.dispatchEvent(new Event('pagehide')); window.__dshProductTest.port.close() }); return { packet, receipt, browser: browser.version(), actionId, widths, guestHostDenied }
+  } finally { await Promise.allSettled([browser.close(), native.close()]) }
+}

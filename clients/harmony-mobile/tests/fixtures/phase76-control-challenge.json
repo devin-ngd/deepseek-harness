@@ -1,0 +1,13 @@
+{
+  "protocol": "harmony-relay-control/1",
+  "kind": "challenge",
+  "pairId": "phase39-synthetic-pair",
+  "round": "phase39-fixture-id-1",
+  "role": "phone",
+  "epoch": 1,
+  "credentialId": "p256-sha256-e26630d1233ed92d8ac231a4bf230fddb2d924d6eace7489946e1e82e9523a70",
+  "audience": "dsh.devinho.me",
+  "challengeId": "phase39-fixture-id-5",
+  "nonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ",
+  "expiresAt": 11000
+}

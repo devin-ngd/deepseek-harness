@@ -1,0 +1,17 @@
+{
+  "enrollment": {
+    "desktopId": "ordinary-desktop",
+    "profileId": "ordinary-owner-profile",
+    "sessions": ["ordinary-selected-session"]
+  },
+  "saved": {
+    "desktopId": "ordinary-desktop",
+    "profileId": "ordinary-owner-profile",
+    "sessions": ["ordinary-selected-session"]
+  },
+  "metadata": {
+    "profileId": "ordinary-owner-profile",
+    "sessions": ["ordinary-selected-session"]
+  },
+  "revokedAfterReload": true
+}

@@ -1,0 +1,20 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write clients/harmony-mobile/docs/upgrade-guide/v0.2.1-alpha.2/original-field-interaction/guide.md
+/:
+  en: a9a89be987f3c83f
+  zh: 1b6562d14f6537a6
+/original-field-interaction:
+  en: 2bd705dcb702cf17
+  zh: a749938e7c060a5e
+/original-field-interaction/change:
+  en: ad4daa2727372834
+  zh: 80d8e332c7455a02
+/original-field-interaction/migration:
+  en: 0ed1ea6ddd9c8fb9
+  zh: 0807dd3b2bb2bf3e
+/original-field-interaction/local-confirmation:
+  en: d43a25eb5352d361
+  zh: 1a1da979c253ce25
+# Private-package guide is outside repo CLI corpus; regenerate with node scripts/field-interaction-record-pair.mjs

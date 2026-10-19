@@ -1,0 +1,26 @@
+# Proposal only; system-level file/start and TLS/network changes require approval.
+[Unit]
+Description=Harmony phone desktop opaque relay
+After=network.target
+
+[Service]
+Type=simple
+User=devin
+WorkingDirectory=/home/devin/harmony-relay
+ExecStart=/usr/bin/node /home/devin/harmony-relay/server.mjs --config /home/devin/harmony-relay/config.enabled.json
+Restart=no
+TimeoutStopSec=10s
+MemoryMax=256M
+MemorySwapMax=0
+TasksMax=64
+LimitNOFILE=1024
+LimitCORE=0
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
