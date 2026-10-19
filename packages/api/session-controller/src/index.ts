@@ -40,6 +40,10 @@ import type {
   SessionAttachmentValue,
   SessionCancelRequest,
   SessionCancelValue,
+  SessionCompareAndSelectModelRequest,
+  SessionCompareAndSelectModelValue,
+  SessionModelSelectionSnapshot,
+  SessionReadModelSelectionRequest,
   SessionControlFrame,
   SessionCreateRequest,
   SessionCreateValue,
@@ -310,6 +314,55 @@ export class SessionController extends TypertRemoteService {
   @Remote('selectModel')
   selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue> {
     return this.commands.selectModel(request)
+  }
+
+  /**
+   * Read native selection and its event revision for a trusted Host caller.
+   * Resolves or resumes an ordinary Session without a model request; not exposed through Remote.
+   * @param request - ordinary Session identity.
+   * @returns the native next-request selection and last model/selection seq, or -1 before any selection.
+   * @throws RemoteError when the Session cannot resolve to a live ordinary Agent.
+   */
+  readModelSelection(request: SessionReadModelSelectionRequest): Promise<SessionModelSelectionSnapshot> {
+    return this.commands.readModelSelection(request)
+  }
+
+  /**
+   * Read native selection from a trusted Host caller's exact live Agent.
+   * @param agent - registered ordinary Agent; never resolved or replaced by this call.
+   * @returns the current native selection and explicit selection event revision.
+   * @throws RemoteError when the Agent is no longer current or belongs to subagent routing.
+   */
+  readModelSelectionForAgent(agent: Agent): SessionModelSelectionSnapshot {
+    return this.commands.readModelSelectionForAgent(agent)
+  }
+
+  /**
+   * Install a temporary native selection only while its event revision matches.
+   * Host-only; validates the available catalog and exact route capabilities, serializes with
+   * native selection changes, and rechecks revision at the synchronous append/cache commit.
+   * Never saves a deployment default. Callers own feature-specific authorization and restoration.
+   * @param request - ordinary Session identity, expected revision, and complete requested selection.
+   * @returns applied false with current state on conflict; applied true with the new event seq on commit.
+   * @throws RemoteError on resolution, stale Agent, or model validation failure, without a selection commit.
+   */
+  compareAndSelectModel(request: SessionCompareAndSelectModelRequest): Promise<SessionCompareAndSelectModelValue> {
+    return this.commands.compareAndSelectModel(request)
+  }
+
+  /**
+   * Apply the Host-only comparison to an exact Agent, without asynchronous identity resolution.
+   * The Agent must remain current through serial validation and the final commit check.
+   * @param agent - registered ordinary Agent whose native selection the caller owns temporarily.
+   * @param request - expected selection revision and complete requested selection.
+   * @returns applied false with current state on conflict, otherwise the newly committed selection and revision.
+   * @throws RemoteError on stale identity or model validation failure, without a selection commit.
+   */
+  compareAndSelectModelForAgent(
+    agent: Agent,
+    request: Omit<SessionCompareAndSelectModelRequest, 'sessionId'>,
+  ): Promise<SessionCompareAndSelectModelValue> {
+    return this.commands.compareAndSelectModelForAgent(agent, request)
   }
 
   /**

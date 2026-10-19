@@ -21,6 +21,8 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     imageLimits: null
     /** Durable model selection already used by a request and still pending for a later request. */
     modelSelection: ModelSelectionProjectionState
+    /** Latest model/selection event sequence, independent of request consumption. */
+    modelSelectionRevision: SessionSeqCursor
   }
   interface SessionProjectionMap {
     /** Persisted facts used to summarize a Session without activating it. */
@@ -102,6 +104,29 @@ export interface ModelSelection {
   readonly provider: string
   readonly model: string
   readonly reasoningEffort?: string
+}
+
+/** Host request to read the native selection of one ordinary Session. */
+export interface SessionReadModelSelectionRequest {
+  readonly sessionId: SessionId
+}
+
+/** Native next-request selection and the last explicit selection event sequence. */
+export interface SessionModelSelectionSnapshot {
+  readonly selected: ModelSelection
+  /** Latest model/selection event seq; -1 when no such event exists. */
+  readonly selectionRevision: SessionSeqCursor
+}
+
+/** Host request to replace a native selection only while its event revision matches. */
+export interface SessionCompareAndSelectModelRequest extends SessionReadModelSelectionRequest {
+  readonly expectedSelectionRevision: SessionSeqCursor
+  readonly selection: ModelSelection
+}
+
+/** Result of a Host selection comparison; conflicts retain the current selection unchanged. */
+export interface SessionCompareAndSelectModelValue extends SessionModelSelectionSnapshot {
+  readonly applied: boolean
 }
 
 /** Host fold state for durable model selection. */

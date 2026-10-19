@@ -1,7 +1,7 @@
 /** Durable model-selection intent and request-use projection. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionSeqCursor } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 import type {
@@ -80,4 +80,11 @@ function sameSelection(left: ModelSelection | null, right: ModelSelection | null
  */
 export function installModelSelectionProjection(ctx: Context): void {
   ctx.sessionProjections.register(modelSelectionProjection)
+  ctx.sessionProjections.register({
+    key: 'modelSelectionRevision',
+    stateSchema: z.number().int().min(-1) as z.ZodType<SessionSeqCursor>,
+    init: (): SessionSeqCursor => -1,
+    apply: (revision, event) => event.type === 'model/selection' ? event.seq : revision,
+    stateVersion: 1,
+  })
 }

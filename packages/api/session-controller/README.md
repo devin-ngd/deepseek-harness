@@ -90,6 +90,10 @@ GUI model selection requires the exact provider/model pair in the available cata
 
 A successful `selectModel` response acknowledges the Session-local selection without waiting for the default profile setting to save. Default saves run in the background in submission order; a failure logs a warning and leaves the Session selection intact. New Sessions read the last successfully saved default.
 
+Trusted Host plugins can read the native next-request selection with `readModelSelection` and temporarily replace it with `compareAndSelectModel`, without writing the deployment default. The comparison uses the latest `model/selection` event sequence (`-1` before the first event), including repeated identical choices and effort-only changes; request consumption does not advance it. Both operations have exact-Agent variants that reject replacement or disposal instead of selecting on another instance. These methods are not Remote endpoints; callers own feature-specific authorization and apply the same comparison when restoring an override, so a newer user choice wins.
+
+The comparison shares native selection serialization and available-catalog/capability validation, then rechecks the event revision immediately before appending and updating the native execution cache. A conflict returns `applied: false` and the current snapshot without a selection change. Validation and stale-Agent errors reject without committing a selection; append failures propagate without updating the execution cache. Success acknowledges the Session append, not a separate persistence flush. Model requests still use the native prompt-assembly selection timing.
+
 -----
 
 <a id="configuration"></a>

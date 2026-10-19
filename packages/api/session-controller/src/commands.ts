@@ -39,6 +39,10 @@ import type {
   SessionAttachmentValue,
   SessionCancelRequest,
   SessionCancelValue,
+  SessionCompareAndSelectModelRequest,
+  SessionCompareAndSelectModelValue,
+  SessionModelSelectionSnapshot,
+  SessionReadModelSelectionRequest,
   SessionCreateRequest,
   SessionCreateValue,
   SessionForkRequest,
@@ -189,6 +193,97 @@ export class SessionCommandController {
         )
       }
     })
+  }
+
+  /**
+   * Read native next-request selection without changing the deployment default.
+   * @param request - ordinary Session identity, resumed when necessary.
+   * @returns the native selection and latest explicit selection event sequence.
+   */
+  async readModelSelection(request: SessionReadModelSelectionRequest): Promise<SessionModelSelectionSnapshot> {
+    return this.readModelSelectionForAgent(await this.resolveAgent(request.sessionId))
+  }
+
+  /**
+   * Read one exact Agent's native selection without resolving another instance.
+   * @param agent - live ordinary Agent still owned by the registry.
+   * @returns the native selection and latest explicit selection event sequence.
+   */
+  readModelSelectionForAgent(agent: Agent): SessionModelSelectionSnapshot {
+    this.requireCurrentAgent(agent)
+    const selectionRevision = this.ctx.sessionProjections.stateOf(agent.session, 'modelSelectionRevision')
+    if (selectionRevision === undefined) {
+      throw new Error('api-session: required modelSelectionRevision projection is not registered')
+    }
+    return { selected: { ...this.agents.selectionFor(agent).current }, selectionRevision }
+  }
+
+  /**
+   * Compare and install a native Session selection without saving a default.
+   * @param request - Session identity, expected event revision, and requested route.
+   * @returns the committed selection or the unchanged snapshot on a revision conflict.
+   */
+  async compareAndSelectModel(
+    request: SessionCompareAndSelectModelRequest,
+  ): Promise<SessionCompareAndSelectModelValue> {
+    const agent = await this.resolveAgent(request.sessionId)
+    return this.compareAndSelectModelForAgent(agent, request)
+  }
+
+  /**
+   * Compare and install one exact Agent's native selection after serial validation.
+   * @param agent - live ordinary Agent, checked again after asynchronous validation.
+   * @param request - expected selection event sequence and requested route.
+   * @returns applied false on a revision conflict, otherwise the appended selection revision.
+   * @throws RemoteError when the Agent is replaced or route validation fails; no selection is appended.
+   */
+  compareAndSelectModelForAgent(
+    agent: Agent,
+    request: Omit<SessionCompareAndSelectModelRequest, 'sessionId'>,
+  ): Promise<SessionCompareAndSelectModelValue> {
+    this.requireCurrentAgent(agent)
+    return this.agents.serializeImageAdmission(agent, async () => {
+      const before = this.readModelSelectionForAgent(agent)
+      if (before.selectionRevision !== request.expectedSelectionRevision) return { applied: false, ...before }
+      let selected: AgentModelSelection
+      try {
+        await this.requireModel(request.selection)
+        const resolved = await this.ctx.llm.resolveCallConfig({
+          provider: request.selection.provider,
+          model: request.selection.model,
+          ...(request.selection.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: ReasoningEffortId(request.selection.reasoningEffort) }),
+        })
+        selected = {
+          provider: resolved.provider,
+          model: resolved.model,
+          ...(resolved.reasoningEffort === undefined ? {} : { reasoningEffort: resolved.reasoningEffort }),
+        }
+      } catch (error) {
+        if (remoteErrorOf(error) !== undefined) throw error
+        throw new RemoteError(
+          'session/model-unavailable',
+          error instanceof Error ? error.message : String(error),
+          { provider: request.selection.provider, model: request.selection.model },
+          { cause: error },
+        )
+      }
+      // No await separates this comparison from the native append/cache commit.
+      const current = this.readModelSelectionForAgent(agent)
+      if (current.selectionRevision !== request.expectedSelectionRevision) return { applied: false, ...current }
+      const selectionRevision = this.agents.selectForNextRequest(agent, selected)
+      return { applied: true, selected: { ...selected }, selectionRevision }
+    })
+  }
+
+  private requireCurrentAgent(agent: Agent): void {
+    if (this.ctx.agents.get(agent.id) !== agent || this.ctx.sessions.get(agent.id) !== agent.session) {
+      throw new RemoteError('session/agent-busy', 'The Session Agent changed before model selection could finish.', {
+        reason: 'resolve the current Agent and read its selection before retrying',
+      })
+    }
+    if (hasApiSessionSubagentOwner(this.ctx, agent.session, agent)) throw apiSessionSubagentOwnershipError(agent.id)
   }
 
   /**

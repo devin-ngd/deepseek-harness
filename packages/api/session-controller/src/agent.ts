@@ -11,7 +11,7 @@ import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
@@ -335,10 +335,13 @@ export class ApiSessionAgentController {
    * Commit and cache one validated selection for the next prompt assembly.
    * @param agent - live Agent that owns the selection.
    * @param selection - validated selection to record and apply.
+   * @returns the appended selection event sequence.
    */
-  selectForNextRequest(agent: Agent, selection: AgentModelSelection): void {
-    agent.session.append('model/selection', selection)
-    this.selectionFor(agent).current = selection
+  selectForNextRequest(agent: Agent, selection: AgentModelSelection): SessionSeq {
+    const installed = this.selectionFor(agent)
+    const event = agent.session.append('model/selection', selection)
+    installed.current = selection
+    return event.seq
   }
 
   /**

@@ -2123,6 +2123,34 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the normalized selection installed for the Session, without waiting for default persistence.',
       },
       {
+        signature: 'readModelSelection(request: SessionReadModelSelectionRequest): Promise<SessionModelSelectionSnapshot>',
+        description: 'Read native selection and its event revision for a trusted Host caller. Resolves or resumes an ordinary Session without a model request; not exposed through Remote.',
+        parameters: [{ name: 'request', description: 'ordinary Session identity.' }],
+        returns: 'the native next-request selection and last model/selection seq, or -1 before any selection.',
+        throws: ['RemoteError when the Session cannot resolve to a live ordinary Agent.'],
+      },
+      {
+        signature: 'readModelSelectionForAgent(agent: Agent): SessionModelSelectionSnapshot',
+        description: 'Read native selection from a trusted Host caller\'s exact live Agent.',
+        parameters: [{ name: 'agent', description: 'registered ordinary Agent; never resolved or replaced by this call.' }],
+        returns: 'the current native selection and explicit selection event revision.',
+        throws: ['RemoteError when the Agent is no longer current or belongs to subagent routing.'],
+      },
+      {
+        signature: 'compareAndSelectModel(request: SessionCompareAndSelectModelRequest): Promise<SessionCompareAndSelectModelValue>',
+        description: 'Install a temporary native selection only while its event revision matches. Host-only; validates the available catalog and exact route capabilities, serializes with native selection changes, and rechecks revision at the synchronous append/cache commit. Never saves a deployment default. Callers own feature-specific authorization and restoration.',
+        parameters: [{ name: 'request', description: 'ordinary Session identity, expected revision, and complete requested selection.' }],
+        returns: 'applied false with current state on conflict; applied true with the new event seq on commit.',
+        throws: ['RemoteError on resolution, stale Agent, or model validation failure, without a selection commit.'],
+      },
+      {
+        signature: 'compareAndSelectModelForAgent( agent: Agent, request: Omit<SessionCompareAndSelectModelRequest, \'sessionId\'>, ): Promise<SessionCompareAndSelectModelValue>',
+        description: 'Apply the Host-only comparison to an exact Agent, without asynchronous identity resolution. The Agent must remain current through serial validation and the final commit check.',
+        parameters: [{ name: 'agent', description: 'registered ordinary Agent whose native selection the caller owns temporarily.' }, { name: 'request', description: 'expected selection revision and complete requested selection.' }],
+        returns: 'applied false with current state on conflict, otherwise the newly committed selection and revision.',
+        throws: ['RemoteError on stale identity or model validation failure, without a selection commit.'],
+      },
+      {
         signature: '@Remote async initializeDefaultModel(): Promise<void>',
         description: 'Select the first available account model after login when no provider API key is configured.',
         parameters: [],
@@ -7106,6 +7134,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionCancelValue {\n    readonly accepted: true;\n}',
   },
   {
+    name: 'SessionCompareAndSelectModelRequest',
+    declaration: 'export interface SessionCompareAndSelectModelRequest extends SessionReadModelSelectionRequest {\n    readonly expectedSelectionRevision: SessionSeqCursor;\n    readonly selection: ModelSelection;\n}',
+  },
+  {
+    name: 'SessionCompareAndSelectModelValue',
+    declaration: 'export interface SessionCompareAndSelectModelValue extends SessionModelSelectionSnapshot {\n    readonly applied: boolean;\n}',
+  },
+  {
     name: 'SessionControlBaseline',
     declaration: 'export interface SessionControlBaseline {\n    readonly projections: Readonly<Record<SessionId, SessionProjectionBaseline>>;\n}',
   },
@@ -7322,6 +7358,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionMessageProjectionContext {\n    nodes: readonly SessionSeq[];\n    events: readonly SessionEvent[];\n    baseSeq: SessionLogOffset;\n    messages: ReadonlyMap<SessionSeq, Message>;\n}',
   },
   {
+    name: 'SessionModelSelectionSnapshot',
+    declaration: 'export interface SessionModelSelectionSnapshot {\n    readonly selected: ModelSelection;\n    readonly selectionRevision: SessionSeqCursor;\n}',
+  },
+  {
     name: 'SessionObservation',
     declaration: 'export interface SessionObservation extends Disposable {\n    readonly source: \'live\' | \'prepared\';\n    readonly header: SessionHeader;\n    readonly inheritedEventCount: SessionLogOffsetType;\n    readonly events: readonly SessionEvent[];\n    readonly cursor: SessionSeqCursor;\n    readonly revision?: SessionPersistenceRevision;\n    readonly projections?: ProjectionSnapshot;\n    retain(): SessionObservation;\n}',
   },
@@ -7412,6 +7452,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionPromptValue',
     declaration: 'export interface SessionPromptValue {\n    readonly accepted: true;\n}',
+  },
+  {
+    name: 'SessionReadModelSelectionRequest',
+    declaration: 'export interface SessionReadModelSelectionRequest {\n    readonly sessionId: SessionId;\n}',
   },
   {
     name: 'SessionRecord',
