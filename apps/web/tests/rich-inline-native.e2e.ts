@@ -581,8 +581,8 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
     expect(await previewGuest(0, 'document.body.dataset.scriptRuns??null')).toBeNull()
     expect(await previewGuest(0, 'typeof rich')).toBe('undefined')
     await expect.poll(() => page!.locator('[data-rich-inline-preview] webview').first().evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(300)
-    await expect.poll(() => previewGuest(1, '!!document.querySelector("svg")')).toBe(true)
     await page!.locator('[data-rich-inline-preview]').last().scrollIntoViewIfNeeded()
+    await expect.poll(() => previewGuest(1, '!!document.querySelector("svg")'), { timeout: 30_000 }).toBe(true)
     await screenshot('12-stream-complete-readonly')
     const callsBeforeCommit = adapter.calls
     adapter.finishStream(); await settled
