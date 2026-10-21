@@ -3,7 +3,22 @@
 /** One main-process authorized, non-persistent guest reservation. */
 export interface RichReservation { readonly lease: string; readonly partition: string; readonly src: string }
 /** Localized labels for isolated, user-activated copy controls. */
-export interface RichCopyLabels { readonly text: string; readonly image: string; readonly copied: string; readonly failed: string }
+export interface RichCopyLabels {
+  readonly text: string
+  readonly image: string
+  readonly copied: string
+  readonly failed: string
+  /** Omitted for legacy copy-only clients; newer Desktop versions accept content actions. */
+  readonly menu?: {
+    readonly plain: string
+    readonly markdown: string
+    readonly copyLink: string
+    readonly openLink: string
+    readonly more: string
+    readonly selectAll: string
+    readonly openFailed: string
+  }
+}
 /** Main-owned directional byte budgets, not generated-content permission declarations. */
 export interface NativeRichLimits {
   readonly documentBytes: number
@@ -13,6 +28,8 @@ export interface NativeRichLimits {
 }
 /** Native owner accepts bounded content bytes, never a guest-selected URL or preload. */
 export interface NativeRichBridge {
+  /** Present only when the carrier accepts copy.menu; absence keeps legacy copy controls. */
+  readonly contentActions?: 1
   /** Fixed resource limits supplied by the trusted preload. */
   readonly limits: NativeRichLimits
   /** @param request - host-derived identity and committed content. @returns the isolated guest lease. */

@@ -127,7 +127,9 @@ async function activate(ctx: Context, config: Config): Promise<void> {
     let existing = items.get(key)
     if (existing === undefined) {
       existing = new RichBlockController(sessionId, rpc, native, config.pollIntervalMs, appearance.getSnapshot,
-        () => ({ text: copyText('copyPart'), image: copyText('copyImage'), copied: copyText('copied'), failed: copyText('copyFailed') }))
+        () => ({ text: copyText('copyPart'), image: copyText('copyImage'), copied: copyText('copied'), failed: copyText('copyFailed'),
+          ...native?.contentActions === 1 ? { menu: { plain: copyText('copyPlain'), markdown: copyText('copyMarkdown'), copyLink: copyText('copyLink'),
+            openLink: copyText('openLink'), more: copyText('moreActions'), selectAll: copyText('selectContent'), openFailed: copyText('openLinkFailed') } } : {} }))
       items.set(key, existing)
     }
     return existing

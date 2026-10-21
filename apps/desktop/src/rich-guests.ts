@@ -1,6 +1,7 @@
 /** Disposable native renderers for untrusted rich documents, with main-owned transport and revocation. */
 import { randomUUID } from 'node:crypto'
-import { clipboard, ClipboardItem, Menu, nativeImage, session, type IpcMainEvent, type Session, type WebContents } from 'electron'
+import { clipboard, ClipboardItem, Menu, nativeImage, session, shell, type IpcMainEvent, type Session, type WebContents } from 'electron'
+import { richExternalUrl } from './rich-links.ts'
 import { DESKTOP_IPC, SCHEME } from './ipc.ts'
 import { readRichPacket, readRichRequest, richDocument } from './rich-document.ts'
 import type { DesktopRichBootstrap, DesktopRichCopyLabels, DesktopRichReservation } from './rich-types.ts'
@@ -103,6 +104,13 @@ export class DesktopRichGuests {
     guest.setWindowOpenHandler(() => ({ action: 'deny' }))
     guest.on('context-menu', (_event, params) => {
       if (lease.copy === undefined || !lease.ready || !this.leases.has(lease.id)) return
+      if (lease.copy.menu !== undefined) {
+        if (params.isEditable) Menu.buildFromTemplate([
+          { role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' },
+          { role: 'paste' }, { type: 'separator' }, { role: 'selectAll' },
+        ]).popup()
+        return
+      }
       const items: Electron.MenuItemConstructorOptions[] = []
       if (params.selectionText.length > 0) items.push({ label: lease.copy.text, click: () => { if (!guest.isDestroyed()) guest.copy() } })
       if (params.mediaType === 'image' && params.hasImageContents) items.push({ label: lease.copy.image,
@@ -193,6 +201,20 @@ export class DesktopRichGuests {
       console.error('Rich clipboard write failed', error)
     }
     return false
+  }
+
+  /**
+   * Open a user-activated destination outside the isolated guest; automatic navigation stays denied.
+   * @param event - live registered main frame whose isolated controls initiated the request.
+   * @param value - untrusted web or email address, not a local file or custom protocol.
+   * @returns whether the operating system accepted the request, not proof that the destination loaded.
+   */
+  async openLink(event: Pick<IpcMainEvent, 'sender' | 'senderFrame'>, value: unknown): Promise<boolean> {
+    const lease = this.leaseForEvent(event)
+    const url = richExternalUrl(value)
+    if (lease?.copy?.menu === undefined || url === undefined) return false
+    try { await shell.openExternal(url); return true }
+    catch (error) { console.error('Rich link opening failed', error); return false }
   }
 
   /** @param event - native caller. @param value - mount identity and JSON packet. */

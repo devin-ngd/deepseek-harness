@@ -98,6 +98,7 @@ export default defineConfig([
     format: 'cjs' as const,
     codeSplitting: false,
     platform: 'node' as const,
+    ...(name === 'preload-rich' ? { alias: { turndown: 'turndown/lib/turndown.browser.es.js' } } : {}),
     target: 'es2024',
     fixedExtension: false,
     dts: false,

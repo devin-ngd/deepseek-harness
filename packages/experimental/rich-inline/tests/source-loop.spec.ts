@@ -10,6 +10,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { installRichSourceOffload, readRichSource } from '../src/host/source.ts'
+import { isRichChild } from '../src/host/project-defaults.ts'
 
 describe('source offload model requests', () => {
   it('sends a shorter second request, preserves admission fields and records replay semantics', async () => {
@@ -25,13 +26,15 @@ describe('source offload model requests', () => {
       const source = { key: 'result', html: '<p>Synthetic ISP ROI image comparison</p>'.repeat(150),
         css: 'p{color:CanvasText}', js: 'window.localZoom = value => value', fallbackText: 'Synthetic ROI comparison', stateSchemaVersion: 1 }
       const authored = '```rich-html\n' + JSON.stringify(source) + '\n```'
-      const adapter = new MockAdapter([textResponse(authored), textResponse('Follow-up fixture')])
+      const adapter = new MockAdapter([textResponse(authored), textResponse('Follow-up fixture'), textResponse('Internal child report')])
       ctx.llm.registerAdapter(['fixed'], adapter)
+      const inspected = new Set<string>()
       installRichSourceOffload(ctx, 1, async (sessionId) => {
+        inspected.add(sessionId)
         const session = ctx.sessions.get(sessionId)
         if (session === undefined) throw new Error('missing fixture Session')
         return session.snapshotEvents()
-      })
+      }, agent => !isRichChild(agent))
       ctx.on('agent/pre-step', async (_payload, next) => {
         const decision = await next()
         return decision.kind === 'enter' ? { ...decision, startsRequestSeries: true } : decision
@@ -66,6 +69,15 @@ describe('source offload model requests', () => {
       if (declaration?.type !== 'rich-inline/source-offload' || declaration.data.targets[0] === undefined) throw new Error('missing source declaration')
       expect(readRichSource(events, { sourceRef: declaration.data.targets[0].sourceRef, field: 'js', offset: 0, length: 100 }, 100).text).toBe(source.js)
       expect(events.filter(event => event.type === 'request/header' && (event.data.startsSeries === true || event.data.reason === 'series'))).toHaveLength(2)
+      const child = await ctx.agents.create({ sessionId: SessionId('source-loop-child'), parentAgent: agent,
+        meta: { origin: 'subagent' }, agentOptions: { provider: 'fixed', model: 'fixed' } })
+      try {
+        child.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Return a plain internal report' }], source: { kind: 'user' } }))
+        await child.agent.whenIdle()
+        expect(adapter.requests).toHaveLength(3)
+        expect(inspected.has(child.agent.id)).toBe(false)
+        expect(child.agent.session.snapshotEvents().some(event => event.type === 'rich-inline/source-offload')).toBe(false)
+      } finally { await child.dispose() }
     } finally { await ctx.fiber.dispose() }
   })
 })

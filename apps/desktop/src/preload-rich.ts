@@ -14,7 +14,8 @@ if (process.isMainFrame && location.protocol === 'dsh-app:') {
   if ('copy' in bootstrap && bootstrap.copy !== undefined) {
     const copy = (bootstrap as DesktopRichBootstrap).copy
     if (copy !== undefined) window.addEventListener('DOMContentLoaded', () => {
-      const dispose = installRichCopy(copy, async value => await ipcRenderer.invoke(DESKTOP_IPC.richCopy, value) === true)
+      const dispose = installRichCopy(copy, async value => await ipcRenderer.invoke(DESKTOP_IPC.richCopy, value) === true,
+        async url => await ipcRenderer.invoke(DESKTOP_IPC.richOpenLink, url) === true)
       window.addEventListener('pagehide', dispose, { once: true })
     }, { once: true })
   }

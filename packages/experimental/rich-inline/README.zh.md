@@ -50,7 +50,7 @@ CLI 拒绝管理 `desktop`，桌面端应使用应用插件管理器。`dsh.bund
 
 ### 获得的能力
 
-默认的 `activePresets: []` 在整个配置中启用交互输出。设置 `activePresets: [lumina]` 后，仅选择了这个[已声明模式](../../preset/agent-preset-registry/README.zh.md)的会话要求交互输出。其他模式保留普通 Markdown 和编码工具，不提供 rich 工具或格式修正；已有交互卡片仍可查看。Lumina 模式可以使用标准模式的完整子插件列表，从而保留相同的编码能力。
+默认的 `activePresets: []` 在所有主会话中启用交互输出。设置 `activePresets: [lumina]` 后，仅选择了这个[已声明模式](../../preset/agent-preset-registry/README.zh.md)的主会话要求交互输出。所有子 Agent 均不接收创作提示、格式修复及任何 `rich_inline_*` 工具，包括源码回读；原生 schema、PTC SDK 和直接执行均强制排除。其他主会话模式保留普通 Markdown 和编码工具；已有交互卡片仍可查看。Lumina 模式可以使用标准模式的完整子插件列表，从而保留相同的编码能力。
 
 `projectDefaults` 为指定项目目录中的新空白会话选择已声明的模式，不修改恢复或已开始的会话、子目录，或另一个已明确选择的模式。新会话中的模式选择器可在首轮开始前覆盖项目默认值。这两个字段属于 `rich-inline` 项的配置，编辑后完整退出并重启桌面端：
 
@@ -74,9 +74,11 @@ projectDefaults:
 <a id="copy-parts-of-a-block"></a>
 ### 复制块中的部分内容
 
-桌面端在鼠标悬停于标记区域、或复制动作获得键盘焦点时显示小复制图标；触控布局保留紧凑入口。复制在本地完成，不发送 Agent 请求。普通选区和键盘复制保持可用，选中的文字及图片也有原生右键菜单动作。流式预览不提供复制控件。
+桌面端在悬停或键盘聚焦时显示复制及更多操作入口；段落、标题、列表项、表格、引用、代码和内联图片无需标记即可使用。链接短暂悬停后显示菜单，真实左键或中键点击默认由系统应用打开允许的网页/邮件地址；本地 `#片段` 在块内滚动。生成脚本的点击、弹窗和导航仍被拦截，不打开文件路径及其他协议。流式预览不提供这些控件。
 
-用 `data-rich-copy` 标记每个可复用区域：审查问题包含标题、位置、说明和修改建议，提示词或改写文本只包含所需输出。`pre` 元素自动获得独立复制动作。文本复制保留代码缩进和显示的段落换行，排除控件及隐藏内容。装饰和行号用 `data-rich-copy-ignore` 标记；`data-rich-copy="off"` 禁用该子树的复制动作。嵌套区域显示鼠标所在的最内层动作。右上角应留出空间，不生成剪贴板脚本或重复按钮。
+右键或 Shift+F10 打开菜单，优先作用于当前选区，否则作用于指向的内容。文本/代码提供纯文本与 Markdown；链接增加打开及复制地址，图片提供复制像素，各菜单均可选择全部内容。Markdown 保留标题、强调、链接、列表、表格和代码围栏；纯文本代码保留缩进及末尾换行。普通拖选和键盘复制保持可用，操作菜单不清空选区；Escape 关闭、方向键切换菜单项。输入框保留原生编辑菜单。复制仅在本地完成，不发送 Agent 请求。上述交互要求同步更新 Desktop 宿主，仅安装插件或刷新旧版已安装应用不会获得这些能力。
+
+用 `data-rich-copy` 标记每个可复用区域：审查问题包含标题、位置、说明和修改建议，提示词或改写文本只包含所需输出。`pre` 元素自动获得独立复制动作。文本复制保留代码缩进和显示的段落换行，排除控件及隐藏内容。装饰和行号用 `data-rich-copy-ignore` 标记；`data-rich-copy="off"` 禁用该子树的复制动作。显式标记将可复用文本合并为完整范围；嵌套代码、表格、引用、链接及图片仍有自己的动作。禁用的子树也不进入外层复制结果。右上角应留出空间，不生成剪贴板脚本或重复按钮。
 
 在 `img` 或其 `figure` 上使用 `data-rich-copy="image"`，可将内联 PNG、JPEG 或 WebP 复制为图片像素。复制失败会显示本地化提示，内容保留以便重试。适用[桌面端原生剪贴板限制](../../../apps/desktop/README.zh.md#message-rich-guests)。
 
@@ -84,7 +86,7 @@ projectDefaults:
 
 在启用的模式中，`compactLiveProcess: true`（默认）显示一条可展开的实时任务状态行，包含最近一条已入档的公开进度文本和工具计数。已有过程行保留父节点，仍可搜索；思考内容保留在过程折叠区和轨迹中。正在流式生成的回答和最终文档继续显示。中断、失败和夹有用户输入的轮次继续展开；完全展开模式保留所有过程行。停用插件或设置 `compactLiveProcess: false` 可恢复普通实时显示。
 
-`htmlQuestions: true`（默认）通过原有问答通道，在 Desktop 和 Web 展示可信 HTML 表单。表单支持单选、多选、文字、明确跳过，以及按会话保存并恢复浏览器草稿。计划审查保留规范 Markdown，提供编辑框和预览：可以直接提交原计划，也可以修改后批准；选择退回修改可提交反馈。提交的 `reviewedPlan` 成为 `exit_plan_mode` 返回的 `plan`。关闭调用原有的问题关闭操作。生成文档中的脚本不能完成这些请求。设置 `htmlQuestions: false` 可使用普通问答面板。
+`htmlQuestions: true`（默认）通过原有问答通道，在 Desktop 和 Web 展示可信 HTML 表单。表单居中并与输入框同宽，跟随插件所选主题；主题为 `none` 时使用原生界面样式。面板标题、题目、正文和辅助说明分层呈现。赛博主题采用带渐变表面与渐变边框的深空玻璃面板、渐变标题细线、等宽题号与状态、渐变题组轨道、右对齐的跳过操作、自定义渐变单选框和复选框、玻璃底部栏及渐变主按钮；极光、霓虹、终端、余烬和石墨复用同一布局、渐变边框、轨道和主按钮，按各自配色和圆角弱化强调。表单支持单选、多选、文字、明确跳过，以及按会话保存并恢复浏览器草稿。计划审查保留规范 Markdown，提供编辑框和预览：可以直接提交原计划，也可以修改后批准；选择退回修改可提交反馈。提交的 `reviewedPlan` 成为 `exit_plan_mode` 返回的 `plan`。关闭调用原有的问题关闭操作。生成文档中的脚本不能完成这些请求。设置 `htmlQuestions: false` 可使用普通问答面板。
 
 持续更新的文档只发布一次代码，通过 `window.rich.onState` 渲染数据。`rich_inline_update` 接收 `blockId`、`expectedRenderRevision`、`expectedDataRevision`、完整 `values` 和可读 `fallbackText`；它拒绝过期写入，只替换已确认数据，不替换代码、不重新挂载原生页面，也不改变未提交草稿。代码替换使用 `rich_inline_publish`。更新结果提供新的 `dataRevision`；提交交互时也携带页面和数据版本。普通进度不需要新增页面或业务动作 ID。
 
@@ -173,7 +175,7 @@ Agent 生成完整代码并返回发布对象或旧格式标记，插件负责�
 
 远程挂载操作声明其访问的 Session。挂载后的每次请求携带 `sessionId` 和 `mountId`；Session 与挂载记录的所属者不一致时，Host 拒绝请求。可信 Client 在读取 guest 数据后补入 Session，生成脚本不能选择它。非 owner 调用需要针对确切 `richInline/<method>` 动作的 Session 授权；全局权限不授予 Session 权限。Host 与 Client 一起更新，并刷新旧页面；见 [RPC 迁移说明](../../../docs/upgrade-guide/v0.2.1-alpha.4/rich-inline-session-requests/guide.zh.md)。包的 `engines.dsh` 为 `>=0.2.1-rc.2 <0.2.1-rc.3`；完整原生交互仍需要下文列出的 Desktop 接入。
 
-可选的 Host 服务 `ctx.richAuthoringPolicy.excludes(agent)` 在选择预设前，按确切 Agent 实例排除创作提示和工具。没有该服务时按 `activePresets` 决定创作资格；该策略不改变查看和已保存的发布内容。
+可选的 Host 服务 `ctx.richAuthoringPolicy.excludes(agent)` 在选择预设前，按确切 Agent 实例排除创作提示和工具。顶层 Agent 没有该服务时按 `activePresets` 决定创作资格；该策略不改变查看和已保存的发布内容。
 
 已挂载或存在草稿时，代码替换进入待更新。可信按钮先同步当前输入，再撤销旧 lease。兼容格式保留编辑，不兼容格式要求可信归档确认。归档草稿可在生成内容之外查看和复制。临时 DOM 状态留在本地，除非显式保存。历史查看不重放动作。Session 分支只恢复继承前缀的发布事实，不继承父会话动作、草稿或授权；继承块只读。恢复时保留当前结果中独立的渲染和数据版本；仅有单一版本的旧结果将该版本用于两个计数。
 
@@ -209,7 +211,7 @@ pnpm exec vitest run --config vitest.web.config.ts apps/web/tests/rich-inline.e2
 
 每个工具引用通过源码 hash 和 render/data 版本标识一次发布或已确认的完整状态替换，只提供原始调用中存在的字段；发布时省略的 values 仍不可读取。引用不读取实时草稿。读取最新成功替换的引用可取得该次确认值。只读分支复制分支点之前成功的状态替换，保留代码及 render 版本，草稿和授权保持为空；忽略过期或失败更新。
 
-`rich_inline_read` 从调用 Agent 所属 Session 已声明的引用中读取 `html`、`css`、`js`、`fallbackText` 或 JSON `values`，包括继承的不可变源码。偏移和长度按 JavaScript 字符串单元计数；`sourceReadMaxChars` 限制单次读取（默认 8192）。响应包含原始 SHA-256、总长度和续读偏移。读取不挂载代码、不访问文件、不授予权限，也不重放动作。重放时校验源码位置、hash、块身份及版本计数。其他投影不能覆盖已选择的片段。包含这些决策的 Session 在重开后仍需要插件解释器，参见[升级说明](../../../docs/upgrade-guide/v0.2.1-alpha.2/rich-inline-source-offload/guide.zh.md)。 该只读工具在 `activePresets` 之外也保持可用；创作工具仍受会话模式限制。
+`rich_inline_read` 从调用 Agent 所属 Session 已声明的引用中读取 `html`、`css`、`js`、`fallbackText` 或 JSON `values`，包括继承的不可变源码。偏移和长度按 JavaScript 字符串单元计数；`sourceReadMaxChars` 限制单次读取（默认 8192）。响应包含原始 SHA-256、总长度和续读偏移。读取不挂载代码、不访问文件、不授予权限，也不重放动作。重放时校验源码位置、hash、块身份及版本计数。其他投影不能覆盖已选择的片段。包含这些决策的 Session 在重开后仍需要插件解释器，参见[升级说明](../../../docs/upgrade-guide/v0.2.1-alpha.2/rich-inline-source-offload/guide.zh.md)。 顶层 Agent 在 `activePresets` 之外也可使用该只读工具；创作工具仍受会话模式限制。
 
 <a id="further-exploration"></a>
 ## 进一步探索

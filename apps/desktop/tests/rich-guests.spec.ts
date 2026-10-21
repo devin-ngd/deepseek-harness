@@ -6,10 +6,11 @@ import { RICH_NATIVE_LIMITS, readRichPacket, readRichRequest, richDocumentUrl } 
 import type { DesktopRichBootstrap, DesktopRichReservation } from '../src/rich-types.ts'
 
 const native = vi.hoisted(() => ({ sessions: new Map<string, Record<string, unknown>>(), writeText: vi.fn(async (_text: string) => {}),
-  write: vi.fn(async (_items: object[]) => {}), image: vi.fn(), menu: vi.fn(() => ({ popup: vi.fn() })) }))
+  write: vi.fn(async (_items: object[]) => {}), open: vi.fn(async (_url: string) => {}),
+  image: vi.fn(), menu: vi.fn(() => ({ popup: vi.fn() })) }))
 vi.mock('electron', () => ({ clipboard: { writeText: native.writeText, write: native.write },
   nativeImage: { createFromDataURL: native.image }, ClipboardItem: class { constructor(readonly items: object) {} },
-  Menu: { buildFromTemplate: native.menu }, session: { fromPartition: (partition: string) => {
+  shell: { openExternal: native.open }, Menu: { buildFromTemplate: native.menu }, session: { fromPartition: (partition: string) => {
     const value = { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(),
       setDevicePermissionHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn(), on: vi.fn(),
       clearStorageData: vi.fn(async () => {}), webRequest: { onBeforeRequest: vi.fn() } }
@@ -55,6 +56,7 @@ interface FixtureManager {
   bootstrap(event: { sender: ContentsFace; senderFrame: ContentsFace['mainFrame'] | null }): DesktopRichBootstrap | undefined
   receive(event: { sender: ContentsFace; senderFrame: ContentsFace['mainFrame'] | null }, value: unknown): void
   copy(event: { sender: ContentsFace; senderFrame: ContentsFace['mainFrame'] | null }, value: unknown): Promise<boolean>
+  openLink(event: { sender: ContentsFace; senderFrame: ContentsFace['mainFrame'] | null }, value: unknown): Promise<boolean>
   send(owner: ContentsFace, id: unknown, value: unknown): void
   release(owner: ContentsFace, id: unknown): Promise<void>
   releaseAll(owner: ContentsFace): void
@@ -63,11 +65,14 @@ interface FixtureManager {
 const fixtureManager = (manager: InstanceType<typeof DesktopRichGuests>): FixtureManager => manager
 const fixtureOwner = (value: Fixture): ContentsFace => value
 
-async function mounted(pid = 2, copying = false) {
+const menuLabels = { plain: 'Copy plain text', markdown: 'Copy Markdown', copyLink: 'Copy link address', openLink: 'Open link',
+  more: 'More actions', selectAll: 'Select all content', openFailed: 'Could not open link' }
+
+async function mounted(pid = 2, copying = false, actions = false) {
   const manager = fixtureManager(new DesktopRichGuests('/trusted/preload-rich.cjs'))
   const owner = contents(1)
   const reservation = manager.acquire(fixtureOwner(owner), { ...request, ...copying ? {
-    copy: { text: 'Copy this section', image: 'Copy image', copied: 'Copied', failed: 'Could not copy' },
+    copy: { text: 'Copy this section', image: 'Copy image', copied: 'Copied', failed: 'Could not copy', ...actions ? { menu: menuLabels } : {} },
   } : {} })
   const browserSession = native.sessions.get(reservation.partition)
   const guest = contents(pid, browserSession)
@@ -97,6 +102,53 @@ it('validates copy labels before reserving a guest', () => {
     { text: 'x'.repeat(257), image: 'Image', copied: 'Done', failed: 'Failed' }]) {
     expect(() => readRichRequest({ ...request, copy })).toThrow('invalid copy labels')
   }
+})
+
+it('validates complete menu labels and rejects unexpected or incomplete extensions', () => {
+  const copy = { text: 'Copy', image: 'Image', copied: 'Done', failed: 'Failed' }
+  expect(readRichRequest({ ...request, copy: { ...copy, menu: menuLabels } }).copy?.menu).toEqual(menuLabels)
+  for (const menu of [null, {}, { ...menuLabels, plain: '' }, { ...menuLabels, extra: 'Unexpected' }]) {
+    expect(() => readRichRequest({ ...request, copy: { ...copy, menu } })).toThrow('invalid content menu labels')
+  }
+})
+
+it('opens allowlisted links only for the live action-enabled main frame and reports OS failures', async () => {
+  const { manager, owner, guest, reservation } = await mounted(2, true, true)
+  const event = { sender: fixtureOwner(guest), senderFrame: guest.mainFrame }
+  try {
+    expect(await manager.openLink(event, 'https://example.com/document')).toBe(true)
+    expect(native.open).toHaveBeenLastCalledWith('https://example.com/document')
+    expect(await manager.openLink(event, 'mailto:user@example.com')).toBe(true)
+    for (const url of ['file:///C:/secret.txt', 'javascript:run()', 'custom:app', '../report.md', 'https://name:secret@example.com']) {
+      expect(await manager.openLink(event, url)).toBe(false)
+    }
+    expect(await manager.openLink({ sender: fixtureOwner(owner), senderFrame: owner.mainFrame }, 'https://example.com/')).toBe(false)
+    expect(await manager.openLink({ ...event, senderFrame: { url: guest.mainFrame.url } }, 'https://example.com/')).toBe(false)
+    expect(native.open).toHaveBeenCalledTimes(2)
+    native.open.mockRejectedValueOnce(new Error('OS opener unavailable'))
+    expect(await manager.openLink(event, 'https://example.com/failure')).toBe(false)
+  } finally { await manager.release(fixtureOwner(owner), reservation.lease) }
+  expect(await manager.openLink(event, 'https://example.com/stale')).toBe(false)
+})
+
+it('does not open links for previews or legacy copy-only clients', async () => {
+  for (const copying of [false, true]) {
+    const { manager, owner, guest, reservation } = await mounted(2, copying)
+    try {
+      expect(await manager.openLink({ sender: fixtureOwner(guest), senderFrame: guest.mainFrame }, 'https://example.com/')).toBe(false)
+      expect(native.open).not.toHaveBeenCalled()
+    } finally { await manager.release(fixtureOwner(owner), reservation.lease) }
+  }
+})
+
+it('retains native editing roles only for editable fields when content menus are enabled', async () => {
+  const { manager, owner, guest, reservation } = await mounted(2, true, true)
+  try {
+    guest.emit('context-menu', {}, { isEditable: false, selectionText: 'prose', mediaType: 'none' })
+    expect(native.menu).not.toHaveBeenCalled()
+    guest.emit('context-menu', {}, { isEditable: true, selectionText: 'input', mediaType: 'none' })
+    expect(native.menu).toHaveBeenCalledWith(expect.arrayContaining([{ role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }]))
+  } finally { await manager.release(fixtureOwner(owner), reservation.lease) }
 })
 
 it('accepts bounded text only from the registered copy-enabled document', async () => {

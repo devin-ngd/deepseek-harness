@@ -16,7 +16,8 @@ for (const [entry, filename, format] of [
   ['apps/desktop/src/preload-rich.ts', 'preload-rich.cjs', 'cjs'],
 ]) {
   await build({ entryPoints: [join(root, entry)], outfile: join(output, filename), bundle: true, platform: 'node',
-    format, target: 'es2024', external: ['electron'], logLevel: 'warning' });
+    format, target: 'es2024', external: ['electron'], logLevel: 'warning',
+    alias: { turndown: require.resolve('turndown/lib/turndown.browser.es.js') } });
   builds.push(filename);
 }
 await writeFile(join(output, 'static-build.json'), JSON.stringify({ builds, nativeLaunches: 0, executedBundles: false }, null, 2));

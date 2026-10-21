@@ -25,6 +25,19 @@ export interface DesktopRichCopyLabels {
   readonly image: string
   readonly copied: string
   readonly failed: string
+  /** Absent for legacy clients; present to enable content menus and user-activated links. */
+  readonly menu?: DesktopRichMenuLabels
+}
+
+/** Complete localized wording for local content actions; never supplied by generated content. */
+export interface DesktopRichMenuLabels {
+  readonly plain: string
+  readonly markdown: string
+  readonly copyLink: string
+  readonly openLink: string
+  readonly more: string
+  readonly selectAll: string
+  readonly openFailed: string
 }
 
 /** Only a trusted activation in the isolated preload can submit these clipboard bytes. */
@@ -40,6 +53,8 @@ export interface DesktopRichReservation {
 /** Native transport only; the feature plugin validates its business protocol. */
 export interface DesktopRichBridge {
   readonly limits: DesktopRichLimits
+  /** Present on carriers that accept copy.menu; absent on older Desktop versions. */
+  readonly contentActions?: 1
   acquire(request: DesktopRichRequest): Promise<DesktopRichReservation>
   send(lease: string, packet: Record<string, unknown>): Promise<void>
   subscribe(lease: string, listener: (packet: Record<string, unknown>) => void): () => void

@@ -147,7 +147,7 @@ Electron 拥有 `$DSH_HOME/profiles/desktop`。其 `dependencies` 包含 pnpm �
 <a id="message-rich-guests"></a>
 ### 消息富内容 guest
 
-`acquire` 的可选字段 `copy: {text, image, copied, failed}` 提供本地化标签并启用[局部复制](../../packages/experimental/rich-inline/README.zh.md#copy-parts-of-a-block)。隔离 preload 只接受私有控件的可信激活；生成脚本不获得剪贴板 API。主进程只接收已登记且仍有效的主帧写入：最多 2 MiB 的 UTF-8 文本，或最多 10 MiB、16 兆像素的 PNG/JPEG/WebP data URL，解码后以 PNG 写入。不暴露剪贴板读取能力。省略 `copy` 时，预览不提供这些控件。
+`acquire` 的可选字段 `copy: {text, image, copied, failed}` 提供本地化标签并启用[局部复制](../../packages/experimental/rich-inline/README.zh.md#copy-parts-of-a-block)。隔离 preload 只接受私有控件的可信激活；生成脚本不获得剪贴板 API。主进程只接收已登记且仍有效的主帧写入：最多 2 MiB 的 UTF-8 文本，或最多 10 MiB、16 兆像素的 PNG/JPEG/WebP data URL，解码后以 PNG 写入。不暴露剪贴板读取能力。省略 `copy` 时，预览不提供这些控件。可信桥声明 `contentActions: 1`；客户端在旧宿主上不发送菜单扩展。可选的 `copy.menu: {plain, markdown, copyLink, openLink, more, selectAll, openFailed}` 启用语义内容和选区菜单；旧复制客户端保持原行为。链接打开使用单独的私有 IPC，只能由隔离 preload 内的真实用户激活发起。主进程重新核对有效主帧租约，只允许长度受限、无凭据的 HTTP(S)/mailto 地址，不打开文件路径或任意协议。系统接受打开请求不代表目标已成功加载。
 
 应用 preload 暴露 `dshDesktop.rich.acquire({mountId, mountNonce, html, css, js})`、`send(lease, packet)`、`subscribe(lease, listener)` 和 `release(lease)`。获取的预留信息提供 `lease` 句柄、消息内 webview 必须使用的 `partition` 和惰性 `src`。主进程选择 preload 与最终文档；调用方不能指定 URL、文件系统读取器、Electron 对象或 shell 操作。guest 只获得 `richGuest.send(packet)` 和 `richGuest.subscribe(listener)`。原生传输绑定已登记的 guest 主帧与固定 mount 身份；消息 schema、顺序检查、持久接受、草稿和 Agent 执行仍由功能插件负责。
 

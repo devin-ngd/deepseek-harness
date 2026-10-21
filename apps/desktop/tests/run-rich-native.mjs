@@ -19,7 +19,8 @@ for (const [entry, filename, format] of [
   ['apps/desktop/src/preload-rich.ts', 'preload-rich.cjs', 'cjs'],
 ]) {
   await build({ entryPoints: [join(root, entry)], outfile: join(output, filename), bundle: true, platform: 'node',
-    format, target: 'es2024', external: ['electron'], logLevel: 'warning' });
+    format, target: 'es2024', external: ['electron'], logLevel: 'warning',
+    alias: { turndown: require.resolve('turndown/lib/turndown.browser.es.js') } });
 }
 const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/KEY|SECRET|TOKEN|PASSWORD|^ELECTRON_RUN_AS_NODE$/i.test(key)));
 environment.ELECTRON_ENABLE_LOGGING = '1';

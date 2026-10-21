@@ -1,8 +1,19 @@
 /** Exact project defaults applied before a fresh blank Session starts, without changing resumed histories. */
 import { realpathSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+
+/** Identify child ownership independently of a user's ordinary fork lineage.
+ * @param agent - exact live Agent, or an agentless inspection.
+ * @returns whether rich authoring and its runtime policies must be excluded.
+ */
+export function isRichChild(agent?: Agent): boolean {
+  if (agent === undefined) return false
+  const registry = agent.ctx.get('agents')
+  return agent.session.header.origin === 'subagent' || registry !== undefined && registry.get(agent.id) === agent && !registry.roots().includes(agent)
+}
 
 /** Install project defaults through the normal durable blank-session selection operation.
  * @param ctx - plugin owner; listeners unwind with its fiber.
@@ -17,7 +28,7 @@ export function installProjectDefaults(ctx: Context, defaults: readonly { readon
   }
   if (projects.size === 0) return
   ctx.on('agent/created', async ({ agent, source }) => {
-    if (source !== 'startup' || agent.session.header.cwd === undefined) return
+    if (source !== 'startup' || isRichChild(agent) || agent.session.header.cwd === undefined) return
     const preset = projects.get(agent.session.header.cwd)
     if (preset === undefined) return
     const registry = ctx.get('agentPresets')

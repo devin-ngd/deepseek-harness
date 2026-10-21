@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
+import { createScope } from '@deepseek-ai/dsh-scope'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -56,7 +57,7 @@ const limits: ProfileConfig = { maxContentBytes: 2_097_152, maxInputBytes: 131_0
   maxFormatRepairAttempts: 1, sourceOffloadMinBytes: 4_096, sourceReadMaxChars: 8_192, theme: 'cyber', accent: 'blue' }
 
 async function harness(root?: string, seed: readonly SessionEvent[] = [], config: Partial<ProfileConfig> = {},
-  options: { live?: boolean; preset?: string; remote?: boolean } = {}) {
+  options: { live?: boolean; preset?: string; remote?: boolean; origin?: 'subagent'; parentAgent?: Agent } = {}) {
   const dir = root ?? await mkdtemp(join(tmpdir(), 'dsh-rich-host-'))
   const ctx = new Context()
   if (options.preset !== undefined) ctx.provide('agentPresets', { composedPreset: () => options.preset } as never)
@@ -68,7 +69,7 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  const session = ctx.sessions.create(SessionId('session-rich-unit'), { seed })
+  const session = ctx.sessions.create(SessionId('session-rich-unit'), { seed, ...(options.origin ? { meta: { origin: options.origin } } : {}) })
   const pending: UserMessage[] = []
   const nextStep: UserMessage[] = []
   for (const event of seed) {
@@ -84,7 +85,9 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
     inject: unsupported, send: unsupported, cancel: unsupported,
     whenIdle: () => Promise.resolve(), runMaintenance: task => task(new AbortController().signal),
   }
-  await ctx.agents.register(agent)
+  if (options.origin || options.parentAgent) await ctx.plugin(Object.assign((inner: Context) => { Object.assign(agent, { ctx: createScope(inner, agent).ctx }) }, { inject: ['tools', 'systemPrompt'] }))
+  if (options.parentAgent) { ctx.effect(() => ctx.agents.enter(agent, options.parentAgent)); await ctx.agents.announce(agent, 'startup') }
+  else await ctx.agents.register(agent)
   const prompts: SessionPromptRequest[] = []
   const resolved = vi.fn(async () => ({ agent }))
   const prompt = vi.fn(async (request: SessionPromptRequest) => {
@@ -361,6 +364,26 @@ function publicationAtBytes(bytes: number, blockId?: RichBlockId) {
 }
 
 describe('RichInline Host', () => {
+  it('excludes child agents from authoring, native and PTC schemas, direct tools and format repair', async () => {
+    const parent = await harness()
+    for (const options of [{ origin: 'subagent' as const }, { parentAgent: parent.agent }]) {
+      const child = await harness(undefined, [], {}, options)
+      const assembly = await child.ctx.systemPrompt.assemble({ agent: child.agent })
+      expect(assembly.sections.some(section => section.name === 'rich-inline:authoring' && section.text.length > 0)).toBe(false)
+      expect(assembly.contexts.some(context => context.name === 'rich-inline:output-format' && context.text.length > 0)).toBe(false)
+      expect(assembly.tools.some(tool => tool.name.startsWith('rich_inline_'))).toBe(false)
+      expect(child.ctx.tools.schemas(child.agent).some(tool => tool.name.startsWith('rich_inline_'))).toBe(false)
+      const restore = child.agent.ctx.tools.presentAs('ptc')
+      expect(JSON.stringify(await child.ctx.systemPrompt.assemble({ agent: child.agent }))).not.toContain('rich_inline_')
+      restore()
+      for (const name of ['rich_inline_publish', 'rich_inline_read', 'rich_inline_update', 'rich_inline_complete', 'rich_inline_progress']) expect((await child.tool(name, {})).isError).toBe(true)
+      child.session.append('turn/start', { turn: 1 })
+      child.session.append('assistant/message', { turn: 1, step: 1, message: createAssistantMessage({ content: [{ type: 'text', text: '# Internal report\n' + 'Details.\n'.repeat(30) }], source: { provider: 'unit', model: 'unit' } }), stream: [] }, { surfaceOp: 'append' })
+      await child.ctx.serial('agent/turn-stopping', { agent: child.agent, turn: 1, signal: new AbortController().signal })
+      expect(child.agent.inbox.nextStep).toHaveLength(0)
+    }
+    expect((await parent.ctx.systemPrompt.assemble({ agent: parent.agent })).tools.some(tool => tool.name === 'rich_inline_publish')).toBe(true)
+  })
   it('keeps standard coding output unchanged while Lumina exposes rich tools and checks final formatting', async () => {
     const h = await harness(undefined, [], { activePresets: ['lumina'] }, { preset: 'standard' })
     const standard = await h.ctx.systemPrompt.assemble({ agent: h.agent })

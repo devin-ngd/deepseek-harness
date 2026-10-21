@@ -1,37 +1,693 @@
-/* Trusted forms use the profile palette and retain the app's layout and controls. */
+/* Match the InputBar's width axis and side clearance, including embedded conversations. */
+.frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  padding: 6px var(--dsh-composer-side-clearance) 10px;
+}
+
+/* Native (theme off) keeps the app's input surface, radius and elevation. */
 .root {
-  color: var(--rich-text, var(--dsw-alias-label-primary));
-  background: var(--rich-surface, var(--dsw-alias-bg-layer-1));
-  border: 1px solid var(--rich-border, var(--dsw-alias-border-l2));
-  border-radius: var(--dsw-radius-sm);
-  max-height: min(60vh, 560px);
-  overflow: auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--dsh-composer-card-max-width);
+  min-width: 0;
+  max-height: min(64vh, 620px);
   padding: 16px;
-  font-size: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 12px 88px;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major);
+  border: 0;
+  border-radius: var(--dsw-radius-panel);
+  box-shadow: var(--dsw-elevation-soft);
+  font-size: var(--dsh-content-font-size, 14px);
   line-height: 1.65;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  /* Keep the thumb inside the rounded panel instead of crossing its corners. */
+  --dsh-scrollbar-track-margin: 16px;
 }
+
+/* Built-in themes borrow the shared rich palette without changing native controls' behavior. */
 .root[data-rich-themed] {
+  color-scheme: dark;
+  padding: 20px 22px 16px;
+  color: var(--rich-text);
+  background-color: transparent;
+  background-image:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--rich-accent) 55%, transparent) 30%, color-mix(in srgb, var(--rich-accent-2) 55%, transparent) 70%, transparent),
+    radial-gradient(90% 55% at 100% 0%, color-mix(in srgb, var(--rich-accent) 7%, transparent), transparent 62%),
+    linear-gradient(145deg, color-mix(in srgb, var(--rich-surface) 92%, var(--rich-accent)), var(--rich-surface) 48%, color-mix(in srgb, var(--rich-surface) 92%, var(--rich-accent-2))),
+    linear-gradient(135deg, color-mix(in srgb, var(--rich-accent) 55%, var(--rich-border)), var(--rich-border) 45%, color-mix(in srgb, var(--rich-accent-2) 55%, var(--rich-border)));
+  background-size: 100% 1px, auto, auto, auto;
+  background-position: top left, top right, center, center;
+  background-repeat: no-repeat;
+  background-origin: padding-box, padding-box, padding-box, border-box;
+  background-clip: padding-box, padding-box, padding-box, border-box;
+  border: 1px solid transparent;
+  border-radius: calc(var(--rich-radius, 12px) + 4px);
+  --dsw-alias-bg-base: var(--rich-surface);
   --dsw-alias-label-primary: var(--rich-text);
+  --dsw-alias-label-secondary: var(--rich-muted);
+  --dsw-alias-label-tertiary: var(--rich-muted);
+  --dsw-alias-label-caption: var(--rich-muted);
   --dsw-alias-label-primary-foreground: var(--rich-accent-ink);
+  --dsw-alias-link: var(--rich-accent);
+  --dsw-alias-state-business-primary: var(--rich-accent);
+  --dsw-alias-state-error-primary: var(--rich-danger);
   --dsw-alias-button-primary-fill: var(--rich-accent);
-  --dsw-alias-button-primary-hover: var(--rich-accent-2);
+  --dsw-alias-button-primary-hover: color-mix(in srgb, var(--rich-accent), var(--rich-text-strong) 14%);
+  --dsw-alias-border-l1: var(--rich-border);
+  --dsw-alias-border-l2: var(--rich-border);
   --dsw-alias-border-l3: var(--rich-border-strong);
+  --dsw-alias-border-l4: var(--rich-border-strong);
   --dsw-alias-interactive-bg-hover: var(--rich-surface-raised);
+  --dsw-alias-interactive-bg-active: var(--rich-surface-raised);
+  --dsw-alias-markdown-code-block: var(--rich-surface-sunken);
+  --dsw-alias-markdown-code-block-banner: var(--rich-surface);
+  --dsw-alias-markdown-inline-code: var(--rich-surface-raised);
+  --dsw-focus-ring-color: var(--rich-accent);
+  --dsh-scrollbar-thumb: var(--rich-border-strong);
+  --dsh-scrollbar-thumb-hover: var(--rich-muted);
 }
-.header, .footer, .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.header { justify-content: space-between; margin-bottom: 12px; font-weight: 500; }
-.question { margin: 0 0 16px; padding: 0; border: 0; min-width: 0; }
-.question legend { font-weight: 500; }
-.question p { margin: 4px 0 8px; }
-.options, .custom, .plan { display: grid; gap: 8px; }
-.option { display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid var(--rich-border, var(--dsw-alias-border-l2)); border-radius: var(--dsw-radius-sm); cursor: pointer; }
-.option input { margin-top: 5px; accent-color: var(--rich-accent); }
-.option small { margin-inline-start: 8px; }
-.description { display: block; color: var(--rich-muted, var(--dsw-alias-label-secondary)); font-size: 13px; }
-.custom { margin-block: 8px; }
-.root textarea { box-sizing: border-box; width: 100%; min-width: 0; resize: vertical; padding: 8px; color: inherit; background: var(--rich-surface-sunken, var(--dsw-alias-bg-layer-2)); border: 1px solid var(--rich-border, var(--dsw-alias-border-l2)); border-radius: var(--dsw-radius-sm); font: inherit; }
-.root textarea:focus-visible, .option:focus-within { outline: 2px solid var(--rich-accent, var(--dsw-alias-label-primary)); outline-offset: 2px; }
-.plan { margin-bottom: 12px; }
-.footer { justify-content: space-between; position: sticky; bottom: -16px; padding-block: 8px; background: var(--rich-surface, var(--dsw-alias-bg-layer-1)); }
-.error { margin: 0; color: var(--rich-danger, var(--dsw-alias-label-primary)); }
-.actions { margin-inline-start: auto; }
+
+.header,
+.footer,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.header {
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.panelTitle {
+  margin: 0;
+  padding-inline-start: 11px;
+  color: var(--dsw-alias-label-primary);
+  border-inline-start: 2px solid var(--dsw-alias-state-business-primary);
+  font-size: calc(1em + 4px);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -.01em;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.question {
+  position: relative;
+  min-width: 0;
+  margin: 24px 0 0;
+  padding: 0 0 22px;
+  border: 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.question:last-of-type {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.questionTitle {
+  max-width: 100%;
+  margin-bottom: 8px;
+  padding: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: calc(1em + 1px);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.questionNumber {
+  display: inline-block;
+  margin-inline-end: 9px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .08em;
+  vertical-align: 1px;
+}
+
+.question .prompt {
+  margin: 0 0 14px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.options,
+.custom,
+.plan {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.option:hover:not(:has(input:disabled)) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.option:has(input:checked) {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 7%, transparent);
+}
+
+.option:has(input:disabled) {
+  cursor: default;
+  opacity: .6;
+}
+
+.option input {
+  flex: none;
+  margin: 5px 0 0;
+  accent-color: var(--dsw-alias-state-business-primary);
+}
+
+.optionCopy {
+  min-width: 0;
+}
+
+.optionHeading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.optionTitle {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}
+
+.recommended {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  color: var(--dsw-alias-state-business-primary);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 30%, transparent);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.description {
+  display: block;
+  margin-top: 3px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: .929em;
+  line-height: 1.55;
+}
+
+.custom {
+  margin-block: 12px 10px;
+  gap: 6px;
+}
+
+.fieldLabel,
+.plan > label {
+  color: var(--dsw-alias-label-secondary);
+  font-size: .857em;
+  font-weight: 500;
+  letter-spacing: .01em;
+}
+
+.root textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  padding: 10px 12px;
+  color: var(--dsw-alias-label-primary);
+  caret-color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  font: inherit;
+}
+
+.root textarea:focus-visible,
+.option:focus-within {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.plan {
+  margin-block: 18px 12px;
+}
+
+.plan details {
+  padding: 10px 12px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+}
+
+.plan summary {
+  color: var(--dsw-alias-state-business-primary);
+  font-size: .929em;
+  cursor: pointer;
+}
+
+.footer {
+  position: sticky;
+  z-index: 1;
+  bottom: -16px;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-block: 12px 10px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-specific-input-major);
+}
+
+.questionActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.error {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: .929em;
+}
+
+.actions {
+  margin-inline-start: auto;
+}
+
+/* Themed structure: a quieter list, mono labels and a single accent edge instead of stacked boxes. */
+.root[data-rich-theme] .header {
+  border-bottom-color: var(--rich-border);
+}
+
+.root[data-rich-theme] .panelTitle {
+  padding-inline-start: 12px;
+  color: var(--rich-text-strong);
+  border-inline-start: 2px solid var(--rich-accent);
+  font-size: calc(1em + 5px);
+}
+
+.root[data-rich-theme] .status {
+  color: var(--rich-muted);
+  background: color-mix(in srgb, var(--rich-accent) 6%, transparent);
+  border-color: color-mix(in srgb, var(--rich-accent) 22%, var(--rich-border));
+  font-family: var(--rich-mono, ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace);
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+
+.root[data-rich-theme] .status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--rich-accent), var(--rich-accent-2));
+}
+
+.root[data-rich-theme] .question {
+  margin-top: 24px;
+  padding: 0 0 22px 16px;
+  border-bottom-color: color-mix(in srgb, var(--rich-accent) 18%, var(--rich-border));
+}
+
+.root[data-rich-theme] .question::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rich-accent) 70%, transparent), color-mix(in srgb, var(--rich-accent-2) 35%, transparent) 58%, transparent 95%);
+  pointer-events: none;
+}
+
+.root[data-rich-theme='cyber'] .question::before {
+  background: linear-gradient(180deg, var(--rich-accent), color-mix(in srgb, var(--rich-accent-2) 82%, transparent) 58%, transparent 95%);
+}
+
+.root[data-rich-theme] .question:last-of-type {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.root[data-rich-theme] .questionTitle {
+  margin-bottom: 9px;
+  color: var(--rich-text-strong);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.root[data-rich-theme] .questionNumber {
+  margin-inline-end: 10px;
+  color: var(--rich-accent);
+  font-family: var(--rich-mono, ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .1em;
+}
+
+.root[data-rich-theme] .question .prompt {
+  color: var(--rich-text);
+}
+
+.root[data-rich-theme] .options {
+  gap: 7px;
+}
+
+.root[data-rich-theme] .option {
+  padding: 11px 13px;
+  background-image: linear-gradient(145deg, color-mix(in srgb, var(--rich-surface-raised) 58%, transparent), color-mix(in srgb, var(--rich-surface-raised) 34%, transparent));
+  border-color: color-mix(in srgb, var(--rich-border-strong) 70%, transparent);
+  border-radius: calc(var(--rich-radius-sm, 8px) + 2px);
+  transition: background-image 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.root[data-rich-theme] .option:hover:not(:has(input:disabled)) {
+  background-image: linear-gradient(145deg, color-mix(in srgb, var(--rich-accent) 9%, var(--rich-surface-raised)), color-mix(in srgb, var(--rich-surface-raised) 42%, transparent));
+  border-color: color-mix(in srgb, var(--rich-accent) 30%, var(--rich-border-strong));
+}
+
+.root[data-rich-theme] .option:has(input:checked) {
+  background-image: linear-gradient(100deg, color-mix(in srgb, var(--rich-accent) 13%, transparent), color-mix(in srgb, var(--rich-accent-2) 6%, transparent) 72%);
+  border-color: color-mix(in srgb, var(--rich-accent) 55%, var(--rich-border-strong));
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--rich-accent) 80%, var(--rich-accent-2));
+}
+
+.root[data-rich-theme] .option:focus-within {
+  outline-color: var(--rich-accent);
+}
+
+.root[data-rich-theme] .optionCopy {
+  flex: 1;
+}
+
+.root[data-rich-theme] .optionTitle {
+  color: var(--rich-text-strong);
+}
+
+.root[data-rich-theme] .recommended {
+  color: var(--rich-accent);
+  background: color-mix(in srgb, var(--rich-accent) 9%, transparent);
+  border-color: color-mix(in srgb, var(--rich-accent) 32%, transparent);
+  font-family: var(--rich-mono, ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace);
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+
+.root[data-rich-theme] .description {
+  color: var(--rich-muted);
+}
+
+.root[data-rich-theme] .fieldLabel,
+.root[data-rich-theme] .plan > label {
+  color: var(--rich-muted);
+}
+
+.root[data-rich-theme] textarea {
+  background: color-mix(in srgb, var(--rich-surface-sunken) 72%, transparent);
+  border-color: var(--rich-border);
+  border-radius: calc(var(--rich-radius-sm, 8px) + 2px);
+}
+
+.root[data-rich-theme] textarea:focus-visible {
+  outline-color: var(--rich-accent);
+}
+
+.root[data-rich-theme] .plan details {
+  background: color-mix(in srgb, var(--rich-surface-raised) 48%, transparent);
+  border-color: var(--rich-border);
+  border-radius: calc(var(--rich-radius-sm, 8px) + 2px);
+}
+
+.root[data-rich-theme] .plan summary {
+  color: var(--rich-accent);
+}
+
+.root[data-rich-theme] .footer {
+  border-top-color: color-mix(in srgb, var(--rich-accent) 15%, var(--rich-border));
+  background: var(--rich-surface);
+}
+
+.root[data-rich-theme] .error {
+  color: var(--rich-danger);
+}
+
+/* Custom indicators keep the native inputs in the DOM but replace their painted control. */
+.root[data-rich-theme] .option input[type='radio'],
+.root[data-rich-theme] .option input[type='checkbox'] {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  border: 1px solid color-mix(in srgb, var(--rich-control-border) 82%, transparent);
+  background-image: linear-gradient(145deg, var(--rich-surface-sunken), color-mix(in srgb, var(--rich-surface-raised) 55%, var(--rich-surface-sunken)));
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--rich-surface-sunken) 85%, transparent);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.root[data-rich-theme] .option:hover input[type='radio']:not(:checked),
+.root[data-rich-theme] .option:hover input[type='checkbox']:not(:checked) {
+  border-color: color-mix(in srgb, var(--rich-accent) 55%, var(--rich-control-border));
+}
+
+.root[data-rich-theme] .option input[type='radio'] {
+  border-radius: 50%;
+}
+
+.root[data-rich-theme] .option input[type='checkbox'] {
+  border-radius: 6px;
+}
+
+.root[data-rich-theme] .option input[type='radio']:checked {
+  background-image:
+    radial-gradient(circle at 50% 50%, var(--rich-accent) 0 2.6px, transparent 3.1px),
+    radial-gradient(circle at 50% 50%, var(--rich-surface-sunken) 0 5.2px, transparent 5.7px),
+    conic-gradient(from 220deg, var(--rich-accent), var(--rich-accent-2), var(--rich-accent));
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.root[data-rich-theme] .option input[type='checkbox']:checked {
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--rich-accent) 88%, var(--rich-text-strong)), var(--rich-accent-2));
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--rich-text-strong) 16%, transparent);
+}
+
+.root[data-rich-theme] .option input[type='checkbox']::after {
+  content: '';
+  display: block;
+  width: 9px;
+  height: 5px;
+  margin: 5px auto 0;
+  border-bottom: 2px solid var(--rich-accent-ink);
+  border-left: 2px solid var(--rich-accent-ink);
+  transform: rotate(-45deg);
+  opacity: 0;
+}
+
+.root[data-rich-theme] .option input[type='checkbox']:checked::after {
+  opacity: 1;
+}
+
+/* The primary action is the one filled surface in the panel; other themes keep the shared accent fill. */
+.root[data-rich-theme] .footer button[type='submit'] {
+  color: var(--rich-accent-ink);
+  background: linear-gradient(100deg, var(--rich-accent), color-mix(in srgb, var(--rich-accent-2) 82%, var(--rich-accent)));
+  border: 0;
+  font-weight: 600;
+  box-shadow: 0 8px 20px -16px color-mix(in srgb, var(--rich-surface-sunken) 90%, transparent);
+}
+
+/* Cyber: deep-space glass, a luminous top hairline and restrained glow around state only. */
+.root[data-rich-theme='cyber'] {
+  padding: 22px 24px 16px;
+  background-color: transparent;
+  background-image:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--rich-accent) 88%, transparent) 28%, color-mix(in srgb, var(--rich-accent-2) 88%, transparent) 72%, transparent),
+    radial-gradient(120% 80% at 100% -10%, color-mix(in srgb, var(--rich-accent) 10%, transparent), transparent 58%),
+    radial-gradient(90% 70% at -10% 110%, color-mix(in srgb, var(--rich-accent-2) 8%, transparent), transparent 62%),
+    linear-gradient(145deg, color-mix(in srgb, var(--rich-surface) 86%, var(--rich-accent)), var(--rich-surface) 44%, color-mix(in srgb, var(--rich-surface) 88%, var(--rich-accent-2))),
+    linear-gradient(135deg, var(--rich-accent), color-mix(in srgb, var(--rich-accent-2) 72%, var(--rich-accent)) 52%, var(--rich-accent-2));
+  background-size: 100% 2px, auto, auto, auto, auto;
+  background-position: top left, top right, bottom left, center, center;
+  background-repeat: no-repeat;
+  background-origin: padding-box, padding-box, padding-box, padding-box, border-box;
+  background-clip: padding-box, padding-box, padding-box, padding-box, border-box;
+  border: 1.5px solid transparent;
+  border-radius: calc(var(--rich-radius, 12px) + 6px);
+  box-shadow:
+    0 20px 50px -34px color-mix(in srgb, var(--rich-surface-sunken) 90%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--rich-text-strong) 7%, transparent);
+}
+
+.root[data-rich-theme='cyber'] .panelTitle {
+  font-size: calc(1em + 6px);
+  letter-spacing: -.015em;
+}
+
+.root[data-rich-theme='cyber'] .questionNumber {
+  font-size: 13px;
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .root[data-rich-theme='cyber'] .panelTitle,
+  .root[data-rich-theme='cyber'] .questionNumber {
+    background: linear-gradient(100deg, var(--rich-text-strong) 18%, color-mix(in srgb, var(--rich-accent) 82%, var(--rich-text-strong)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .root[data-rich-theme='cyber'] .questionNumber {
+    background: linear-gradient(120deg, var(--rich-accent), var(--rich-accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+.root[data-rich-theme='cyber'] .status {
+  color: color-mix(in srgb, var(--rich-accent) 55%, var(--rich-muted));
+  background: color-mix(in srgb, var(--rich-accent) 7%, transparent);
+  border-color: color-mix(in srgb, var(--rich-accent) 26%, transparent);
+}
+
+.root[data-rich-theme='cyber'] .option {
+  background-image: linear-gradient(145deg, color-mix(in srgb, var(--rich-surface-raised) 66%, transparent), color-mix(in srgb, var(--rich-surface) 42%, transparent));
+  border-color: color-mix(in srgb, var(--rich-border-strong) 78%, transparent);
+}
+
+.root[data-rich-theme='cyber'] .option:hover:not(:has(input:disabled)) {
+  background-image: linear-gradient(145deg, color-mix(in srgb, var(--rich-accent) 11%, var(--rich-surface-raised)), color-mix(in srgb, var(--rich-accent-2) 6%, var(--rich-surface-raised)));
+  border-color: color-mix(in srgb, var(--rich-accent) 34%, var(--rich-border-strong));
+}
+
+.root[data-rich-theme='cyber'] .option:has(input:checked) {
+  background-image: linear-gradient(100deg, color-mix(in srgb, var(--rich-accent) 14%, transparent), color-mix(in srgb, var(--rich-accent-2) 7%, transparent) 74%);
+  border-color: color-mix(in srgb, var(--rich-accent) 62%, var(--rich-border-strong));
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--rich-accent) 80%, var(--rich-accent-2));
+}
+
+.root[data-rich-theme='cyber'] textarea:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--rich-accent) 65%, var(--rich-border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--rich-accent) 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--rich-text-strong) 5%, transparent);
+}
+
+.root[data-rich-theme='cyber'] .footer {
+  background: color-mix(in srgb, var(--rich-surface) 94%, transparent);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.root[data-rich-theme='cyber'] .footer button[type='submit'] {
+  background: linear-gradient(110deg, var(--rich-accent), var(--rich-accent-2) 55%, color-mix(in srgb, var(--rich-accent-2) 70%, var(--rich-accent)));
+  box-shadow: 0 8px 20px -16px color-mix(in srgb, var(--rich-surface-sunken) 90%, transparent);
+}
+
+.root[data-rich-theme='cyber'] .footer button[type='submit']:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.root[data-rich-theme='cyber'] .footer button:not([type='submit']):hover:not(:disabled) {
+  color: var(--rich-text-strong);
+  background: color-mix(in srgb, var(--rich-accent) 9%, transparent);
+}
+
+/* Terminal keeps the same structure with a squarer, monospaced reading surface. */
+.root[data-rich-theme='terminal'] {
+  border-radius: 8px;
+  font-family: var(--rich-mono, ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace);
+}
+
+.root[data-rich-theme='terminal'] .questionTitle {
+  font-size: 14px;
+}
+
+/* Aurora, neon, ember and graphite share the layout and palette; only their corner language differs. */
+.root[data-rich-theme='aurora'] {
+  border-radius: 18px;
+}
+
+.root[data-rich-theme='neon'] {
+  border-radius: 12px;
+}
+
+.root[data-rich-theme='ember'] {
+  border-radius: 14px;
+}
+
+.root[data-rich-theme='dark'] {
+  border-radius: 10px;
+}
+
+@media (max-width: 560px) {
+  .root[data-rich-theme='cyber'] {
+    padding: 18px 18px 14px;
+  }
+
+  .root[data-rich-theme] {
+    padding: 16px 16px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root[data-rich-theme] .option,
+  .root[data-rich-theme] .option input[type='radio'],
+  .root[data-rich-theme] .option input[type='checkbox'] {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .root[data-rich-theme] .option input[type='radio'],
+  .root[data-rich-theme] .option input[type='checkbox'] {
+    appearance: auto;
+  }
+
+  .root[data-rich-theme] .option input[type='checkbox']::after {
+    display: none;
+  }
+
+  .root[data-rich-theme='cyber'] .panelTitle,
+  .root[data-rich-theme='cyber'] .questionNumber {
+    background: none;
+    color: CanvasText;
+  }
+}

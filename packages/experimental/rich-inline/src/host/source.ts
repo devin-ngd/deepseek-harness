@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
@@ -180,9 +181,11 @@ export function readRichSource(events: readonly SessionEvent[], request: RichSou
  * @param ctx - Session and Agent services under the plugin lifetime.
  * @param minBytes - configured source threshold.
  * @param inspect - explicit asynchronous read of the immutable publication history, including unmounted sources.
+ * @param enabled - whether this Agent receives new source-offload decisions; replay interpretation remains available.
  */
 export function installRichSourceOffload(ctx: Context, minBytes: number,
-  inspect: (sessionId: SessionId, signal: AbortSignal) => Promise<readonly SessionEvent[]>): void {
+  inspect: (sessionId: SessionId, signal: AbortSignal) => Promise<readonly SessionEvent[]>,
+  enabled: (agent: Agent) => boolean = () => true): void {
   ctx.sessions.registerMessageProjection(richSourceProjection)
   ctx.sessions.registerMessageProjection(richToolSourceProjection)
   ctx.effect(() => registerCurrentSessionMessageProjection(richSourceProjection), 'rich-inline.detached-source-projection')
@@ -190,7 +193,7 @@ export function installRichSourceOffload(ctx: Context, minBytes: number,
   ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
     const decision = await next()
     signal.throwIfAborted()
-    if (decision.kind === 'enter') {
+    if (decision.kind === 'enter' && enabled(agent)) {
       const events = await inspect(agent.id, signal)
       signal.throwIfAborted()
       offloadRichSources(agent.session, events, minBytes)

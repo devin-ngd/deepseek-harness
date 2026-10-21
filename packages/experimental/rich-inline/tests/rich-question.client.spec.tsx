@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Trusted form lifecycle over the original question carrier; no generated scripts or model calls. */
 import { useSyncExternalStore } from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PendingQuestion, createWaterfallRequest } from '../../../client/ui-user-questions/src/client/contract/slots.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -9,6 +9,7 @@ import { RichQuestion } from '../src/client/RichQuestion.tsx'
 import type { RichQuestionProps } from '../src/client/RichQuestion.tsx'
 import { createRichQuestionDraftStore } from '../src/client/question-drafts.ts'
 import { zh } from '../src/client/locales.ts'
+import { RichAppearanceSource } from '../src/client/appearance.ts'
 
 const sid = SessionId('rich-question')
 const carriers = new Set<PendingQuestion>()
@@ -23,18 +24,19 @@ function harness(questions: PendingQuestion['questions'], deadline?: number) {
   void request.result.catch(() => {})
   const answer = vi.spyOn(pending, 'answer')
   const instance = createRichQuestionDraftStore().create(sid)
+  const appearance = new RichAppearanceSource({ theme: 'cyber', accent: 'auto' })
   function Form() {
     const card = useSyncExternalStore(pending.subscribe, pending.getSnapshot)
     const props = { pending, card, actions: instance.actions,
       useStore: (selector => useSyncExternalStore(listener => instance.subscribe(listener),
         () => selector(instance.getSnapshot()))) as RichQuestionProps['useStore'],
-      useAppearance: (selector => selector({ theme: 'cyber', accent: 'auto' })) as RichQuestionProps['useAppearance'],
+      useAppearance: (selector => selector(useSyncExternalStore(appearance.subscribe, appearance.getSnapshot))) as RichQuestionProps['useAppearance'],
       t: (key => (zh as Record<string, string>)[key] ?? key) as RichQuestionProps['t'],
     }
     // The framework supplies unused Session hooks in composition; this unit fixture supplies only consumed hooks.
     return <RichQuestion {...props as RichQuestionProps} />
   }
-  return { pending, answer, result: request.result, instance, Form }
+  return { pending, answer, result: request.result, instance, appearance, Form }
 }
 
 const planQuestions: PendingQuestion['questions'] = [{ id: 'review', question: 'Review plan',
@@ -42,6 +44,69 @@ const planQuestions: PendingQuestion['questions'] = [{ id: 'review', question: '
   options: [{ label: 'Approve' }, { label: 'Keep planning' }] }]
 
 describe('HTML question form', () => {
+  it('exposes a panel heading and separately named question groups', () => {
+    const h = harness([
+      { id: 'one', header: 'Implementation direction', question: 'Choose an approach', options: [{ label: 'Keep native controls' }] },
+      { id: 'two', question: 'Describe the remaining issue' },
+    ])
+    render(<h.Form />)
+    expect(screen.getByRole('heading', { level: 2, name: '需要你的回答' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Implementation direction' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Describe the remaining issue' })).toBeTruthy()
+  })
+
+  it('replaces a single choice with custom text and preserves multiple choices alongside a recovered supplement', async () => {
+    const h = harness([
+      { id: 'one', question: 'Choose an approach', options: [{ label: 'Native' }, { label: 'Cyber' }] },
+      { id: 'many', question: 'Choose improvements', multiSelect: true, options: [{ label: 'Hierarchy' }, { label: 'Selection' }] },
+    ])
+    const view = render(<h.Form />)
+    const single = within(screen.getByRole('group', { name: 'Choose an approach' }))
+    fireEvent.click(single.getByRole('radio', { name: 'Cyber' }))
+    fireEvent.change(single.getByRole('textbox'), { target: { value: '保留原生布局，配色跟随插件' } })
+    expect(single.getByRole<HTMLInputElement>('radio', { name: 'Cyber' }).checked).toBe(false)
+    const multiple = within(screen.getByRole('group', { name: 'Choose improvements' }))
+    fireEvent.click(multiple.getByRole('checkbox', { name: 'Hierarchy' }))
+    fireEvent.click(multiple.getByRole('checkbox', { name: 'Selection' }))
+    fireEvent.change(multiple.getByRole('textbox'), { target: { value: '说明弱化但可读\n正文不要发光' } })
+    expect(multiple.getByRole<HTMLInputElement>('checkbox', { name: 'Hierarchy' }).checked).toBe(true)
+    expect(multiple.getByRole<HTMLInputElement>('checkbox', { name: 'Selection' }).checked).toBe(true)
+    view.unmount()
+    render(<h.Form />)
+    const restored = within(screen.getByRole('group', { name: 'Choose improvements' }))
+    expect(restored.getByRole<HTMLTextAreaElement>('textbox').value).toBe('说明弱化但可读\n正文不要发光')
+    expect(restored.getByRole<HTMLInputElement>('checkbox', { name: 'Hierarchy' }).checked).toBe(true)
+    expect(restored.getByRole<HTMLInputElement>('checkbox', { name: 'Selection' }).checked).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '提交回答' }))
+    await expect(h.result).resolves.toEqual({ answers: [
+      { id: 'one', selected: [], custom: '保留原生布局，配色跟随插件' },
+      { id: 'many', selected: ['Hierarchy', 'Selection'], custom: '说明弱化但可读\n正文不要发光' },
+    ] })
+  })
+
+  it('follows the chosen theme and returns to native appearance without resetting an answer', async () => {
+    const h = harness([{ id: 'text', question: 'Write text' }])
+    const view = render(<h.Form />)
+    const field = screen.getByRole<HTMLTextAreaElement>('textbox')
+    const panel = view.container.querySelector<HTMLElement>('[data-rich-question]')!
+    const accent = panel.style.getPropertyValue('--rich-accent')
+    expect(accent).not.toBe('')
+    expect(panel.getAttribute('data-rich-theme')).toBe('cyber')
+    fireEvent.change(field, { target: { value: 'Keep my draft' } })
+    act(() => { h.appearance.accept('ember') })
+    expect(panel.style.getPropertyValue('--rich-accent')).not.toBe(accent)
+    expect(panel.getAttribute('data-rich-theme')).toBe('ember')
+    expect(field.value).toBe('Keep my draft')
+    act(() => { h.appearance.accept('none') })
+    expect(panel.style.getPropertyValue('--rich-accent')).toBe('')
+    expect(panel.hasAttribute('data-rich-themed')).toBe(false)
+    expect(panel.hasAttribute('data-rich-theme')).toBe(false)
+    expect(screen.getByRole('textbox')).toBe(field)
+    expect(field.value).toBe('Keep my draft')
+    fireEvent.click(screen.getByRole('button', { name: '提交回答' }))
+    await expect(h.result).resolves.toEqual({ answers: [{ id: 'text', selected: [], custom: 'Keep my draft' }] })
+  })
+
   it('submits the original plan unchanged or preserves and submits a reviewed draft', async () => {
     const original = harness(planQuestions)
     const first = render(<original.Form />)

@@ -23700,7 +23700,7 @@
       "digest": "3f4e2f77dd1916ccc5f4b6a18be81e6677f744a251349ed402fd74340f535701",
       "names": [],
       "sources": [
-        "packages/experimental/rich-inline/src/host/source.ts:39"
+        "packages/experimental/rich-inline/src/host/source.ts:40"
       ]
     },
     {
@@ -23908,7 +23908,7 @@
         "packages/experimental/agent-team/src/types.ts:21",
         "packages/experimental/agent-team/src/types.ts:33",
         "packages/experimental/agent-team/src/types.ts:9",
-        "packages/experimental/rich-inline/src/host/source.ts:18",
+        "packages/experimental/rich-inline/src/host/source.ts:19",
         "packages/experimental/rich-inline/src/shared/types.ts:9",
         "packages/experimental/webhook/src/brand.ts:12",
         "packages/experimental/webhook/src/brand.ts:6",
@@ -24580,7 +24580,7 @@
         "packages/experimental/rich-inline/src/host/source.ts#RichSourceTarget"
       ],
       "sources": [
-        "packages/experimental/rich-inline/src/host/source.ts:20"
+        "packages/experimental/rich-inline/src/host/source.ts:21"
       ]
     },
     {

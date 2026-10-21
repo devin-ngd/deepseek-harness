@@ -722,6 +722,7 @@ async function main(): Promise<void> {
   })
   ipcMain.on(DESKTOP_IPC.richBootstrap, (event) => { event.returnValue = richGuests.bootstrap(event) })
   ipcMain.handle(DESKTOP_IPC.richCopy, (event, value: unknown) => richGuests.copy(event, value))
+  ipcMain.handle(DESKTOP_IPC.richOpenLink, (event, value: unknown) => richGuests.openLink(event, value))
   ipcMain.on(DESKTOP_IPC.richFromGuest, (event, packet: unknown) => {
     try { richGuests.receive(event, packet) }
     catch (error) { console.error('Rich guest packet rejected', error) }

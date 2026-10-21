@@ -117,11 +117,12 @@ export function RichQuestion(props: RichQuestionProps) {
       ...(custom.trim() ? { custom } : {}) })))
   }
 
-  return <section className={css.root} style={style} data-rich-question={pending.key}
-    data-rich-themed={style === undefined ? undefined : true} aria-busy={busy}>
+  return <div className={css.frame}><section className={css.root} style={style} data-rich-question={pending.key}
+    data-rich-themed={style === undefined ? undefined : true}
+    data-rich-theme={style === undefined ? undefined : appearance.theme} aria-busy={busy}>
     <header className={css.header}>
-      <span>{t(review === undefined ? 'questionTitle' : 'questionPlanTitle')}</span>
-      <span>{readOnly ? t('questionRecorded') : busy ? t('questionSending') : t('questionWaiting')}</span>
+      <h2 className={css.panelTitle}>{t(review === undefined ? 'questionTitle' : 'questionPlanTitle')}</h2>
+      <span className={css.status}>{readOnly ? t('questionRecorded') : busy ? t('questionSending') : t('questionWaiting')}</span>
     </header>
     <form ref={form} onSubmit={(event) => { event.preventDefault(); submit() }}
       onFocus={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) pending.holdFocus() }}
@@ -138,8 +139,8 @@ export function RichQuestion(props: RichQuestionProps) {
         const answer = draft.answers[index]
         if (answer === undefined) return null
         return <fieldset key={question.id} className={css.question} disabled={locked}>
-          <legend>{question.header ?? question.question}</legend>
-          {question.header !== undefined && <p>{question.question}</p>}
+          <legend className={css.questionTitle}><span className={css.questionNumber} aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>{question.header ?? question.question}</legend>
+          {question.header !== undefined && <p className={css.prompt}>{question.question}</p>}
           {question.detail !== undefined && <MarkdownText text={question.detail} labels={markdownLabels} />}
           <div className={css.options}>{question.options?.map((option) => {
             const label = parseRecommendedLabel(option.label)
@@ -149,20 +150,22 @@ export function RichQuestion(props: RichQuestionProps) {
                   selected: question.multiSelect ? current.selected.includes(option.label)
                     ? current.selected.filter(value => value !== option.label) : [...current.selected, option.label] : [option.label],
                   custom: question.multiSelect ? current.custom : '', skipped: false })) }} />
-              <span>{label.label}{label.recommended && <small>{t('questionRecommended')}</small>}
-                {option.description !== undefined && <span className={css.description}>{option.description}</span>}</span>
+              <span className={css.optionCopy}><span className={css.optionHeading}>
+                <span className={css.optionTitle}>{label.label}</span>
+                {label.recommended && <small className={css.recommended}>{t('questionRecommended')}</small>}
+              </span>{option.description !== undefined && <span className={css.description}>{option.description}</span>}</span>
             </label>
           })}</div>
-          <label className={css.custom}>{t('questionText')}
+          <label className={css.custom}><span className={css.fieldLabel}>{t('questionText')}</span>
             <textarea rows={2} value={answer.custom} onChange={(event) => {
               const custom = event.currentTarget.value
               updateAnswer(index, current => ({ ...current, custom,
                 selected: question.multiSelect ? current.selected : [], skipped: false }))
             }} />
           </label>
-          {!readOnly && <Button size="sm" variant="outline" disabled={locked} onClick={() => {
+          {!readOnly && <div className={css.questionActions}><Button size="sm" variant="outline" disabled={locked} onClick={() => {
             updateAnswer(index, current => ({ ...current, selected: [], custom: '', skipped: true }))
-          }}>{answer.skipped ? t('questionSkipped') : t('questionSkip')}</Button>}
+          }}>{answer.skipped ? t('questionSkipped') : t('questionSkip')}</Button></div>}
         </fieldset>
       })}
       <footer className={css.footer}>
@@ -183,5 +186,5 @@ export function RichQuestion(props: RichQuestionProps) {
         </div>
       </footer>
     </form>
-  </section>
+  </section></div>
 }

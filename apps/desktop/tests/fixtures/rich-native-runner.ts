@@ -1,5 +1,5 @@
 /** Keyless real-Electron negative tests through the shipped guest manager and isolated preloads. */
-import { app, BrowserWindow, ipcMain, protocol, type WebContents } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, shell, type WebContents } from 'electron'
 import { createServer } from 'node:http'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
@@ -7,6 +7,7 @@ import { DesktopRichGuests } from '../../src/rich-guests.ts'
 import { DesktopBrowserGuests } from '../../src/browser-guests.ts'
 import { DESKTOP_IPC } from '../../src/ipc.ts'
 import { runRichCopyChecks } from './rich-copy-checks.ts'
+import { runRichActionChecks } from './rich-action-checks.ts'
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'dsh-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } }])
 
@@ -18,6 +19,10 @@ app.on('child-process-gone', (_event, details) => { console.error('native fixtur
 console.log('native fixture stage: argument parsed')
 const results: { name: string; passed: boolean; detail: unknown }[] = []
 const hits: string[] = []
+const opened: string[] = []
+// oxlint-disable-next-line typescript/unbound-method -- Preserve the exact method for restoration without calling it unbound.
+const originalOpenExternal = shell.openExternal
+shell.openExternal = async (url) => { opened.push(url) }
 const check = (name: string, condition: boolean, detail: unknown): void => {
   results.push({ name, passed: condition, detail })
   if (!condition) throw new Error(name)
@@ -63,6 +68,7 @@ async function run(): Promise<void> {
     ipcMain.handle(DESKTOP_IPC.richRelease, (event, id: unknown) => { trusted(event); return manager?.release(owner, id) })
     ipcMain.on(DESKTOP_IPC.richBootstrap, (event) => { event.returnValue = manager?.bootstrap(event) })
     ipcMain.handle(DESKTOP_IPC.richCopy, (event, value: unknown) => manager?.copy(event, value))
+    ipcMain.handle(DESKTOP_IPC.richOpenLink, (event, value: unknown) => manager?.openLink(event, value))
     ipcMain.on(DESKTOP_IPC.richFromGuest, (event, value: unknown) => { manager?.receive(event, value) })
     await deadline(window.loadURL('data:text/html,' + encodeURIComponent('<!doctype html><body><section id="messages"></section><script>window.packets=[];window.reservations=[];window.ticks=0;setInterval(()=>ticks++,40);window.mount=async request=>{const r=await testRich.acquire(request);reservations.push(r);testRich.subscribe(r.lease,packet=>packets.push({lease:r.lease,packet}));const message=document.createElement("section");message.dataset.chatMessage="assistant";const view=document.createElement("webview");view.setAttribute("name",r.lease);view.setAttribute("partition",r.partition);view.setAttribute("src",r.src);view.style.cssText="width:600px;height:450px";message.append(view);messages.append(message);return r};</script>')))
     console.log('native fixture stage: owner loaded')
@@ -77,7 +83,9 @@ async function run(): Promise<void> {
     }
     const normalJs = `const send=packet=>richGuest.send(packet);richGuest.subscribe(packet=>{if(packet.type==='ping')send({type:'pong',token:packet.token});if(packet.type==='loop'){send({type:'loopStarted'});while(true){}}});let storage;try{storage=localStorage.getItem('native-test')}catch{storage='denied'}send({type:'ready',node:typeof require,process:typeof process,host:typeof dshDesktop,storage,randomUUID:typeof crypto.randomUUID,rtc:typeof RTCPeerConnection});document.getElementById('submit').addEventListener('click',()=>send({type:'submitted',value:document.getElementById('entry').value}));window.dropSeen=false;window.addEventListener('drop',()=>{dropSeen=true});fetch(${JSON.stringify(destination + '?fetch')}).catch(()=>{});const image=new Image();image.src=${JSON.stringify(destination + '?image')};document.body.append(image);try{new WebSocket(${JSON.stringify(destination.replace('http:', 'ws:') + '?ws')})}catch{};try{window.open(${JSON.stringify(destination + '?popup')})}catch{};try{navigator.mediaDevices.getUserMedia({audio:true}).catch(()=>{})}catch{};setTimeout(()=>location.assign(${JSON.stringify(destination + '?navigation')}),150);`
     const request = { mountId: 'native-one', mountNonce: 'native-test-nonce-0000000000001',
-      copy: { text: 'Copy this section', image: 'Copy image', copied: 'Copied', failed: 'Could not copy' },
+      copy: { text: 'Copy this section', image: 'Copy image', copied: 'Copied', failed: 'Could not copy',
+        menu: { plain: 'Copy plain text', markdown: 'Copy Markdown', copyLink: 'Copy link address', openLink: 'Open link',
+          more: 'More actions', selectAll: 'Select all content', openFailed: 'Could not open link' } },
       html: '<div class="card"><h2>Rich native fixture</h2><svg width="200" height="60"><path d="M0 50L80 20L160 40" stroke="blue" fill="none"/></svg><input id="entry" value="last character"><button id="submit">Submit</button><input id="file" type="file"></div>',
       css: '.card{padding:24px;border-radius:16px;background:linear-gradient(120deg,#eef,#efe)}', js: normalJs }
     const reservation = await evalOwner<{ lease: string; partition: string; src: string }>(`mount(${JSON.stringify(request)})`)
@@ -111,6 +119,7 @@ async function run(): Promise<void> {
     window.show()
     window.focus()
     await runRichCopyChecks(guest, check)
+    await runRichActionChecks(guest, opened, check)
     const secondReservation = await evalOwner<{ lease: string; partition: string }>(`mount(${JSON.stringify({ ...request, mountId: 'native-two', js: "richGuest.send({type:'secondReady'})" })})`)
     await waitPackets('secondReady')
     const second = guests[1]
@@ -151,10 +160,14 @@ async function run(): Promise<void> {
     results.push({ name: 'runner error', passed: false, detail: error instanceof Error ? error.stack : String(error) })
   } finally {
     const passed = results.length > 0 && results.every(result => result.passed)
-    await writeFile(join(output, 'native-results.json'), JSON.stringify({ passed, electron: process.versions.electron, chromium: process.versions.chrome, results }, null, 2))
-    for (const guest of guests) if (!guest.isDestroyed()) guest.close({ waitForBeforeUnload: false })
-    window?.destroy()
-    receiver.close()
+    try {
+      await writeFile(join(output, 'native-results.json'), JSON.stringify({ passed, electron: process.versions.electron, chromium: process.versions.chrome, results }, null, 2))
+    } finally {
+      shell.openExternal = originalOpenExternal
+      for (const guest of guests) if (!guest.isDestroyed()) guest.close({ waitForBeforeUnload: false })
+      window?.destroy()
+      receiver.close()
+    }
     app.exit(passed ? 0 : 1)
   }
 }

@@ -72,6 +72,8 @@
     "typescript": "^6.0.3",
     "@deepseek-ai/dsh-deepseek-account": "workspace:*",
     "@types/ws": "^8.18.1",
+    "turndown": "^7.2.4",
+    "@types/turndown": "^5.0.6",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:*",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

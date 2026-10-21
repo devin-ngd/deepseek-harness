@@ -168,8 +168,8 @@
   en: 8b721731734c04aa
   zh: 8b721731734c04aa
 /session-persistence-event-catalog/events/rich-inline/rich-inline-source-offload-log-only:
-  en: 077baf308938f640
-  zh: 076c146505d9290d
+  en: cb1a51e95dc439eb
+  zh: ca1ccf1c8040db94
 /session-persistence-event-catalog/events/rich-inline/rich-inline-tool-offload-log-only:
   en: 5e6b33c6ad83d44a
   zh: c893669e8a396ce2
@@ -1203,8 +1203,8 @@
   en: a005a6ee18098671
   zh: 68fbe8f003f13b6a
 /session-persistence-event-catalog/resolved-persistence-types/richsourcetarget:
-  en: 528ee635cc7536ef
-  zh: 182862fef1b58538
+  en: 492cdf369c226858
+  zh: 1b3c081581f8fba5
 /session-persistence-event-catalog/resolved-persistence-types/richsourcetarget~2:
   en: 40ba3ad130030d2f
   zh: 38fb5b828d2fe212
@@ -1377,8 +1377,8 @@
   en: f783fe16a68d4495
   zh: cd21e12db32e9fdc
 /session-persistence-event-catalog/resolved-persistence-types/string:
-  en: 82c3b6eb8f71932e
-  zh: adfaf51c195750bb
+  en: 9fa8771b1f27773a
+  zh: d278180068fc50c8
 /session-persistence-event-catalog/resolved-persistence-types/string~2:
   en: 0089620bf4638263
   zh: 1922bef1713094bb
@@ -1941,8 +1941,8 @@
   en: be5d68f496675776
   zh: 9a341151829e4f99
 /session-persistence-event-catalog/resolved-persistence-types/targets:
-  en: af3cdfd1fb88f198
-  zh: bca8b1d30d975d05
+  en: 3cf2bc5e30b961e8
+  zh: 2dd8240541a3b721
 /session-persistence-event-catalog/resolved-persistence-types/targets~2:
   en: ea05422da7a0bbb5
   zh: d6214353f9b10775

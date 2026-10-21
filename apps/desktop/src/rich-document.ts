@@ -26,11 +26,20 @@ export function readRichRequest(value: unknown): DesktopRichRequest {
   if (copy !== undefined && (typeof copy !== 'object' || copy === null
     || !('text' in copy) || typeof copy.text !== 'string' || !('image' in copy) || typeof copy.image !== 'string'
     || !('copied' in copy) || typeof copy.copied !== 'string' || !('failed' in copy) || typeof copy.failed !== 'string'
-    || Object.keys(copy).length !== 4 || Object.values(copy).some(label => typeof label !== 'string' || label.length === 0 || label.length > 256))) {
+    || Object.keys(copy).some(key => !['text', 'image', 'copied', 'failed', 'menu'].includes(key))
+    || [copy.text, copy.image, copy.copied, copy.failed].some(label => label.length === 0 || label.length > 256))) {
     throw new Error('desktop rich: invalid copy labels')
   }
+  if (copy !== undefined && 'menu' in copy && copy.menu !== undefined) {
+    const menu = copy.menu
+    const keys = ['plain', 'markdown', 'copyLink', 'openLink', 'more', 'selectAll', 'openFailed']
+    if (typeof menu !== 'object' || menu === null || Object.keys(menu).length !== keys.length
+      || keys.some(key => !(key in menu)) || Object.values(menu).some(label => typeof label !== 'string' || label.length === 0 || label.length > 256)) {
+      throw new Error('desktop rich: invalid content menu labels')
+    }
+  }
   return { mountId, mountNonce, html, css, js, ...sdk === undefined ? {} : { sdk }, ...copy === undefined ? {} : {
-    copy: copy as { text: string; image: string; copied: string; failed: string },
+    copy: copy as NonNullable<DesktopRichRequest['copy']>,
   } }
 }
 

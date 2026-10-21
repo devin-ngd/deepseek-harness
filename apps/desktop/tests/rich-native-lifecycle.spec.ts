@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { shell } from 'electron'
 import ts from 'typescript'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
@@ -16,6 +17,7 @@ const lifecycle = vi.hoisted(() => ({
   readyCalls: 0,
   closed: false,
   failWrite: false,
+  openExternal: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('electron', () => ({
@@ -31,6 +33,7 @@ vi.mock('electron', () => ({
     throw new Error('lifecycle seam reached; no native window is created')
   }),
   ipcMain: {},
+  shell: { openExternal: lifecycle.openExternal },
 }))
 vi.mock('../src/rich-guests.ts', () => ({ DesktopRichGuests: vi.fn() }))
 vi.mock('../src/browser-guests.ts', () => ({ DesktopBrowserGuests: vi.fn() }))
@@ -70,8 +73,12 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  process.argv = originalArgv.slice()
-  vi.restoreAllMocks()
+  try {
+    expect(shell).toHaveProperty('openExternal', lifecycle.openExternal)
+  } finally {
+    process.argv = originalArgv.slice()
+    vi.restoreAllMocks()
+  }
 })
 
 it('finishes ESM entry evaluation while app readiness is still pending', async () => {
@@ -102,6 +109,7 @@ it('terminates with failure when result reporting itself rejects', async () => {
   lifecycle.resolveReady()
   await vi.waitFor(() => { expect(lifecycle.exits).toEqual([1]) })
   expect(console.error).toHaveBeenCalledWith('native fixture could not finish', expect.any(Error))
+  expect(lifecycle.closed).toBe(true)
 })
 
 it('rejects a missing output argument before starting asynchronous work', async () => {

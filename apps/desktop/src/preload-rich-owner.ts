@@ -18,6 +18,7 @@ export function createDesktopRichBridge(): DesktopRichBridge {
   })
   return {
     limits: RICH_NATIVE_LIMITS,
+    contentActions: 1,
     acquire: request => ipcRenderer.invoke(DESKTOP_IPC.richAcquire, request) as ReturnType<DesktopRichBridge['acquire']>,
     send: (lease, packet) => ipcRenderer.invoke(DESKTOP_IPC.richSend, lease, packet) as Promise<void>,
     release: lease => ipcRenderer.invoke(DESKTOP_IPC.richRelease, lease) as Promise<void>,

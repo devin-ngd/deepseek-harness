@@ -40,14 +40,14 @@ import { authoredBlockId, authoredContent, authoredFences } from '../shared/auth
 import { legacyContent } from './legacy.ts'
 import { legacyEligible } from '../shared/legacy.ts'
 import { installFormatCheck, explicitTextRequested } from './format.ts'
-import { installProjectDefaults } from './project-defaults.ts'
+import { installProjectDefaults, isRichChild } from './project-defaults.ts'
 import { deriveRichTaskUsage } from '../shared/usage.ts'
 import type { RichTaskUsage } from '../shared/usage.ts'
 import { installRichSourceOffload, readRichSource } from './source.ts'
 
 /** Deployment bounds; protocols and required authorization rules are fixed. */
 export interface Config {
-  /** Empty means profile-wide authoring; otherwise only these selected presets author rich output. */
+  /** Empty enables every root session; otherwise only these selected root presets author rich output. Children are excluded. */
   readonly activePresets?: string[]
   /** Client presentation controls; ordinary execution and question semantics are unchanged. */
   readonly compactLiveProcess?: boolean
@@ -80,7 +80,7 @@ declare module '@deepseek-ai/cordis' {
 
 /**
  * Host-owned exclusions for Agents that must not receive rich authoring guidance or tools.
- * Without this service, authoring follows the configured presets.
+ * Root authoring follows the configured presets; child Agents are always excluded.
  */
 export interface RichAuthoringPolicy {
   /** @param agent - the exact Agent asking for authoring guidance or tools.
@@ -148,7 +148,7 @@ export class RichInline extends TypertRemoteService {
     ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
     installProjectDefaults(ctx, config.projectDefaults ?? [])
     installRichSourceOffload(ctx, config.sourceOffloadMinBytes,
-      async (sessionId, signal) => (await ctx.sessionController.inspect(sessionId, signal)).events)
+      async (sessionId, signal) => (await ctx.sessionController.inspect(sessionId, signal)).events, agent => !isRichChild(agent))
     ctx.systemPrompt.section({ name: 'rich-inline:authoring', text: context => this.authoringEnabled(context.agent)
       ? RICH_AUTHORING_GUIDANCE + '\n\n' + RICH_APPEARANCE_GUIDANCE : '',
     order: ctx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'), interpolate: false })
@@ -163,15 +163,27 @@ export class RichInline extends TypertRemoteService {
       readSource: async (sessionId, request) => readRichSource((await ctx.sessionController.inspect(sessionId)).events,
         request, config.sourceReadMaxChars),
     }, this.config.maxInputBytes)
+    ctx.effect(() => {
+      const masks = new Map<Agent, () => void>()
+      const restrict = (agent: Agent) => {
+        if (!isRichChild(agent)) return
+        masks.set(agent, agent.ctx.tools.restrict({ deny: ctx.tools.schemas(agent).map(tool => tool.name).filter(name => name.startsWith('rich_inline_')) }))
+      }
+      for (const agent of ctx.agents.list()) restrict(agent)
+      const created = ctx.on('agent/created', ({ agent }) => { restrict(agent) })
+      const disposed = ctx.on('agent/disposed', ({ agent }) => { masks.get(agent)?.(); masks.delete(agent) })
+      return () => { created(); disposed(); for (const release of masks.values()) release(); masks.clear() }
+    })
     ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
       const assembly = await next()
       return this.authoringEnabled(context.agent) ? assembly
-        : { ...assembly, tools: assembly.tools.filter(tool => tool.name === 'rich_inline_read' || !tool.name.startsWith('rich_inline_')) }
+        : { ...assembly, tools: assembly.tools.filter(tool => !tool.name.startsWith('rich_inline_') || tool.name === 'rich_inline_read' && !isRichChild(context.agent)) }
     })
-    ctx.tools.guard(execution => execution.name !== 'rich_inline_read' && execution.name.startsWith('rich_inline_') && !this.authoringEnabled(execution.agent)
+    ctx.tools.guard(execution => execution.name.startsWith('rich_inline_') && (isRichChild(execution.agent) || execution.name !== 'rich_inline_read' && !this.authoringEnabled(execution.agent))
       ? 'Rich inline authoring is not enabled for this session mode.' : undefined)
     installFormatCheck(ctx, this.config.maxFormatRepairAttempts, agent => this.authoringEnabled(agent))
     ctx.on('session/event', (session, event) => {
+      if (session.header.origin === 'subagent' || isRichChild(ctx.agents.get(session.id))) return
       if (event.type === 'tool/result' || event.type === 'user/message' || event.type === 'turn/end' || event.type === 'tool/ptc-dispatch') {
         // oxlint-disable-next-line typescript/no-deprecated -- Capture the turn at this event's emission, before queued observer work runs.
         const start = session.snapshotEvents().findLast(item => item.type === 'turn/start')
@@ -189,6 +201,7 @@ export class RichInline extends TypertRemoteService {
   }
 
   private authoringEnabled(agent?: Agent): boolean {
+    if (isRichChild(agent)) return false
     if (agent !== undefined && this.ctx.get('richAuthoringPolicy')?.excludes(agent) === true) return false
     const presets = this.config.activePresets ?? []
     if (presets.length === 0) return true
@@ -614,7 +627,7 @@ export class RichInline extends TypertRemoteService {
   }
 
   private async publish(sessionId: SessionId, input: RichPublishInput): Promise<RichPublishValue> {
-    if ((this.config.activePresets?.length ?? 0) > 0 && !this.authoringEnabled(await this.resolveAgent(sessionId))) bad('AUTHORING_MODE_DISABLED')
+    if (!this.authoringEnabled(await this.resolveAgent(sessionId))) bad('AUTHORING_MODE_DISABLED')
     if (size(input) > this.config.maxContentBytes) bad('BLOCK_PUBLICATION_TOO_LARGE')
     if (input.values !== undefined && (!isRichValues(input.values) || !typedRichValuesValid(input.values))
       || !Number.isSafeInteger(input.stateSchemaVersion) || input.stateSchemaVersion < 1 || input.fallbackText.trim().length === 0) bad('INVALID_BLOCK_PUBLICATION')
@@ -656,7 +669,7 @@ export class RichInline extends TypertRemoteService {
   }
 
   private async updateData(sessionId: SessionId, input: RichDataInput): Promise<{ blockId: RichBlockId; dataRevision: number }> {
-    if ((this.config.activePresets?.length ?? 0) > 0 && !this.authoringEnabled(await this.resolveAgent(sessionId))) bad('AUTHORING_MODE_DISABLED')
+    if (!this.authoringEnabled(await this.resolveAgent(sessionId))) bad('AUTHORING_MODE_DISABLED')
     if (size(input) > this.config.maxInputBytes || input.fallbackText.trim() === ''
       || !Number.isSafeInteger(input.expectedRenderRevision) || !Number.isSafeInteger(input.expectedDataRevision)) bad('INVALID_BLOCK_DATA')
     return this.serial(sessionId, async (record) => {
