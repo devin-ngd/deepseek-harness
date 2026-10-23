@@ -2,7 +2,6 @@
 
 import { imageOffloadProjection } from '@deepseek-ai/dsh-compaction-image-offload/projection'
 import type { SessionMessageProjection } from '@deepseek-ai/dsh-session/surface'
-export { imageOffloadProjection }
 
 const definitions: SessionMessageProjection[] = [imageOffloadProjection]
 const registrations = new Map<SessionMessageProjection, number>()

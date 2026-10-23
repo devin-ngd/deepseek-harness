@@ -410,11 +410,6 @@ interface SessionSurface {
   readonly replaceGeneration: number
   /** Monotonic count of committed replacements and plugin-owned message changes. */
   readonly contentGeneration: number
-  /**
-   * Immutable replacements produced by committed message projections, keyed by
-   * original event sequence, for synchronous reads of projected messages.
-   */
-  readonly projectedMessages: ReadonlyMap<SessionSeq, Message>
 }
 ```
 

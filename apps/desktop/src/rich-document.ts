@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { RICH_NATIVE_LIMITS } from './rich-limits.ts'
 import type { DesktopRichRequest } from './rich-types.ts'
 
-export { RICH_NATIVE_LIMITS } from './rich-limits.ts'
 export type RichPacketDirection = 'guest-to-host' | 'host-to-guest'
 
 /** @param value - caller-provided JSON. @returns a bounded request or throws before reserving a guest. */
@@ -73,9 +72,4 @@ export function richDocument(request: DesktopRichRequest): { html: string; polic
   const policy = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'`
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}"><style>html,body{margin:0;background:transparent;color:inherit;color-scheme:light dark}*,*::before,*::after{box-sizing:border-box}[data-rich-content-root]{display:flow-root}</style></head><body><script nonce="${nonce}">(()=>{const data=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('${payload}'),c=>c.charCodeAt(0))));const style=document.createElement('style');style.textContent=data.css;document.head.append(style);const root=document.createElement('div');root.setAttribute('data-rich-content-root','');root.innerHTML=data.html;document.body.append(root);for(const source of [data.sdk,data.js]){const program=document.createElement('script');program.nonce='${nonce}';program.textContent=source;document.body.append(program)}})()</script></body></html>`
   return { html, policy }
-}
-
-/** @param request - complete fragment, style and program. @returns an inert encoding used by serialization tests. */
-export function richDocumentUrl(request: DesktopRichRequest): string {
-  return 'data:text/html;base64,' + Buffer.from(richDocument(request).html, 'utf8').toString('base64')
 }

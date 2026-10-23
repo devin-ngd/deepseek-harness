@@ -60,10 +60,15 @@ interface MeasurementAnchor {
   readonly usage: TokenUsage | undefined
 }
 
+/** Priced node retaining the immutable event supplied by the replay fold. */
+interface ReplaySurfaceNode extends MeterSurfaceNode {
+  readonly event: SessionEvent
+}
+
 interface ReplayState {
   consumedEvents: SessionLogOffsetType
   header: EpochHeader | undefined
-  surface: MeterSurfaceNode[]
+  surface: ReplaySurfaceNode[]
   stepStart: { turn: number; step: number } | undefined
   anchor: MeasurementAnchor | undefined
 }
@@ -251,25 +256,17 @@ export class TokenMeter extends Service {
 
   /**
    * Re-price surface nodes from the session's committed message projections.
-   * Projections are rare, positional replacements never move a node's seq, and
-   * `deriveEventMessage` prices the exact model-visible message, so this stays
-   * O(surface) per projection event — the same bound as one `measure()` call.
-   */
-  /**
-   * Re-price surface nodes from the session's committed message projections.
-   * Reads maintained projection state only (policy: new production code must
-   * not read arbitrary event positions); projections are rare and positional
-   * replacements never move a node's seq, so this stays O(surface) per
-   * projection event — the same bound as one `measure()` call.
+   * Each node borrows its immutable event from the replay fold; Session applies
+   * its maintained projections without another log read. This costs O(surface)
+   * per projection event, the same bound as one `measure()` call.
    */
   private _repriceProjectedSurface(state: ReplayState, session: Session): void {
-    const projectedMessages = session.surface.projectedMessages
-    if (projectedMessages.size === 0) return
+    if (session.surface.contentGeneration === 0) return
     for (let index = 0; index < state.surface.length; index++) {
       const node = state.surface[index]
       if (node === undefined) continue
-      const projected = projectedMessages.get(node.seq)
-      if (projected === undefined) continue
+      const projected = session.deriveEventMessage(node.event)
+      if (projected === null) continue
       const projectedTokens = estimateMessage(projected)
       if (projectedTokens === node.heuristicTokens) continue
       // New node object: earlier usage anchors keep their historical estimate.
@@ -361,7 +358,7 @@ export class TokenMeter extends Service {
     state.header = nextHeader
     state.stepStart = nextStepStart
     if (plan !== undefined) {
-      commitSurfaceTokens(state.surface, plan)
+      commitSurfaceTokens(state.surface, { ...plan, node: { ...plan.node, event } })
     }
     state.anchor = nextAnchor
   }

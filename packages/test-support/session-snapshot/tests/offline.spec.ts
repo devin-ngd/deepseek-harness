@@ -1,10 +1,10 @@
-/** Preflight rejects invalid input before the runner callback; no SDK is imported. */
+/** Offline entry and fixture validation without importing the SDK. */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it, vi } from 'vitest'
-import { prepareOfflineSnapshot, startPreparedOfflineSnapshot } from '../src/offline.ts'
-import type { OfflineSnapshotPlan, PreparedOfflineSnapshot } from '../src/offline.ts'
-import { startOfflineSnapshotEntry } from '../src/offline-entry.ts'
+import { describe, expect, it } from 'vitest'
+import { prepareOfflineSnapshot } from '../src/offline.ts'
+import type { OfflineSnapshotPlan } from '../src/offline.ts'
+import { requireOfflineSnapshotEntry } from '../src/offline-entry.ts'
 import type { OfflineSnapshotEntry, OfflineSnapshotMarkers } from '../src/offline-entry.ts'
 
 const fixture = readFileSync(fileURLToPath(new URL('../../llm-replay/tests/fixtures/offline-four.v4.jsonl', import.meta.url)), 'utf8')
@@ -13,35 +13,19 @@ function plan(): OfflineSnapshotPlan {
 }
 
 function entry(): OfflineSnapshotEntry {
-  return { composition: 'in-memory-only', mode: 'replay', plan: plan(), markers: {
+  return { mode: 'replay', plan: plan(), markers: {
     sdkReplay: true, replayOffline: true, uploadDisabled: true, dispatchBlocked: true,
   } }
 }
 
-function deferredEffects() {
-  const importFixture = vi.fn()
-  const constructSdk = vi.fn()
-  const loadRealAdapter = vi.fn()
-  const network = vi.fn()
-  const upload = vi.fn()
-  const start = vi.fn(() => {
-    importFixture(); constructSdk(); loadRealAdapter(); network(); upload()
-  })
-  return { start, all: [start, importFixture, constructSdk, loadRealAdapter, network, upload] }
-}
-
 describe('mandatory offline snapshot entry', () => {
-  it('refuses all missing offline inputs before any deferred effect', () => {
-    const effects = deferredEffects()
-    expect(() => { startOfflineSnapshotEntry({ composition: 'ordinary-sdk', mode: undefined, plan: undefined, markers: undefined },
-      effects.start) }).toThrow('explicit replay or refresh')
-    for (const effect of effects.all) expect(effect).not.toHaveBeenCalled()
+  it('refuses missing offline inputs', () => {
+    expect(() => { requireOfflineSnapshotEntry({ mode: undefined, plan: undefined, markers: undefined }) })
+      .toThrow('explicit replay or refresh')
   })
 
-  it.each([undefined, '', 'record', 'other'])('refuses mode %s before loading', (mode: string | undefined) => {
-    const effects = deferredEffects()
-    expect(() => { startOfflineSnapshotEntry({ ...entry(), mode }, effects.start) }).toThrow('explicit replay or refresh')
-    for (const effect of effects.all) expect(effect).not.toHaveBeenCalled()
+  it.each([undefined, '', 'record', 'other'])('refuses mode %s', (mode: string | undefined) => {
+    expect(() => { requireOfflineSnapshotEntry({ ...entry(), mode }) }).toThrow('explicit replay or refresh')
   })
 
   it.each(['sdkReplay', 'replayOffline', 'uploadDisabled', 'dispatchBlocked'] as const)(
@@ -49,9 +33,7 @@ describe('mandatory offline snapshot entry', () => {
       const { [key]: _marker, ...missing } = entry().markers ?? {}
       for (const markers of [{ ...entry().markers, [key]: false },
         missing]) {
-        const effects = deferredEffects()
-        expect(() => { startOfflineSnapshotEntry({ ...entry(), markers }, effects.start) }).toThrow('every offline marker')
-        for (const effect of effects.all) expect(effect).not.toHaveBeenCalled()
+        expect(() => { requireOfflineSnapshotEntry({ ...entry(), markers }) }).toThrow('every offline marker')
       }
     },
   )
@@ -63,24 +45,19 @@ describe('mandatory offline snapshot entry', () => {
     ['missing model', { plan: { ...plan(), model: '' } }],
     ['missing budget', { plan: { ...plan(), expectedCalls: 0 } }],
     ['fractional budget', { plan: { ...plan(), expectedCalls: 1.5 } }],
-  ] satisfies readonly [string, Partial<OfflineSnapshotEntry>][])('refuses %s before effects', (_name: string, overrides: Partial<OfflineSnapshotEntry>) => {
-    const effects = deferredEffects()
-    expect(() => { startOfflineSnapshotEntry({ ...entry(), ...overrides }, effects.start) }).toThrow()
-    for (const effect of effects.all) expect(effect).not.toHaveBeenCalled()
+  ] satisfies readonly [string, Partial<OfflineSnapshotEntry>][])('refuses %s', (_name: string, overrides: Partial<OfflineSnapshotEntry>) => {
+    expect(() => { requireOfflineSnapshotEntry({ ...entry(), ...overrides }) }).toThrow()
   })
 
   it.each(['replay', 'refresh'])('admits an explicitly guarded synthetic replay in %s mode without a module inventory', (mode: string) => {
-    const start = vi.fn(() => 'in-memory-only')
-    expect(startOfflineSnapshotEntry({ ...entry(), mode }, start)).toBe('in-memory-only')
-    expect(start).toHaveBeenCalledTimes(1)
+    const selected = entry()
+    expect(requireOfflineSnapshotEntry({ ...selected, mode })).toBe(selected.plan)
   })
 })
 
 describe('offline snapshot preflight', () => {
-  it.each(['D:\\Temp\\offline-work', '\\\\server\\share\\offline-work', '/tmp/offline-work'])('materializes %s with valid JSON before constructing a runner', (cwd: string) => {
-    const start = vi.fn((prepared: PreparedOfflineSnapshot) => prepared)
-    const result = startPreparedOfflineSnapshot<PreparedOfflineSnapshot>({ ...plan(), cwd }, start)
-    expect(start).toHaveBeenCalledTimes(1)
+  it.each(['D:\\Temp\\offline-work', '\\\\server\\share\\offline-work', '/tmp/offline-work'])('materializes %s with valid JSON', (cwd: string) => {
+    const result = prepareOfflineSnapshot({ ...plan(), cwd })
     expect(result.expectedCalls).toBe(4)
     const header = JSON.parse(result.fixtures[0]!.split('\n')[0]!) as { cwd: string }
     expect(header.cwd).toBe(cwd)
@@ -100,10 +77,8 @@ describe('offline snapshot preflight', () => {
     ['bad JSON', { fixtures: ['{"type":'] }],
     ['bad Session schema', { fixtures: [fixture.replace('"version":4', '"version":9999')] }],
     ['bad lifecycle', { fixtures: [fixture.split('\n').filter(line => !line.includes('"type":"step/start"')).join('\n')] }],
-  ] satisfies readonly [string, Partial<OfflineSnapshotPlan>][])('stops %s before a runner exists', (_name: string, overrides: Partial<OfflineSnapshotPlan>) => {
-    const start = vi.fn(() => { throw new Error('a runner must not be constructed') })
-    expect(() => startPreparedOfflineSnapshot({ ...plan(), ...overrides }, start)).toThrow()
-    expect(start).not.toHaveBeenCalled()
+  ] satisfies readonly [string, Partial<OfflineSnapshotPlan>][])('rejects %s', (_name: string, overrides: Partial<OfflineSnapshotPlan>) => {
+    expect(() => prepareOfflineSnapshot({ ...plan(), ...overrides })).toThrow()
   })
 
   it('retains JSON validity for nested tool arguments containing cwd', () => {

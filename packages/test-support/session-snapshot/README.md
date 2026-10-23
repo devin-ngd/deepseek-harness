@@ -99,7 +99,7 @@ A scenario requiring a non-Windows host declares `posixOnly`, which skips its ru
 
 ### Offline SDK preflight
 
-`prepareOfflineSnapshot` validates each original JSONL fixture through the Session format catalog before materializing `{{cwd}}`, then validates the materialized artifact again. It requires an absolute cwd, an exact recorded provider/model route, and a positive exact call budget. JSON serialization escapes Windows drive and UNC paths, including paths inside valid tool-argument JSON. `startPreparedOfflineSnapshot` calls its runner factory only after that preflight succeeds.
+`prepareOfflineSnapshot` validates each original JSONL fixture through the Session format catalog before materializing `{{cwd}}`, then validates the materialized artifact again. It requires an absolute cwd, an exact recorded provider/model route, and a positive exact call budget. JSON serialization escapes Windows drive and UNC paths, including paths inside valid tool-argument JSON. The SDK runner uses this prepared input when constructing its harness.
 
 The [SDK corpus runner](../../../snapshots/sdk/sdk.snapshot.ts) requires explicit replay or refresh mode, a finite provider/model declaration, SDK/replay checks, disabled Session-log upload, and `DSH_SNAPSHOT_REPLAY_ONLY=1` before fixture or SDK imports. Missing markers or declarations fail before deferred construction. The child retains the dispatch marker, so every LLM instance requires a counted replay adapter; missing, failed or exhausted replay never selects a real provider. The final overlay also disables known real adapters and uploads. Normal account/configuration loading is permitted; there is no module allowlist prerequisite. Ordinary product SDK routing remains unchanged.
 

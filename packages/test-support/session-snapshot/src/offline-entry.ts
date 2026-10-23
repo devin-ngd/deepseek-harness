@@ -18,8 +18,6 @@ export interface OfflineSnapshotMarkers {
 
 /** Raw test-entry inputs; missing fields are refusals rather than ordinary SDK routing. */
 export interface OfflineSnapshotEntry {
-  /** Scenario identity used by the test runner. */
-  composition: string
   /** Explicit replay or refresh selection; live record is unsupported. */
   mode: string | undefined
   /** Scenario-owned finite declaration; absence refuses entry. */
@@ -47,15 +45,4 @@ export function requireOfflineSnapshotEntry(entry: OfflineSnapshotEntry): Offlin
     throw new Error('offline snapshot entry requires a finite replay plan')
   }
   return plan
-}
-
-/**
- * Keep fixture imports and SDK construction inside the validated offline entry.
- * @param entry - raw test-entry inputs; no default SDK route is selected.
- * @param start - deferred loading/construction callback, never called on refusal.
- * @returns the callback result after all entry requirements pass.
- */
-export function startOfflineSnapshotEntry<T>(entry: OfflineSnapshotEntry,
-  start: (declaration: OfflineSnapshotDeclaration) => T): T {
-  return start(requireOfflineSnapshotEntry(entry))
 }

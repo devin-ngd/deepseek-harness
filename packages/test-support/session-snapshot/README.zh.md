@@ -99,7 +99,7 @@ Headless/ACP 与 SDK 适配器在规范化之前，将原始目录中的子创�
 
 ### 离线 SDK 预检
 
-`prepareOfflineSnapshot` 在替换 `{{cwd}}` 前通过 Session 格式目录校验每个原始 JSONL fixture，再校验替换后的产物。它要求绝对 cwd、与记录完全一致的 provider/model 路由，以及正整数的确切调用预算。JSON 序列化转义 Windows 盘符路径和 UNC 路径，也包含有效工具参数 JSON 内的路径。`startPreparedOfflineSnapshot` 仅在预检成功后调用运行器工厂。
+`prepareOfflineSnapshot` 在替换 `{{cwd}}` 前通过 Session 格式目录校验每个原始 JSONL fixture，再校验替换后的产物。它要求绝对 cwd、与记录完全一致的 provider/model 路由，以及正整数的确切调用预算。JSON 序列化转义 Windows 盘符路径和 UNC 路径，也包含有效工具参数 JSON 内的路径。SDK 运行器使用这份预检产物构造 Harness。
 
 [SDK 语料运行器](../../../snapshots/sdk/sdk.snapshot.ts) 在导入 fixture 或 SDK 前要求显式 replay 或 refresh 模式、有限的 provider/model 声明、SDK/回放检查、Session 日志上传禁用，以及 `DSH_SNAPSHOT_REPLAY_ONLY=1`。缺少标记或声明会在延后构造前失败。子进程保留派发标记，因此每个 LLM 实例都要求带计数器的回放适配器；缺失、失败或耗尽的回放不会选择真实提供商。最后一个 overlay 还禁用已知真实适配器及上传。允许正常加载账户和配置，无需完整模块白名单。普通产品 SDK 路由保持不变。
 

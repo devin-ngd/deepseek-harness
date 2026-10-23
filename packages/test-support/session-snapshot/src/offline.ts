@@ -68,13 +68,3 @@ export function prepareOfflineSnapshot(plan: OfflineSnapshotPlan): PreparedOffli
   if (routes.length === 0 || calls !== plan.expectedCalls) throw new Error('offline snapshot route or exact call budget is missing')
   return { fixtures, expectedCalls: calls }
 }
-
-/**
- * Keep runner construction behind fixture, route and response-budget validation.
- * @param plan - explicit offline inputs.
- * @param start - caller's construction callback; never called on validation failure.
- * @returns the caller's result after passing prepared input.
- */
-export function startPreparedOfflineSnapshot<T>(plan: OfflineSnapshotPlan, start: (prepared: PreparedOfflineSnapshot) => T): T {
-  return start(prepareOfflineSnapshot(plan))
-}

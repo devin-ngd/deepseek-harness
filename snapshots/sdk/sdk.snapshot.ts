@@ -21,9 +21,7 @@ import {
   assertPersistedSessionVersion,
   assertSessionFixtureVersion,
   prepareOfflineSnapshot,
-  startPreparedOfflineSnapshot,
   requireOfflineSnapshotEntry,
-  startOfflineSnapshotEntry,
   captureExpectedWorkspaceSnapshot,
   captureWorkspaceSnapshot,
   normalizeSessionFormatMetadata,
@@ -632,7 +630,7 @@ function authoredPatches(scenario: CorpusScenario, replaying: boolean): string[]
 }
 
 /** One SDK-controlled recorded scenario against a fresh SDK-profile subprocess. */
-async function runScenario(scenario: CorpusScenario): Promise<{
+async function runScenario(scenario: CorpusScenario, declaration?: OfflineSnapshotDeclaration): Promise<{
   results: RunResult[]
   notifications: HarnessNotification[]
   observedMethods: ReadonlySet<string>
@@ -642,249 +640,242 @@ async function runScenario(scenario: CorpusScenario): Promise<{
   cwd: string
 }> {
   const assertions = SDK_ASSERTIONS[scenario.name] ?? {}
-  const execute = async (declaration?: OfflineSnapshotDeclaration) => {
-    const workspaceParent = await realpath(tmpdir())
-    let workspacePrefix = `sdk-snapshot-${scenario.name}-`
-    if (scenario.name === 'minimal-image-compaction') {
-      // mkdtemp appends six characters; JSON quoting is part of the runtime-context text.
-      const paddingLength = 192 - JSON.stringify(join(workspaceParent, `${workspacePrefix}XXXXXX`)).length
-      if (paddingLength < 0) throw new Error('compaction snapshot temporary root exceeds its fixed cwd text length')
-      workspacePrefix += '-'.repeat(paddingLength)
+  const workspaceParent = await realpath(tmpdir())
+  let workspacePrefix = `sdk-snapshot-${scenario.name}-`
+  if (scenario.name === 'minimal-image-compaction') {
+    // mkdtemp appends six characters; JSON quoting is part of the runtime-context text.
+    const paddingLength = 192 - JSON.stringify(join(workspaceParent, `${workspacePrefix}XXXXXX`)).length
+    if (paddingLength < 0) throw new Error('compaction snapshot temporary root exceeds its fixed cwd text length')
+    workspacePrefix += '-'.repeat(paddingLength)
+  }
+  const cwd = await realpath(await mkdtemp(join(workspaceParent, workspacePrefix)))
+  const dshHome = join(cwd, '.dsh')
+  const sessionsRoot = join(dshHome, 'sessions')
+  const fixtureContents = await Promise.all((await fixtureFiles(scenario)).map(file => readFile(file, 'utf8')))
+  const primaryFixture = fixtureContents[0]
+  if (primaryFixture === undefined) throw new Error(`${scenario.name}: no primary session fixture`)
+  const route = declaration ?? modelFromSession(primaryFixture)
+  const offlinePlan = declaration === undefined ? undefined : { ...declaration, ...route, cwd, fixtures: fixtureContents }
+  const prepared = offlinePlan === undefined ? undefined : prepareOfflineSnapshot(offlinePlan)
+  const replayFixtures = recording ? [] : await hydrateReplayFixtures(scenario, cwd, prepared?.fixtures)
+  const patchRoot = join(cwd, '.snapshot-patches')
+  await mkdir(patchRoot, { recursive: true })
+  const patches = [...authoredPatches(scenario, !recording), ...assertions.patches ?? []]
+    .map((patch, index) => materializeProfilePatch(patch, cwd, scenario.manifest.profile, patchRoot, index))
+  const offlinePolicyPatch = join(patchRoot, 'offline-policy.yml')
+  if (declaration !== undefined) await writeFile(offlinePolicyPatch, '- id: sdk-jsonrpc-server\n  config:\n    offlineReplay: true\n'
+    + '- id: session-log-deepseek\n  disabled: true\n'
+    + '- id: llm-deepseek\n  disabled: true\n'
+    + '- id: llm-deepseek-account\n  disabled: true\n')
+  if (declaration !== undefined) patches.push(offlinePolicyPatch)
+  let childSessionsRoot: string | undefined
+  let childEnvironment: Record<string, string> = {}
+  if (assertions.dshSdkChild !== undefined) {
+    const childHome = join(cwd, '.child-dsh')
+    const childPatch = materializeProfilePatch(assertions.dshSdkChild.config, cwd, 'sdk', patchRoot, patches.length)
+    await mkdir(childHome, { recursive: true })
+    childSessionsRoot = join(childHome, 'sessions')
+    childEnvironment = {
+      DSH_TEST_CHILD_PATCHES: JSON.stringify([childPatch, ...declaration === undefined ? [] : [offlinePolicyPatch]]),
+      DSH_TEST_CHILD_HOME: childHome,
     }
-    const cwd = await realpath(await mkdtemp(join(workspaceParent, workspacePrefix)))
-    const dshHome = join(cwd, '.dsh')
-    const sessionsRoot = join(dshHome, 'sessions')
-    const fixtureContents = await Promise.all((await fixtureFiles(scenario)).map(file => readFile(file, 'utf8')))
-    const primaryFixture = fixtureContents[0]
-    if (primaryFixture === undefined) throw new Error(`${scenario.name}: no primary session fixture`)
-    const route = declaration ?? modelFromSession(primaryFixture)
-    const offlinePlan = declaration === undefined ? undefined : { ...declaration, ...route, cwd, fixtures: fixtureContents }
-    const prepared = offlinePlan === undefined ? undefined : prepareOfflineSnapshot(offlinePlan)
-    const replayFixtures = recording ? [] : await hydrateReplayFixtures(scenario, cwd, prepared?.fixtures)
-    const patchRoot = join(cwd, '.snapshot-patches')
-    await mkdir(patchRoot, { recursive: true })
-    const patches = [...authoredPatches(scenario, !recording), ...assertions.patches ?? []]
-      .map((patch, index) => materializeProfilePatch(patch, cwd, scenario.manifest.profile, patchRoot, index))
-    const offlinePolicyPatch = join(patchRoot, 'offline-policy.yml')
-    if (declaration !== undefined) await writeFile(offlinePolicyPatch, '- id: sdk-jsonrpc-server\n  config:\n    offlineReplay: true\n'
-      + '- id: session-log-deepseek\n  disabled: true\n'
-      + '- id: llm-deepseek\n  disabled: true\n'
-      + '- id: llm-deepseek-account\n  disabled: true\n')
-    if (declaration !== undefined) patches.push(offlinePolicyPatch)
-    let childSessionsRoot: string | undefined
-    let childEnvironment: Record<string, string> = {}
-    if (assertions.dshSdkChild !== undefined) {
-      const childHome = join(cwd, '.child-dsh')
-      const childPatch = materializeProfilePatch(assertions.dshSdkChild.config, cwd, 'sdk', patchRoot, patches.length)
-      await mkdir(childHome, { recursive: true })
-      childSessionsRoot = join(childHome, 'sessions')
-      childEnvironment = {
-        DSH_TEST_CHILD_PATCHES: JSON.stringify([childPatch, ...declaration === undefined ? [] : [offlinePolicyPatch]]),
-        DSH_TEST_CHILD_HOME: childHome,
-      }
+  }
+  const workspaceDir = join(scenario.dir, 'workspace')
+  if (existsSync(workspaceDir)) {
+    for (const entry of await readdir(workspaceDir)) {
+      await cp(join(workspaceDir, entry), join(cwd, entry), { recursive: true, verbatimSymlinks: true })
     }
-    const workspaceDir = join(scenario.dir, 'workspace')
-    if (existsSync(workspaceDir)) {
-      for (const entry of await readdir(workspaceDir)) {
-        await cp(join(workspaceDir, entry), join(cwd, entry), { recursive: true, verbatimSymlinks: true })
-      }
-    }
-    const initialWorkspace = await captureWorkspaceSnapshot(cwd, {
-      ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
-    })
-    const [parentFixture, ...childFixtures] = replayFixtures
-    const actions = turnActions(primaryFixture)
-    const resumeReplayFile = scenario.name === 'session-resume' && !recording
-      ? join(patchRoot, 'resume-replay.json') : undefined
-    const prepareTurnReplay = async (turn: number): Promise<void> => {
-      if (resumeReplayFile === undefined || parentFixture === undefined) return
-      const events = parseSessionLog(await readFile(parentFixture, 'utf8'))
-        .filter(event => 'turn' in event.data && event.data.turn === turn)
-      await writeFile(resumeReplayFile, JSON.stringify(deriveReplayScript(events)))
-    }
-    if (actions[0] !== undefined) await prepareTurnReplay(actions[0].turn)
-    const env: Record<string, string> = {
-      ...Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)) as Record<string, string>,
-      DSH_SNAPSHOT: mode,
-      DSH_SNAPSHOT_PROVIDER: route.provider,
-      DSH_SNAPSHOT_MODEL: route.model,
-      DSH_TELEMETRY_DISABLED: '1',
-      DSH_AGENTS_HOME: join(cwd, '.agents'),
-      NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
-      ...parentFixture === undefined ? {} : {
-        DSH_SNAPSHOT_FILE: parentFixture,
-        ...childFixtures.length > 0 ? { DSH_SNAPSHOT_CHILD_FILES: childFixtures.join(delimiter) } : {},
-      },
-      ...!recording && scenario.manifest.replay?.override === true
-        ? { DSH_SNAPSHOT_OVERRIDE: join(scenario.dir, 'replay.override.json') }
-        : {},
-      ...scenario.manifest.environment,
-      ...assertions.environment,
-      ...childEnvironment,
-      DSH_SNAPSHOT_REPLAY_ONLY: '1',
-      ...resumeReplayFile === undefined ? {} : { DSH_SNAPSHOT_OVERRIDE: resumeReplayFile },
-    }
+  }
+  const initialWorkspace = await captureWorkspaceSnapshot(cwd, {
+    ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
+  })
+  const [parentFixture, ...childFixtures] = replayFixtures
+  const actions = turnActions(primaryFixture)
+  const resumeReplayFile = scenario.name === 'session-resume' && !recording
+    ? join(patchRoot, 'resume-replay.json') : undefined
+  const prepareTurnReplay = async (turn: number): Promise<void> => {
+    if (resumeReplayFile === undefined || parentFixture === undefined) return
+    const events = parseSessionLog(await readFile(parentFixture, 'utf8'))
+      .filter(event => 'turn' in event.data && event.data.turn === turn)
+    await writeFile(resumeReplayFile, JSON.stringify(deriveReplayScript(events)))
+  }
+  if (actions[0] !== undefined) await prepareTurnReplay(actions[0].turn)
+  const env: Record<string, string> = {
+    ...Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)) as Record<string, string>,
+    DSH_SNAPSHOT: mode,
+    DSH_SNAPSHOT_PROVIDER: route.provider,
+    DSH_SNAPSHOT_MODEL: route.model,
+    DSH_TELEMETRY_DISABLED: '1',
+    DSH_AGENTS_HOME: join(cwd, '.agents'),
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
+    ...parentFixture === undefined ? {} : {
+      DSH_SNAPSHOT_FILE: parentFixture,
+      ...childFixtures.length > 0 ? { DSH_SNAPSHOT_CHILD_FILES: childFixtures.join(delimiter) } : {},
+    },
+    ...!recording && scenario.manifest.replay?.override === true
+      ? { DSH_SNAPSHOT_OVERRIDE: join(scenario.dir, 'replay.override.json') }
+      : {},
+    ...scenario.manifest.environment,
+    ...assertions.environment,
+    ...childEnvironment,
+    DSH_SNAPSHOT_REPLAY_ONLY: '1',
+    ...resumeReplayFile === undefined ? {} : { DSH_SNAPSHOT_OVERRIDE: resumeReplayFile },
+  }
 
-    const constructHarness = async () => {
-      const { DeepSeekHarness } = await import('@deepseek-ai/dsh-sdk-client')
-      return new DeepSeekHarness({
-        ...assertions.dshBin === undefined ? {} : { dshBin: assertions.dshBin },
-        initializeTimeoutMs: assertions.initializeTimeoutMs ?? 110_000,
-        ...assertions.maxTokens === undefined ? {} : { maxTokens: assertions.maxTokens },
-        profile: scenario.manifest.profile,
-        patches,
-        dshHome,
-        processCwd: cwd,
-        env,
-        requestTimeoutMs: 110_000,
-        cwd,
-        provider: route.provider,
-        model: route.model,
-      })
+  const createHarness = async () => {
+    const { DeepSeekHarness } = await import('@deepseek-ai/dsh-sdk-client')
+    return new DeepSeekHarness({
+      ...assertions.dshBin === undefined ? {} : { dshBin: assertions.dshBin },
+      initializeTimeoutMs: assertions.initializeTimeoutMs ?? 110_000,
+      ...assertions.maxTokens === undefined ? {} : { maxTokens: assertions.maxTokens },
+      profile: scenario.manifest.profile,
+      patches,
+      dshHome,
+      processCwd: cwd,
+      env,
+      requestTimeoutMs: 110_000,
+      cwd,
+      provider: route.provider,
+      model: route.model,
+    })
+  }
+  let harness = await createHarness()
+  try {
+    const notifications: HarnessNotification[] = []
+    const observedMethods = new Set<string>()
+    const results: RunResult[] = []
+    const sessionId = 'fixture-root-session'
+    const liveSessions: (string | undefined)[] = [sessionId]
+    await harness.start()
+    let subscription = harness.client.subscribeSessionTree(sessionId)
+    const titleSubscription = assertions.waitForProviderTitle === true
+      ? harness.client.subscribeSessionTree(sessionId) : undefined
+    const expectedTitles = records(primaryFixture).filter(event => event.type === 'session/title'
+      && ((event.data as JsonObject).source as JsonObject).kind === 'provider')
+    const completionSubscription = scenario.name === 'subagent-continuable'
+      ? harness.client.subscribeSessionTree(sessionId) : undefined
+    const observe = (notification: HarnessNotification): void => {
+      observedMethods.add(notification.method)
+      if (notification.method !== 'subagent.started') return
+      const child = notification.params.childSessionId
+      if (typeof child !== 'string' || liveSessions.includes(child)) return
+      liveSessions.push(child)
     }
-    const createHarness = () => offlinePlan === undefined ? constructHarness() : startPreparedOfflineSnapshot(offlinePlan, constructHarness)
-    let harness = await createHarness()
     try {
-      const notifications: HarnessNotification[] = []
-      const observedMethods = new Set<string>()
-      const results: RunResult[] = []
-      const sessionId = 'fixture-root-session'
-      const liveSessions: (string | undefined)[] = [sessionId]
-      await harness.start()
-      let subscription = harness.client.subscribeSessionTree(sessionId)
-      const titleSubscription = assertions.waitForProviderTitle === true
-        ? harness.client.subscribeSessionTree(sessionId) : undefined
-      const expectedTitles = records(primaryFixture).filter(event => event.type === 'session/title'
-        && ((event.data as JsonObject).source as JsonObject).kind === 'provider')
-      const completionSubscription = scenario.name === 'subagent-continuable'
-        ? harness.client.subscribeSessionTree(sessionId) : undefined
-      const observe = (notification: HarnessNotification): void => {
-        observedMethods.add(notification.method)
-        if (notification.method !== 'subagent.started') return
-        const child = notification.params.childSessionId
-        if (typeof child !== 'string' || liveSessions.includes(child)) return
-        liveSessions.push(child)
-      }
-      try {
-        let session = harness.session(sessionId)
-        for (const action of actions) {
-          if (action.content === undefined) {
-            await waitForRootEvent(
-              subscription,
-              sessionId,
-              event => event.type === 'turn/end' && (event.data as JsonObject | undefined)?.turn === action.turn,
-              observe,
-            )
-            continue
-          }
-          if (scenario.name === 'session-resume' && results.length > 0) {
-            subscription.close()
-            await harness.close()
-            await prepareTurnReplay(action.turn)
-            harness = await createHarness()
-            await harness.start()
-            subscription = harness.client.subscribeSessionTree(sessionId)
-            await expect(harness.resumeSession('missing-session')).rejects.toThrow()
-            session = await harness.resumeSession(sessionId)
-            expect(session.id).toBe(sessionId)
-          }
-          const result = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
-            onNotification: (notification) => {
-              notifications.push(notification)
-              observe(notification)
-            },
-          })
-          results.push(result)
-          if (titleSubscription !== undefined) {
-            const expected = expectedTitles[results.length - 1]?.data as JsonObject | undefined
-            expect(expected, 'each turn has a recorded provider title').toBeDefined()
-            await waitForRootEvent(titleSubscription, sessionId, event => event.type === 'session/title'
-              && ((event.data as JsonObject).source as JsonObject).kind === 'provider'
-              && (event.data as JsonObject).title === expected?.title, observe)
-          }
-          if (completionSubscription !== undefined) {
-            expect(result.finalResponse, 'run returns at the first parent idle').toBe('DONE')
-            expect(result.events.filter(event => event.type === 'turn/end'))
-              .toMatchObject([{ data: { turn: 1 } }])
-            expect(await harness.client.request('session/wait', { sessionId })).toEqual({})
-            const delivered: HarnessNotification[] = []
-            let notification: HarnessNotification | undefined
-            while ((notification = completionSubscription.tryNext()) !== undefined) delivered.push(notification)
-            const completionOrder = delivered.flatMap((entry) => {
-              if (entry.method === 'subagent.finished') return ['child:finished']
-              if (entry.params.sessionId !== sessionId) return []
-              if (entry.method === 'session.status' && entry.params.status === 'idle') return ['parent:idle']
-              const event = notificationEvent(entry)
-              if (event?.type !== 'turn/end') return []
-              const data = event.data as JsonObject
-              expect(data.reason).toEqual({ kind: 'completed' })
-              return [`parent:turn:${String(data.turn)}`]
-            })
-            expect(completionOrder, 'completion notifications arrive before the session/wait response').toEqual([
-              'parent:turn:1', 'parent:idle', 'child:finished', 'parent:turn:2', 'parent:idle',
-            ])
-            const parentMessages = delivered.flatMap((entry) => {
-              const event = entry.params.sessionId === sessionId ? notificationEvent(entry) : undefined
-              return event?.type === 'assistant/message' ? [event] : []
-            })
-            expect(parentMessages.at(-1)).toMatchObject({
-              data: { turn: 2, message: { content: [{ type: 'text', text: 'SUBAGENT_SETTLED_NOTED' }] } },
-            })
-          }
-          if (scenario.manifest.environment?.DSH_SNAPSHOT_FEEDBACK === '1') {
-            const feedback = result.events.filter(event => event.type.startsWith('feedback/'))
-            expect(feedback.map(event => event.type)).toEqual([
-              'feedback/record', 'feedback/record', 'feedback/message-put', 'feedback/message-put', 'feedback/message-delete',
-            ])
-          }
+      let session = harness.session(sessionId)
+      for (const action of actions) {
+        if (action.content === undefined) {
           await waitForRootEvent(
             subscription,
             sessionId,
             event => event.type === 'turn/end' && (event.data as JsonObject | undefined)?.turn === action.turn,
             observe,
           )
+          continue
         }
-        for (const type of postTurnEventTypes(primaryFixture)) {
-          await waitForRootEvent(subscription, sessionId, event => event.type === type, observe)
+        if (scenario.name === 'session-resume' && results.length > 0) {
+          subscription.close()
+          await harness.close()
+          await prepareTurnReplay(action.turn)
+          harness = await createHarness()
+          await harness.start()
+          subscription = harness.client.subscribeSessionTree(sessionId)
+          await expect(harness.resumeSession('missing-session')).rejects.toThrow()
+          session = await harness.resumeSession(sessionId)
+          expect(session.id).toBe(sessionId)
         }
-      } finally {
-        subscription.close()
-        completionSubscription?.close()
-        titleSubscription?.close()
+        const result = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
+          onNotification: (notification) => {
+            notifications.push(notification)
+            observe(notification)
+          },
+        })
+        results.push(result)
+        if (titleSubscription !== undefined) {
+          const expected = expectedTitles[results.length - 1]?.data as JsonObject | undefined
+          expect(expected, 'each turn has a recorded provider title').toBeDefined()
+          await waitForRootEvent(titleSubscription, sessionId, event => event.type === 'session/title'
+            && ((event.data as JsonObject).source as JsonObject).kind === 'provider'
+            && (event.data as JsonObject).title === expected?.title, observe)
+        }
+        if (completionSubscription !== undefined) {
+          expect(result.finalResponse, 'run returns at the first parent idle').toBe('DONE')
+          expect(result.events.filter(event => event.type === 'turn/end'))
+            .toMatchObject([{ data: { turn: 1 } }])
+          expect(await harness.client.request('session/wait', { sessionId })).toEqual({})
+          const delivered: HarnessNotification[] = []
+          let notification: HarnessNotification | undefined
+          while ((notification = completionSubscription.tryNext()) !== undefined) delivered.push(notification)
+          const completionOrder = delivered.flatMap((entry) => {
+            if (entry.method === 'subagent.finished') return ['child:finished']
+            if (entry.params.sessionId !== sessionId) return []
+            if (entry.method === 'session.status' && entry.params.status === 'idle') return ['parent:idle']
+            const event = notificationEvent(entry)
+            if (event?.type !== 'turn/end') return []
+            const data = event.data as JsonObject
+            expect(data.reason).toEqual({ kind: 'completed' })
+            return [`parent:turn:${String(data.turn)}`]
+          })
+          expect(completionOrder, 'completion notifications arrive before the session/wait response').toEqual([
+            'parent:turn:1', 'parent:idle', 'child:finished', 'parent:turn:2', 'parent:idle',
+          ])
+          const parentMessages = delivered.flatMap((entry) => {
+            const event = entry.params.sessionId === sessionId ? notificationEvent(entry) : undefined
+            return event?.type === 'assistant/message' ? [event] : []
+          })
+          expect(parentMessages.at(-1)).toMatchObject({
+            data: { turn: 2, message: { content: [{ type: 'text', text: 'SUBAGENT_SETTLED_NOTED' }] } },
+          })
+        }
+        if (scenario.manifest.environment?.DSH_SNAPSHOT_FEEDBACK === '1') {
+          const feedback = result.events.filter(event => event.type.startsWith('feedback/'))
+          expect(feedback.map(event => event.type)).toEqual([
+            'feedback/record', 'feedback/record', 'feedback/message-put', 'feedback/message-put', 'feedback/message-delete',
+          ])
+        }
+        await waitForRootEvent(
+          subscription,
+          sessionId,
+          event => event.type === 'turn/end' && (event.data as JsonObject | undefined)?.turn === action.turn,
+          observe,
+        )
       }
-      expect(await harness.client.request('session/wait', { sessionId })).toEqual({})
-      const shutdownResponse = scenario.name === 'rich-inline-source'
-        ? await harness.client.request('shutdown', undefined, 10_000) : undefined
-      await harness.close()
-      const processObservation = scenario.name === 'rich-inline-source' ? sdkProcessObservations.at(-1) : undefined
-      if (scenario.name === 'rich-inline-source' && processObservation === undefined) throw new Error('missing SDK child-process observation')
-      const termination = await processObservation?.exit
-      if (termination !== undefined) expect(termination, 'actual SDK child exit').toEqual({ code: 0, signal: null })
-      const logs = (await Promise.all([
-        persistedLogs(sessionsRoot),
-        ...(childSessionsRoot === undefined ? [] : [persistedLogs(childSessionsRoot)]),
-      ])).flat()
-      if (scenario.name === 'rich-inline-source' && process.env.DSH_RICH_LOGS_DIR !== undefined) {
-        const evidenceDir = process.env.DSH_RICH_LOGS_DIR
-        await mkdir(evidenceDir, { recursive: true })
-        for (const [index, log] of logs.entries()) await writeFile(join(evidenceDir, `session.${index}.jsonl`), log.content)
-        await writeFile(join(evidenceDir, 'sdk-close.json'), JSON.stringify({ closeResolved: true,
-          shutdownResponse, pid: processObservation?.pid, termination,
-          finalResponse: results.at(-1)?.finalResponse, logs: logs.length }, null, 2) + '\n')
+      for (const type of postTurnEventTypes(primaryFixture)) {
+        await waitForRootEvent(subscription, sessionId, event => event.type === type, observe)
       }
-      const finalWorkspace = await captureWorkspaceSnapshot(cwd, {
-        ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
-      })
-      return { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd }
     } finally {
-      await harness.close()
-      await rm(cwd, { recursive: true, force: true })
+      subscription.close()
+      completionSubscription?.close()
+      titleSubscription?.close()
     }
+    expect(await harness.client.request('session/wait', { sessionId })).toEqual({})
+    const shutdownResponse = scenario.name === 'rich-inline-source'
+      ? await harness.client.request('shutdown', undefined, 10_000) : undefined
+    await harness.close()
+    const processObservation = scenario.name === 'rich-inline-source' ? sdkProcessObservations.at(-1) : undefined
+    if (scenario.name === 'rich-inline-source' && processObservation === undefined) throw new Error('missing SDK child-process observation')
+    const termination = await processObservation?.exit
+    if (termination !== undefined) expect(termination, 'actual SDK child exit').toEqual({ code: 0, signal: null })
+    const logs = (await Promise.all([
+      persistedLogs(sessionsRoot),
+      ...(childSessionsRoot === undefined ? [] : [persistedLogs(childSessionsRoot)]),
+    ])).flat()
+    if (scenario.name === 'rich-inline-source' && process.env.DSH_RICH_LOGS_DIR !== undefined) {
+      const evidenceDir = process.env.DSH_RICH_LOGS_DIR
+      await mkdir(evidenceDir, { recursive: true })
+      for (const [index, log] of logs.entries()) await writeFile(join(evidenceDir, `session.${index}.jsonl`), log.content)
+      await writeFile(join(evidenceDir, 'sdk-close.json'), JSON.stringify({ closeResolved: true,
+        shutdownResponse, pid: processObservation?.pid, termination,
+        finalResponse: results.at(-1)?.finalResponse, logs: logs.length }, null, 2) + '\n')
+    }
+    const finalWorkspace = await captureWorkspaceSnapshot(cwd, {
+      ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
+    })
+    return { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd }
+  } finally {
+    await harness.close()
+    await rm(cwd, { recursive: true, force: true })
   }
-  return guardedOfflineScenario(scenario.name)
-    ? startOfflineSnapshotEntry({ composition: scenario.manifest.composition, mode: process.env.DSH_SNAPSHOT,
-      plan: assertions.offlineReplay, markers: SDK_OFFLINE_MARKERS }, execute)
-    : execute()
 }
 
 function guardedOfflineScenario(name: string): boolean {
@@ -1041,8 +1032,9 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       : it
     scenarioTest(`${mode}s ${scenario.name} through dsh --profile sdk`, async () => {
       const assertions = SDK_ASSERTIONS[scenario.name] ?? {}
-      if (guardedOfflineScenario(scenario.name)) requireOfflineSnapshotEntry({ composition: scenario.manifest.composition, mode: process.env.DSH_SNAPSHOT,
-        plan: assertions.offlineReplay, markers: SDK_OFFLINE_MARKERS })
+      const declaration = guardedOfflineScenario(scenario.name)
+        ? requireOfflineSnapshotEntry({ mode: process.env.DSH_SNAPSHOT, plan: assertions.offlineReplay, markers: SDK_OFFLINE_MARKERS })
+        : undefined
       const scenarioDir = scenario.dir
       const retained = scenario.manifest.sessionFormat !== undefined
       const notificationsExpectedPath = join(scenarioDir, retained ? 'notifications.current.expected.jsonl' : 'notifications.expected.jsonl')
@@ -1063,7 +1055,7 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
         expect(writerFiles, 'native writer oracle inventory').toEqual(retained
           ? files.map((_, index) => writerSnapshotName(index)).sort() : [])
       }
-      const { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd } = await runScenario(scenario)
+      const { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd } = await runScenario(scenario, declaration)
       const ordered = orderLogs(
         logs,
         recording ? logs.length : files.length,

@@ -2,7 +2,8 @@ import { EventEmitter } from 'node:events'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { WebContents } from 'electron'
 import { DESKTOP_IPC } from '../src/ipc.ts'
-import { RICH_NATIVE_LIMITS, readRichPacket, readRichRequest, richDocumentUrl } from '../src/rich-document.ts'
+import { readRichPacket, readRichRequest, richDocument } from '../src/rich-document.ts'
+import { RICH_NATIVE_LIMITS } from '../src/rich-limits.ts'
 import type { DesktopRichBootstrap, DesktopRichReservation } from '../src/rich-types.ts'
 
 const native = vi.hoisted(() => ({ sessions: new Map<string, Record<string, unknown>>(), writeText: vi.fn(async (_text: string) => {}),
@@ -197,8 +198,7 @@ it('validates complete requests and embeds source as inert base64 payload', () =
   expect(readRichRequest(request)).toEqual(request)
   expect(() => readRichRequest({ ...request, preload: '/evil' })).toThrow()
   expect(() => readRichRequest({ ...request, mountNonce: 'short' })).toThrow()
-  const url = richDocumentUrl({ ...request, html: '</script><script>escape()</script>', css: '</style><script>escape()</script>' })
-  const text = Buffer.from(url.slice('data:text/html;base64,'.length), 'base64').toString('utf8')
+  const { html: text } = richDocument({ ...request, html: '</script><script>escape()</script>', css: '</style><script>escape()</script>' })
   expect(text).toContain("connect-src 'none'")
   expect(text).not.toContain('escape()')
   expect(text).toContain('root.innerHTML=data.html')
