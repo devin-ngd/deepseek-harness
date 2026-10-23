@@ -57,7 +57,7 @@ Production 历史读取使用 `{ recovery: 'recoverable', validation: 'transform
 <details>
 <summary>实现细节——点击展开</summary>
 
-[`src/generated.ts`](src/generated.ts) 是编解码器与迁移边顺序的静态所有者。[`src/current.ts`](src/current.ts) 把最终标头、事件信封、消息、表面、种子和当前请求标头校验委托给已安装的 Session 语义。底层构造函数会在开始读取任何 Session 之前拒绝重复编解码器、重复迁移边、缺口，以及超过当前版本的条目。
+[`src/generated.ts`](src/generated.ts) 是编解码器与迁移边顺序的静态所有者。[`src/current.ts`](src/current.ts) 把最终标头、事件信封、消息、表面、种子和当前请求标头校验委托给已安装的 Session 语义。打包后的读取器保留公开 `./message-projections` 导入为外部模块，使插件注册和卸载作用于同一注册表。底层构造函数会在开始读取任何 Session 之前拒绝重复编解码器、重复迁移边、缺口，以及超过当前版本的条目。
 
 </details>
 

@@ -46,6 +46,7 @@ describe('plugin-owned message projections', () => {
   it('applies generic decisions atomically and replays them through detached folds', () => {
     const definitions = [projection]
     const session = Session.create(SessionId('pure'), undefined, undefined, undefined, definitions)
+    expect(session.messageProjections).toBe(definitions)
     const source = input(session)
     const original = session.deriveMessages()
     expect(() => session.append('test/project', { seq: source.seq, text: 'reject' })).toThrow('rejected decision')
@@ -82,6 +83,9 @@ describe('plugin-owned message projections', () => {
       inheritedEventCount: live.inheritedEventCount, eventState: 'shared-frozen',
     })
     expect(restored.deriveMessages()).toEqual(before)
+    for (const session of [live, pending, child, restored]) {
+      expect(session.messageProjections).toBe(ctx.sessions.messageProjections)
+    }
     await fiber.dispose()
     expect(ctx.sessions.messageProjections).toEqual([])
     for (const session of [live, pending, child, restored]) {

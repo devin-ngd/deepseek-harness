@@ -629,7 +629,7 @@ export class Session {
     header?: SessionHeader,
     mode: 'snapshot' | SessionSeedEventState = 'snapshot',
     suppliedInheritedEventCount?: SessionLogOffset,
-    projections: readonly SessionMessageProjection[] = [],
+    private readonly projections: readonly SessionMessageProjection[] = [],
   ) {
     this.surfaceManager = new SurfaceManager(this.log, SessionLogOffset(0), projections)
     const restoredHeader = mode === 'snapshot' ? undefined : validateRestoredSessionHeader(id, header)
@@ -1012,6 +1012,11 @@ export class Session {
    */
   deriveEventMessage(event: SessionEvent): Message | null {
     return this.surfaceManager.deriveEventMessage(event)
+  }
+
+  /** Borrowed interpreters for incremental replay of this Session; their registering fibers own removal. */
+  get messageProjections(): readonly SessionMessageProjection[] {
+    return this.projections
   }
 }
 

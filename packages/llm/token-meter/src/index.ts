@@ -20,10 +20,10 @@ import {
   canonicalHeader,
   headerEquals,
   isSurfaceEvent,
-  MESSAGE_PROJECTION_EVENT_TYPES,
   SessionLogOffset,
   SessionSeq,
 } from '@deepseek-ai/dsh-session'
+import { SurfaceManager } from '@deepseek-ai/dsh-session/surface'
 // Type-only: activates the `ctx.sessionProjections` Context declaration.
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {
@@ -60,15 +60,12 @@ interface MeasurementAnchor {
   readonly usage: TokenUsage | undefined
 }
 
-/** Priced node retaining the immutable event supplied by the replay fold. */
-interface ReplaySurfaceNode extends MeterSurfaceNode {
-  readonly event: SessionEvent
-}
-
 interface ReplayState {
   consumedEvents: SessionLogOffsetType
   header: EpochHeader | undefined
-  surface: ReplaySurfaceNode[]
+  surface: MeterSurfaceNode[]
+  events: SessionEvent[]
+  projectedSurface: SurfaceManager
   stepStart: { turn: number; step: number } | undefined
   anchor: MeasurementAnchor | undefined
 }
@@ -225,10 +222,13 @@ export class TokenMeter extends Service {
   private _sync(session: Session): ReplayState {
     let state = this.states.get(session)
     if (state === undefined) {
+      const events: SessionEvent[] = []
       state = {
         consumedEvents: SessionLogOffset(0),
         header: undefined,
         surface: [],
+        events,
+        projectedSurface: new SurfaceManager(events, undefined, session.messageProjections),
         stepStart: undefined,
         anchor: undefined,
       }
@@ -240,32 +240,33 @@ export class TokenMeter extends Service {
       // oxlint-disable-next-line typescript/no-non-null-assertion, typescript/no-deprecated
       const event = session.eventAt(SessionSeq(state.consumedEvents))!
       this._foldEvent(state, event)
-      state.consumedEvents = SessionLogOffset(state.consumedEvents + 1)
-      // H1 (dsh-devflow design §8.4): a committed message projection changes the
-      // effective model-visible surface, so the meter must re-price affected
-      // nodes under the same projected semantics instead of the original text.
-      // `image/offload` keeps its specialized node mutation inside _foldEvent.
-      // Anchors keep their historical node objects: a later projection never
-      // rewrites an earlier usage anchor's estimate.
-      if (MESSAGE_PROJECTION_EVENT_TYPES.has(event.type) && event.type !== 'image/offload') {
-        this._repriceProjectedSurface(state, session)
+      try {
+        state.events.push(event)
+        if (session.messageProjections.some(projection => projection.type === event.type) && event.type !== 'image/offload') {
+          this._repriceProjectedSurface(state)
+        }
+        state.consumedEvents = SessionLogOffset(state.consumedEvents + 1)
+      } catch (error) {
+        this.states.delete(session)
+        throw error
       }
     }
+    // Cached projection prices share the Session's interpreter lifetime.
+    void state.projectedSurface.contentGeneration
     return state
   }
 
   /**
-   * Re-price surface nodes from the session's committed message projections.
-   * Each node borrows its immutable event from the replay fold; Session applies
-   * its maintained projections without another log read. This costs O(surface)
-   * per projection event, the same bound as one `measure()` call.
+   * Price the current replay prefix; later decisions must not enter an earlier
+   * provider anchor. Node replacement preserves the anchor's historical prices.
    */
-  private _repriceProjectedSurface(state: ReplayState, session: Session): void {
-    if (session.surface.contentGeneration === 0) return
+  private _repriceProjectedSurface(state: ReplayState): void {
     for (let index = 0; index < state.surface.length; index++) {
       const node = state.surface[index]
       if (node === undefined) continue
-      const projected = session.deriveEventMessage(node.event)
+      // Surface nodes identify events already admitted to this replay prefix.
+      // oxlint-disable-next-line typescript/no-non-null-assertion
+      const projected = state.projectedSurface.deriveEventMessage(state.events[node.seq]!)
       if (projected === null) continue
       const projectedTokens = estimateMessage(projected)
       if (projectedTokens === node.heuristicTokens) continue
@@ -358,7 +359,7 @@ export class TokenMeter extends Service {
     state.header = nextHeader
     state.stepStart = nextStepStart
     if (plan !== undefined) {
-      commitSurfaceTokens(state.surface, { ...plan, node: { ...plan.node, event } })
+      commitSurfaceTokens(state.surface, plan)
     }
     state.anchor = nextAnchor
   }

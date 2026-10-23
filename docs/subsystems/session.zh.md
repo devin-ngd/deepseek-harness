@@ -662,6 +662,8 @@ declare class Session {
    * @returns the derived message, or null when the event produces none.
    */
   deriveEventMessage(event: SessionEvent): Message | null;
+  /** Borrowed interpreters for incremental replay of this Session; their registering fibers own removal. */
+  get messageProjections(): readonly SessionMessageProjection[];
 }
 ```
 

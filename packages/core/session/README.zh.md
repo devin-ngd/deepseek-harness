@@ -57,7 +57,7 @@ session.deriveMessages()         // the derived model history
 
 `system/message` 承载渲染后的系统提示词：第一条是 surface 第 0 号节点，准入依据已准备调用的能力，不具备能力的路由将非空渲染文本归并到首个系统节点，延续中的 `in-history` 序列则在缓存历史之后追加；空系统节点不投影为消息，因此清除提示词必须为所有生效的系统节点记录空内容替换，而非仅替换最新节点；当第 0 号节点是 `system/message` 时，surface 折叠拒绝覆盖它的替换，除非替换事件本身是恰好覆盖该节点的 `system/message`，而后续系统节点不受保护，压缩范围可以遮蔽它们（[决策](../../../.agents/notes/implemented/architecture/2026-09-02-system-prompt-as-surface-node.zh.md)）。
 
-包根导出 `MESSAGE_PROJECTION_EVENT_TYPES`，包含通过 `@messageProjection` 声明的生成事件标识。
+包根导出 `MESSAGE_PROJECTION_EVENT_TYPES`，包含通过 `@messageProjection` 声明的生成事件标识。`session.messageProjections` 提供该 Session 的解释器定义借用视图，也适用于独立实例；增量前缀读取器将其传给 `SurfaceManager`。移除已经使用的定义也会使这些读取器失效。
 
 ### 读取日志
 

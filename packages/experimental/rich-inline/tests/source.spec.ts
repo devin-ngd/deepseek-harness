@@ -4,8 +4,9 @@ import { Context } from '@deepseek-ai/cordis'
 import SessionStore from '@deepseek-ai/dsh-session'
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId, SessionSeq, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import type { RichSourceTarget } from '../src/host/source.ts'
-import { offloadRichSources, readRichSource, richSourceProjection } from '../src/host/source.ts'
+import { installRichSourceOffload, offloadRichSources, readRichSource, richSourceProjection } from '../src/host/source.ts'
 
 const code = { key: 'result', html: '<div>Mnemo synthetic rows</div>'.repeat(80), css: 'div{color:CanvasText}',
   js: 'window.localFilter = value => value', fallbackText: 'Mnemo rows', stateSchemaVersion: 1,
@@ -25,6 +26,37 @@ function fixture() {
 }
 
 describe('authored source offload', () => {
+  it('validates detached history only while its owning interpreter is installed', async () => {
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SessionStore)
+      const session = Session.create(SessionId('source-catalog'), undefined, undefined, undefined, [richSourceProjection])
+      session.append('turn/start', { turn: 1 })
+      session.append('step/start', { turn: 1, step: 1 })
+      session.append('assistant/message', { turn: 1, step: 1, message: fixture().message, stream: [] }, { surfaceOp: 'append' })
+      session.append('step/end', { turn: 1, step: 1 })
+      const f = { session }
+      offloadRichSources(f.session, f.session.snapshotEvents(), 1)
+      const restore = (tamper = false) => {
+        const reader = sessionFormatCatalog.createRestore({ type: 'session', ...f.session.header, delegationDepth: 0 },
+          { recovery: 'strict', validation: 'current' })
+        for (const event of f.session.snapshotEvents()) {
+          reader.decodeRow(tamper && event.type === 'rich-inline/source-offload'
+            ? { ...event, data: { targets: event.data.targets.map(target => ({ ...target, sourceHash: '0'.repeat(64) })) } }
+            : event)
+        }
+        return reader.finish()
+      }
+      expect(() => restore()).toThrow(/requires a message projection/)
+      const owner = await ctx.plugin({ inject: ['sessions'], apply(owner: Context) {
+        installRichSourceOffload(owner, 1, async () => [])
+      } })
+      expect(restore().events).toEqual(f.session.snapshotEvents())
+      expect(() => restore(true)).toThrow(/source position, hash or block identity mismatch/)
+      await owner.dispose()
+      expect(() => restore()).toThrow(/requires a message projection/)
+    } finally { await ctx.fiber.dispose() }
+  })
   it('refuses duplicate authored keys during selection and durable replay', () => {
     const f = fixture()
     offloadRichSources(f.session, f.session.snapshotEvents(), 1)

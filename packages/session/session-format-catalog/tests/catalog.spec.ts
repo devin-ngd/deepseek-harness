@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
 import { createSessionFormatCatalogWithChildren, historicalSessionFormatCatalog, sessionFormatCatalog } from '../src/index.ts'
-import { currentSessionMessageProjections } from '../src/message-projections.ts'
+import { currentSessionMessageProjections, registerCurrentSessionMessageProjection } from '../src/message-projections.ts'
+import { imageOffloadProjection } from '@deepseek-ai/dsh-compaction-image-offload/projection'
+import type { SessionMessageProjection } from '@deepseek-ai/dsh-session/surface'
+import type { Message } from '@deepseek-ai/dsh-llm'
 import { MESSAGE_PROJECTION_EVENT_TYPES } from '@deepseek-ai/dsh-session/src/known-event-types.ts'
 import { validateInstalledCurrentSessionArtifact } from '../src/current.ts'
-import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 
 function deepFreeze<T>(value: T): T {
@@ -16,9 +19,11 @@ function deepFreeze<T>(value: T): T {
 }
 
 describe('first-party Session format catalog', () => {
-  it('supplies every required current message interpreter and validates its durable references', () => {
+  const optionalProjectionTypes = new Set(['rich-inline/source-offload', 'rich-inline/tool-offload'])
+
+  it('supplies built-in current message interpreters and validates their durable references', () => {
     expect(currentSessionMessageProjections.map(projection => projection.type).sort())
-      .toEqual([...MESSAGE_PROJECTION_EVENT_TYPES].sort())
+      .toEqual([...MESSAGE_PROJECTION_EVENT_TYPES].filter(type => !optionalProjectionTypes.has(type)).sort())
     const session = Session.create(SessionId('projection-catalog'))
     session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'no image' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
     const artifact = {
@@ -26,6 +31,40 @@ describe('first-party Session format catalog', () => {
       events: [...session.snapshotEvents() as unknown as SessionFormatEvent[], { type: 'image/offload', seq: 1, time: 0, data: { targets: [{ seq: 0, imageIndexes: [0] }] } }],
     }
     expect(() => { validateInstalledCurrentSessionArtifact(artifact) }).toThrow(/image index 0 does not exist/)
+  })
+
+  it.each([...optionalProjectionTypes])('requires an owning interpreter for %s throughout detached reads', (type) => {
+    const session = Session.create(SessionId('optional-projection-catalog'))
+    const artifact = { header: { ...session.header, delegationDepth: 0 }, inheritedEventCount: 0,
+      events: [{ type, seq: 0, time: 0, data: { targets: [] } }] }
+    const validate = () => { validateInstalledCurrentSessionArtifact(artifact) }
+    expect(MESSAGE_PROJECTION_EVENT_TYPES.has(type)).toBe(true)
+    expect(validate).toThrow(/requires a message projection/)
+    const projection: SessionMessageProjection = { type: type as SessionMessageProjection['type'],
+      project: () => new Map<SessionSeq, Message>() }
+    const first = registerCurrentSessionMessageProjection(projection)
+    try {
+      const second = registerCurrentSessionMessageProjection(projection)
+      try {
+        expect(validate).not.toThrow()
+        expect(() => registerCurrentSessionMessageProjection({ ...projection })).toThrow(/already registered/)
+        first()
+        first()
+        expect(validate).not.toThrow()
+      } finally {
+        second()
+      }
+    } finally {
+      first()
+    }
+    expect(validate).toThrow(/requires a message projection/)
+  })
+
+  it('retains built-in interpreters after an optional registration is disposed', () => {
+    const dispose = registerCurrentSessionMessageProjection(imageOffloadProjection)
+    dispose()
+    dispose()
+    expect(currentSessionMessageProjections).toContain(imageOffloadProjection)
   })
   it('statically owns every adjacent edge through the current writer', () => {
     const header = {

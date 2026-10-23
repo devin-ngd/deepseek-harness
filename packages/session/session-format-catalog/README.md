@@ -57,7 +57,7 @@ The catalog contains all supported historical readers directly. A profile cannot
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-[`src/generated.ts`](src/generated.ts) is the static owner of codec and edge ordering. [`src/current.ts`](src/current.ts) delegates final header, envelope, message, surface, seed, and current request-header validation to the installed Session semantics. The low-level constructor rejects duplicate codecs, duplicate edges, gaps, and entries beyond the current version before any Session read can begin.
+[`src/generated.ts`](src/generated.ts) is the static owner of codec and edge ordering. [`src/current.ts`](src/current.ts) delegates final header, envelope, message, surface, seed, and current request-header validation to the installed Session semantics. Bundled readers keep the public `./message-projections` import external so plugin registration and disposal reach the same registry. The low-level constructor rejects duplicate codecs, duplicate edges, gaps, and entries beyond the current version before any Session read can begin.
 
 </details>
 

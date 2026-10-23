@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsdown'
 
-/** Build the static catalog library. */
+/** Keep the public interpreter registry shared with plugin registrations. */
 export default defineConfig({
   entry: ['lib/types/index.js'],
   outDir: 'lib',
@@ -10,4 +10,5 @@ export default defineConfig({
   fixedExtension: false,
   dts: false,
   clean: false,
+  external: ['@deepseek-ai/dsh-session-format-catalog/message-projections'],
 })
