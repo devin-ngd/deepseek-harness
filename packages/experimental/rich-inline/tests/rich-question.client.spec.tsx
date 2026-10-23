@@ -26,8 +26,8 @@ function harness(questions: PendingQuestion['questions'], deadline?: number) {
   const instance = createRichQuestionDraftStore().create(sid)
   const appearance = new RichAppearanceSource({ theme: 'cyber', accent: 'auto' })
   function Form() {
-    const card = useSyncExternalStore(pending.subscribe, pending.getSnapshot)
-    const props = { pending, card, actions: instance.actions,
+    const props = { matched: pending, actions: instance.actions,
+      useQuestionCard: ((_key, selector) => selector(useSyncExternalStore(pending.subscribe, pending.getSnapshot))) as RichQuestionProps['useQuestionCard'],
       useStore: (selector => useSyncExternalStore(listener => instance.subscribe(listener),
         () => selector(instance.getSnapshot()))) as RichQuestionProps['useStore'],
       useAppearance: (selector => selector(useSyncExternalStore(appearance.subscribe, appearance.getSnapshot))) as RichQuestionProps['useAppearance'],

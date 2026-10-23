@@ -12,6 +12,8 @@ import type {} from '@deepseek-ai/dsh-client-file-upload/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import type { ComposerChainProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { PendingQuestion } from '@deepseek-ai/dsh-client-ui-user-questions/client'
 import { RichBlockController } from './controller.ts'
 import type { RichRpc } from './controller.ts'
 import { nativeRich } from './native.ts'
@@ -22,7 +24,7 @@ import type { RichInjected } from './slots.ts'
 import { RICH_SETTINGS_ENTRY, RichAppearanceSource, RichThemeChoice } from './appearance.ts'
 import type { RichThemeSettings } from './appearance.ts'
 import { ThemeSettings, ThemeToast } from './ThemeSettings.tsx'
-import { RichQuestion } from './RichQuestion.tsx'
+import { RichQuestion, type RichQuestionInjected } from './RichQuestion.tsx'
 import { createRichQuestionDraftStore } from './question-drafts.ts'
 import type { ThemeSettingsInjected } from './ThemeSettings.tsx'
 
@@ -97,11 +99,20 @@ async function activate(ctx: Context, config: Config): Promise<void> {
     scope.effect(() => scope.chatLiveProcess.register({ enabled, subscribe: listener => scope.sessions.list.subscribe(listener) }),
       'rich-inline: compact live process')
   })
-  if (config.htmlQuestions !== false) ctx.slots.inject('conversation.question.content', () => ctx.slots.register({
-    name: 'conversation.question.content', locale: 'richInline',
-    select: owner => enabled(owner.pending.sessionId) ? owner.pending : null,
-    store: createRichQuestionDraftStore(), inject: () => ({ hooks: { appearance } }),
-  }, RichQuestion))
+  if (config.htmlQuestions !== false) ctx.inject(['uiSession', 'sessions'], scope => scope.slots.inject('conversation.composer', () => scope.slots.register({
+    name: 'conversation.composer', locale: 'richInline', priority: -10,
+    select: ({ pendingInteraction }: ComposerChainProps): PendingQuestion | null =>
+      (pendingInteraction?.kind === 'question' || pendingInteraction?.kind === 'plan-review')
+        && enabled(pendingInteraction.sessionId) ? pendingInteraction : null,
+    store: createRichQuestionDraftStore(),
+    inject: (sessionId): RichQuestionInjected => ({
+      hooks: { appearance },
+      keyedHooks: { questionCard: (key) => {
+        const pending = scope.uiSession.sessionStatus.getSnapshot().get(sessionId)?.pendingInteraction
+        return (pending?.kind === 'question' || pending?.kind === 'plan-review') && pending.key === key ? pending : undefined
+      } },
+    }),
+  }, RichQuestion)))
   const rpc: RichRpc = {
     mount: async request => unwrap(await remote.mount(request)),
     snapshot: async request => unwrap(await remote.snapshot(request)),

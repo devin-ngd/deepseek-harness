@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import { planReviewOf, parseRecommendedLabel } from '@deepseek-ai/dsh-client-ui-user-questions/client'
+import type { PendingQuestion } from '@deepseek-ai/dsh-client-ui-user-questions/client'
 import type { AskUserQuestionAnswerItem } from '@deepseek-ai/dsh-user-questions/types'
 import { richPaletteProperties } from '../shared/theme.ts'
 import type { RichAppearance } from '../shared/theme.ts'
@@ -12,22 +12,42 @@ import type { RichQuestionDraft } from './question-drafts.ts'
 import css from './RichQuestion.module.css'
 
 /** Shared theme observation; the pending carrier owns answer, focus and wait operations. */
-export interface RichQuestionInjected { hooks: { appearance: HostObservable<RichAppearance> } }
+export interface RichQuestionInjected {
+  hooks: { appearance: HostObservable<RichAppearance> }
+  keyedHooks: { questionCard: (key: string) => PendingQuestion | undefined }
+}
 /** HTML-form props derived from the question extension and Session store. */
-export type RichQuestionProps = PropsRuntime<'conversation.question.content'> & PropsLocale<'richInline'>
+export type RichQuestionProps = PropsRuntime<'conversation.composer'> & PropsLocale<'richInline'>
+  & { matched: PendingQuestion }
   & PropsStore<ReturnType<typeof createRichQuestionDraftStore>> & InjectFace<RichQuestionInjected>
+
+const REMOVED_CARD: ReturnType<PendingQuestion['getSnapshot']> = {
+  state: 'open', waitState: 'counting', countdown: undefined, channel: 'none', closed: true,
+}
+
+type PlanQuestion = PendingQuestion['questions'][number]
+  & Required<Pick<PendingQuestion['questions'][number], 'detail' | 'intent'>>
+
+function parseRecommendedLabel(label: string): { label: string; recommended: boolean } {
+  const suffix = /\s*(?:\((?:recommended|推荐)\)|（(?:recommended|推荐)）)\s*$/i
+  return suffix.test(label)
+    ? { label: label.replace(suffix, ''), recommended: true }
+    : { label, recommended: false }
+}
 
 /** Render the original pending question as a trusted HTML form.
  * @param props - original pending request and its current channel state.
  * @returns editable plan or question form.
  */
 export function RichQuestion(props: RichQuestionProps) {
-  const { pending, card, useStore, actions, useAppearance, t } = props
+  const { matched: pending, useQuestionCard, useStore, actions, useAppearance, t } = props
+  const card = useQuestionCard(pending.key, snapshot => snapshot ?? REMOVED_CARD)
   const appearance = useAppearance(value => value)
-  const review = planReviewOf(pending.questions)
-  const decline = review?.decline
+  // The carrier's plan-review discriminator guarantees one question with detail and an approval intent.
+  const review = pending.kind === 'plan-review' ? pending.questions[0] as PlanQuestion : undefined
+  const decline = review?.options?.find(option => option.label !== review.intent.approve)
   const signature = JSON.stringify(pending.questions)
-  const initial = useMemo<RichQuestionDraft>(() => ({ signature, plan: review?.plan ?? '',
+  const initial = useMemo<RichQuestionDraft>(() => ({ signature, plan: review?.detail ?? '',
     answers: pending.questions.map((question) => {
       const recorded = pending.review?.find(answer => answer.id === question.id)
       const first = question.options?.[0]?.label
@@ -35,7 +55,7 @@ export function RichQuestion(props: RichQuestionProps) {
       return { id: question.id, selected,
         custom: recorded?.custom ?? '', skipped: false }
     }),
-  }), [pending, signature, review?.plan])
+  }), [pending, signature, review?.detail])
   const saved = useStore(state => state.byRequest[pending.key])
   const draft = useMemo(() => restoreRichQuestionDraft(saved, signature, pending.questions.map(question => question.id)) ?? initial,
     [saved, signature, pending.questions, initial])
@@ -106,7 +126,7 @@ export function RichQuestion(props: RichQuestionProps) {
   const submit = (): void => {
     if (review !== undefined) {
       if (!/^#\s+\S/u.test(plan.trim())) { setError(t('questionPlanInvalid')); return }
-      send([{ id: review.id, selected: [review.approve.label], reviewedPlan: plan }])
+      send([{ id: review.id, selected: [review.intent.approve], reviewedPlan: plan }])
       return
     }
     if (draft.answers.some(answer => answer.selected.length === 0 && !answer.custom.trim() && !answer.skipped)) {

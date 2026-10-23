@@ -161,6 +161,8 @@ Agent 生成完整代码并返回发布对象或旧格式标记，插件负责�
 <details>
 <summary>实现细节——点击展开</summary>
 
+可信问题表单注册到标准 `conversation.composer` 链，只在启用的会话中选取现有 `PendingQuestion` 对象。渲染器通过注入的 keyed hook 绑定其可观察状态，回答、倒计时、焦点和关闭操作仍由该对象负责。其他交互和会话保留普通输入面板。
+
 | 文件 | 职责 |
 | --- | --- |
 | [cordis.patch.yml](cordis.patch.yml) | 显式插入配置层，不改默认配置。 |

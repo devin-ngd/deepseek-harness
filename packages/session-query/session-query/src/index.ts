@@ -4,7 +4,7 @@
  * @module @deepseek-ai/dsh-session-query
  */
 
-import { imageOffloadProjection } from '@deepseek-ai/dsh-session-format-catalog/message-projections'
+import { currentSessionMessageProjections } from '@deepseek-ai/dsh-session-format-catalog/message-projections'
 import { Context, Service } from '@deepseek-ai/cordis'
 import {
   Session,
@@ -188,8 +188,7 @@ export abstract class SessionQueryEngine extends Service {
       loaded.events,
       loaded.header,
       loaded.inheritedEventCount,
-      [...new Map([imageOffloadProjection,
-        ...this.ctx.get('sessions')?.messageProjections ?? []].map(item => [item.type, item])).values()],
+      currentSessionMessageProjections,
     )
     return {
       session: structuredClone(loaded.header),

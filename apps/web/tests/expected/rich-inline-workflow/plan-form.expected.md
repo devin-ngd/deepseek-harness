@@ -1,4 +1,5 @@
-- text: Review and edit the plan Awaiting your decision Plan to carry out
+- heading "Review and edit the plan" [level=2]
+- text: Awaiting your decision Plan to carry out
 - textbox "Plan to carry out": "# Original plan Inspect the implementation."
 - group: Preview plan
 - text: Feedback when keeping planning (optional)

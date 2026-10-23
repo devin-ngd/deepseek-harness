@@ -161,6 +161,8 @@ The Agent authors complete code and returns the publication or legacy marker; th
 <details>
 <summary>Implementation internals — click to expand</summary>
 
+Trusted question forms register on the standard `conversation.composer` chain and select the existing `PendingQuestion` carrier only in enabled sessions. The renderer binds the carrier's observable state through an injected keyed hook, preserving its answer, countdown, focus and dismissal ownership. Other interactions and sessions retain their ordinary composer.
+
 | File | Responsibility |
 | --- | --- |
 | [cordis.patch.yml](cordis.patch.yml) | Explicit profile insertion, without default-profile changes. |

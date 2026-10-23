@@ -36,8 +36,6 @@ export type {
   PendingQuestion, PlanReview, QuestionAnswer, QuestionComposerProps, QuestionWait,
 } from './contract/slots.ts'
 export type { QuestionKey } from './locales.ts'
-export { planReviewOf } from './contract/slots.ts'
-export { parseRecommendedLabel } from './QuestionComposer.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -390,10 +388,7 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
       store: questionDraftStore,
       inject: () => ({ keyedHooks: { questionCard: (key: string) => cards.source(key) } }),
-      children: {
-        'conversation.plan-review.actions': { kind: 'list', scope: 'session' },
-        'conversation.question.content': { kind: 'chain', scope: 'session' },
-      },
+      children: { 'conversation.plan-review.actions': { kind: 'list', scope: 'session' } },
     },
     QuestionComposer,
   ))

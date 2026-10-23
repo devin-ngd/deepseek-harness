@@ -1,5 +1,5 @@
 import {
-  useEffect, useMemo, useRef, useState, useSyncExternalStore,
+  useEffect, useMemo, useRef, useState,
   type ChangeEvent, type FocusEvent, type KeyboardEvent,
 } from 'react'
 import clsx from 'clsx'
@@ -137,13 +137,6 @@ function AnswerField(props: AnswerFieldProps) {
  * @returns The question flow, or the intent's own surface, for this request.
  */
 export function QuestionComposer(props: QuestionComposerProps) {
-  const card = useSyncExternalStore(props.matched.subscribe, props.matched.getSnapshot)
-  return props.renderSlotChain('conversation.question.content', { pending: props.matched, card }, {
-    fallback: <DefaultQuestionComposer {...props} />,
-  })
-}
-
-function DefaultQuestionComposer(props: QuestionComposerProps) {
   const question = props.matched
   const review = useMemo(() => planReviewOf(question.questions), [question])
   return review === undefined

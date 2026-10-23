@@ -17,8 +17,6 @@ declare module '@deepseek-ai/dsh-client-ui-session/client' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
-    /** Alternative question and plan forms; the pending carrier owns answer and cancellation semantics. */
-    'conversation.question.content': { kind: 'chain'; scope: 'session'; owner: { pending: PendingQuestion; card: QuestionCardSnapshot } }
     /** Actions for the exact plan under review; approval remains with the question composer. */
     'conversation.plan-review.actions': { kind: 'list'; scope: 'session'; owner: { review: PlanReview; requestKey: PendingQuestion['key'] } }
   }
@@ -572,7 +570,7 @@ export type QuestionWait = PendingQuestion
 export type QuestionComposerProps =
   PropsRuntime<'conversation.composer'>
   & PropsStore<ReturnType<typeof createQuestionDraftStore>>
-  & PropsRenderSlots<'conversation.plan-review.actions' | 'conversation.question.content'>
+  & PropsRenderSlots<'conversation.plan-review.actions'>
   & InjectFace<{ keyedHooks: { questionCard: (key: string) => PendingQuestion | undefined } }>
   & { matched: QuestionWait }
   & PropsLocale<'question'>

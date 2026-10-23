@@ -10,12 +10,17 @@ import { ThemeSettings, ThemeToast } from '../src/client/ThemeSettings.tsx'
 import type { ThemeSettingsInjected } from '../src/client/ThemeSettings.tsx'
 import type { RichThemeSettings } from '../src/client/appearance.ts'
 import type { RichInjected } from '../src/client/slots.ts'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import { PendingQuestion } from '../../../client/ui-user-questions/src/client/contract/slots.ts'
+import { RichQuestion, type RichQuestionInjected } from '../src/client/RichQuestion.tsx'
 
 vi.mock('@deepseek-ai/dsh-experimental-rich-inline/remote', () => ({
   default: { package: '@deepseek-ai/dsh-experimental-rich-inline', descriptors: [] },
 }))
 
 const PACKAGE = '@deepseek-ai/dsh-experimental-rich-inline'
+const SID = SessionId('rich-composer')
 
 async function fixture() {
   const ctx = new Context(), unmount = vi.fn(async () => {})
@@ -27,6 +32,9 @@ async function fixture() {
   ctx.provide('remote.richInline', { appearance: async () => ({ ok: true, value: { theme: 'cyber', accent: 'auto' } }) })
   ctx.provide('fileUpload', { upload: vi.fn() })
   ctx.provide('locale', new LocaleRuntime(ctx))
+  const sessionStatus = createSnapshotStore<SessionStatusSnapshot>(new Map())
+  ctx.provide('uiSession', { sessionStatus })
+  ctx.provide('sessions', { list: createSnapshotStore({ byId: { [SID]: { projectionValues: { agentPreset: 'rich' } } } }) })
   const formState = createSnapshotStore<ConfigFormSnapshot<RichThemeSettings>>({
     status: 'ready', value: { theme: 'cyber' }, base: {}, user: {}, revision: 0, writable: true,
   })
@@ -50,12 +58,46 @@ async function fixture() {
   await ctx.plugin(SlotRegistry)
   ctx.slots.register({ name: 'root', children: {
     'conversation.chat.assistant-block': { kind: 'chain', scope: 'session' },
+    'conversation.composer': { kind: 'chain', scope: 'session' },
     'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
     'settings.general.item': { kind: 'list', scope: 'root' },
     'shell.overlay': { kind: 'list', scope: 'root' },
   } } as never, () => null)
-  return { ctx, unmount, formState, set, serve, whileServed }
+  return { ctx, unmount, formState, set, serve, whileServed, sessionStatus }
 }
+
+it('uses the official composer election and original question source only in enabled sessions', async () => {
+  const b = await fixture()
+  try {
+    const fiber = b.ctx.plugin({ inject, apply }, { pollIntervalMs: 1000, activePresets: ['rich'] })
+    await fiber
+    await vi.waitFor(() => { expect(b.ctx.slots.entries('conversation.composer')).toHaveLength(1) })
+    const entry = b.ctx.slots.entries('conversation.composer')[0]!
+    expect(entry).toMatchObject({ component: RichQuestion, options: { priority: -10 } })
+    const pending = new PendingQuestion(SID, [{ id: 'one', question: 'Choose an approach' }])
+    b.sessionStatus.set(new Map([[SID, { pendingInteraction: pending, running: false, completionUnread: false }]]))
+    expect(entry.select!({ pendingInteraction: pending } as never)).toBe(pending)
+    expect(entry.select!({ pendingInteraction: undefined } as never)).toBeNull()
+    expect(entry.select!({ pendingInteraction: { kind: 'approval', sessionId: SID } } as never)).toBeNull()
+    const disabled = new PendingQuestion(SessionId('ordinary'), pending.questions)
+    expect(entry.select!({ pendingInteraction: disabled } as never)).toBeNull()
+    const face = entry.inject!(SID as never) as RichQuestionInjected & Record<string, unknown>
+    expect(face.keyedHooks.questionCard(pending.key)).toBe(pending)
+    expect(face.keyedHooks.questionCard('another-request')).toBeUndefined()
+    await fiber.dispose()
+    expect(b.ctx.slots.entries('conversation.composer')).toHaveLength(0)
+  } finally { await b.ctx.fiber.dispose() }
+})
+
+it('leaves the official composer untouched when HTML questions are disabled', async () => {
+  const b = await fixture()
+  try {
+    const fiber = b.ctx.plugin({ inject, apply }, { pollIntervalMs: 1000, htmlQuestions: false })
+    await fiber
+    await vi.waitFor(() => { expect(b.ctx.slots.entries('conversation.chat.assistant-block')).toHaveLength(1) })
+    expect(b.ctx.slots.entries('conversation.composer')).toHaveLength(0)
+  } finally { await b.ctx.fiber.dispose() }
+})
 
 it('registers the theme picker under its package key only while the Host serves the entry', async () => {
   const b = await fixture()
