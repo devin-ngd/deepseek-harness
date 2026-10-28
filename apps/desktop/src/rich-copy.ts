@@ -29,7 +29,13 @@ export function installRichCopy(labels: DesktopRichCopyLabels, write: (value: De
   let pending = false
   let timer: ReturnType<typeof setTimeout> | undefined
   let frame = 0
+  let wheelUntil = -Infinity
   const coarse = matchMedia('(hover: none)')
+  const syncPopover = (element: HTMLElement | undefined, open: boolean): void => {
+    if (element === undefined || !element.isConnected) return
+    if (open) { if (!element.matches(':popover-open')) element.showPopover() }
+    else if (element.matches(':popover-open')) element.hidePopover()
+  }
   const overlay = document.createElement('span')
   overlay.dataset.richCopyUi = ''
   const shadow = overlay.attachShadow({ mode: 'closed' })
@@ -56,14 +62,18 @@ export function installRichCopy(labels: DesktopRichCopyLabels, write: (value: De
       if (!coarse.matches && active !== target && entry.root.activeElement !== entry.button && entry.root.activeElement !== entry.more) {
         entry.button.removeAttribute('data-visible')
         entry.more?.removeAttribute('data-visible')
+        syncPopover(entry.button, false)
+        syncPopover(entry.more, false)
         continue
       }
+      const allowedTarget = allowed(target)
       const rect = target.getBoundingClientRect(), size = coarse.matches ? 44 : 28
       const focus = entry.root.activeElement === entry.button
       const onscreen = rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth
-      const visible = allowed(target) && onscreen && (active === target || focus || coarse.matches && !target.querySelector(selector))
+      const visible = allowedTarget && onscreen && (active === target || focus || coarse.matches && !target.querySelector(selector))
+      syncPopover(entry.button, visible)
       entry.button.toggleAttribute('data-visible', visible)
-      entry.button.disabled = !allowed(target)
+      entry.button.disabled = !allowedTarget
       const label = isImage(target) ? labels.image
         : target instanceof HTMLAnchorElement && labels.menu !== undefined ? labels.menu.copyLink : labels.text
       entry.button.setAttribute('aria-label', label)
@@ -71,8 +81,10 @@ export function installRichCopy(labels: DesktopRichCopyLabels, write: (value: De
       entry.button.style.left = `${Math.max(2, Math.min(innerWidth - size - 2, rect.right - size - 4))}px`
       entry.button.style.top = `${Math.max(2, Math.min(innerHeight - size - 2, rect.top + 4))}px`
       if (entry.more !== undefined) {
-        entry.more.toggleAttribute('data-visible', visible || entry.root.activeElement === entry.more)
-        entry.more.disabled = !allowed(target)
+        const moreVisible = visible || allowedTarget && onscreen && entry.root.activeElement === entry.more
+        syncPopover(entry.more, moreVisible)
+        entry.more.toggleAttribute('data-visible', moreVisible)
+        entry.more.disabled = !allowedTarget
         entry.more.style.left = `${Math.max(2, Math.min(innerWidth - size * 2 - 6, rect.right - size * 2 - 8))}px`
         entry.more.style.top = entry.button.style.top
       }
@@ -97,7 +109,7 @@ export function installRichCopy(labels: DesktopRichCopyLabels, write: (value: De
         entry.host.remove()
         entries.delete(target)
       }
-      else if (!entry.host.isConnected) { target.before(entry.host); entry.button.showPopover() }
+      else if (!entry.host.isConnected) target.before(entry.host)
     }
     for (const target of document.querySelectorAll<HTMLElement>(selector)) {
       if (entries.has(target) || target.dataset.richCopy === 'off' || target.closest('[data-rich-copy="off"]')
@@ -122,7 +134,6 @@ export function installRichCopy(labels: DesktopRichCopyLabels, write: (value: De
       tip.popover = 'manual'
       button.setAttribute('aria-describedby', tip.id)
       root.append(button, tip)
-      button.showPopover()
       let more: HTMLButtonElement | undefined
       if (actions !== undefined && labels.menu !== undefined) {
         more = document.createElement('button')
@@ -132,7 +143,6 @@ export function installRichCopy(labels: DesktopRichCopyLabels, write: (value: De
         more.setAttribute('aria-label', labels.menu.more)
         more.setAttribute('aria-haspopup', 'menu')
         root.append(more)
-        more.showPopover()
         more.addEventListener('pointerdown', (event) => { event.preventDefault() })
         more.addEventListener('focus', () => { active = target; schedule() })
         more.addEventListener('blur', schedule)
@@ -172,14 +182,22 @@ export function installRichCopy(labels: DesktopRichCopyLabels, write: (value: De
     schedule()
   }
   const pointer = (event: PointerEvent): void => {
+    if (performance.now() < wheelUntil) return
     if (event.target instanceof HTMLElement && event.target.hasAttribute('data-rich-copy-ui')) return
+    let next: HTMLElement | undefined
     if (event.target instanceof Element) {
-      active = actions === undefined ? event.target.closest<HTMLElement>(selector) ?? undefined : richCopyTarget(event.target)
-    } else active = undefined
-    if (active !== undefined && !entries.has(active)) active = undefined
+      next = actions === undefined ? event.target.closest<HTMLElement>(selector) ?? undefined : richCopyTarget(event.target)
+    }
+    if (next !== undefined && !entries.has(next)) next = undefined
+    if (next === active) return
+    active = next
     schedule()
   }
-  const leave = (): void => { active = undefined; schedule() }
+  const wheel = (): void => {
+    wheelUntil = performance.now() + 150
+    if (active !== undefined) { active = undefined; schedule() }
+  }
+  const leave = (): void => { if (active !== undefined) { active = undefined; schedule() } }
   const dismiss = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return
     for (const { tip } of entries.values()) { tip.removeAttribute('data-visible'); tip.hidePopover() }
@@ -193,6 +211,7 @@ export function installRichCopy(labels: DesktopRichCopyLabels, write: (value: De
   document.addEventListener('pointermove', pointer, true)
   document.addEventListener('pointerleave', leave)
   document.addEventListener('keydown', dismiss, true)
+  window.addEventListener('wheel', wheel, { passive: true, capture: true })
   window.addEventListener('scroll', schedule, true)
   window.addEventListener('resize', schedule)
   coarse.addEventListener('change', schedule)
@@ -207,6 +226,7 @@ export function installRichCopy(labels: DesktopRichCopyLabels, write: (value: De
     document.removeEventListener('pointermove', pointer, true)
     document.removeEventListener('pointerleave', leave)
     document.removeEventListener('keydown', dismiss, true)
+    window.removeEventListener('wheel', wheel, true)
     window.removeEventListener('scroll', schedule, true)
     window.removeEventListener('resize', schedule)
     coarse.removeEventListener('change', schedule)

@@ -44,7 +44,9 @@ function guest(fields: Record<string, string> = {}, dirty: string[] = [], packet
     send(packet: Packet) { sent.push(JSON.parse(JSON.stringify(packet)) as Packet) },
     subscribe(callback: (packet: Packet) => void) { listener = callback; return () => { listener = null } },
   } })
+  let resizeCallback: (() => void) | null = null
   Object.defineProperty(dom.window, 'ResizeObserver', { value: class {
+    constructor(callback: () => void) { resizeCallback = callback }
     observe(): void { /* jsdom has no layout engine. */ }
     disconnect(): void { /* No native resources were acquired. */ }
   } })
@@ -69,7 +71,7 @@ function guest(fields: Record<string, string> = {}, dirty: string[] = [], packet
   }, theme: { mode: 'light', tokens: {}, reducedMotion: true } })
   const packets = (type: string) => sent.filter(packet => packet.type === type)
   const dispose = () =>{  deliver('dispose', {}) }
-  return { dom, sdk, sent, packets, deliver, reply, dispose }
+  return { dom, sdk, sent, packets, deliver, reply, dispose, triggerResize: () => resizeCallback?.() }
 }
 
 async function microtasks(): Promise<void> { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }
@@ -313,5 +315,23 @@ describe('real guest SDK input and action lifecycle', () => {
     g.deliver('snapshot', { snapshot: { draft: { fields: { name: 'changed' } } } }, 'mount-other')
     g.deliver('snapshot', { snapshot: { draft: { fields: { name: 'changed' } } } }, 'mount-one', 2)
     expect(g.sdk.getDraft()).toEqual({ name: 'mine' })
+  })
+
+  it('locks vertical overflow within the inline height cap and suppresses 1px resize jitter', async () => {
+    const g = guest()
+    let currentHeight = 640
+    Object.defineProperty(g.dom.window.document.body, 'scrollHeight', { get: () => currentHeight, configurable: true })
+    g.triggerResize()
+    expect(g.dom.window.document.documentElement.style.overflowY).toBe('hidden')
+    expect(g.packets('resize')).toMatchObject([{ payload: { height: 640 } }])
+    currentHeight = 641
+    g.triggerResize()
+    await vi.advanceTimersByTimeAsync(120)
+    expect(g.packets('resize')).toHaveLength(1)
+    currentHeight = 12400
+    g.triggerResize()
+    await vi.advanceTimersByTimeAsync(120)
+    expect(g.dom.window.document.documentElement.style.overflowY).toBe('auto')
+    expect(g.packets('resize').at(-1)).toMatchObject({ payload: { height: 12000 } })
   })
 })

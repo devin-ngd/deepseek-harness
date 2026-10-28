@@ -135,10 +135,12 @@ export function guestSdk(mountId: string, renderRevision: number, guestPacketByt
     const resize = () => {
       if (stopped) return;
       const remaining = 100 - (performance.now() - lastResize);
-      if (remaining > 0) { if (!resizeTimer) resizeTimer = setTimeout(() => { resizeTimer = null; resize(); }, remaining); return; }
+      if (remaining > 0) { if (!resizeTimer) resizeTimer = setTimeout(() => { resizeTimer = null; lastResize = -Infinity; resize(); }, remaining); return; }
       lastResize = performance.now();
-      const height = Math.max(24, Math.min(12000, Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height))));
-      if (height !== lastHeight) { lastHeight = height; packet('resize', { height }); }
+      const raw = Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height));
+      document.documentElement.style.overflowY = raw > 12000 ? 'auto' : 'hidden';
+      const height = Math.max(24, Math.min(12000, raw));
+      if (lastHeight < 0 || Math.abs(height - lastHeight) > 1) { lastHeight = height; packet('resize', { height }); }
     };
     new ResizeObserver(resize).observe(root);
     let contentFailed = false;

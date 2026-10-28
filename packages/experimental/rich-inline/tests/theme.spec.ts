@@ -38,6 +38,9 @@ describe('built-in theme set', () => {
 
   it('gives terminal a monospace body and cyber its corner brackets outside any card', () => {
     expect(richThemeCss({ theme: 'terminal', accent: 'auto' })).toContain('--rich-font: var(--rich-mono);')
+    expect(richThemeCss({ theme: 'terminal', accent: 'auto' })).toContain('0 0 / 100% 320px no-repeat')
+    expect(RICH_CYBER_CSS).toContain('background-color: var(--rich-bg);')
+    expect(RICH_CYBER_CSS).toContain('0 0 / 24px 560px repeat-x')
     expect(RICH_CYBER_CSS).toContain(') right 10px top 10px / 14px 2px no-repeat')
     expect(RICH_CYBER_CSS).toContain(') right 10px bottom 10px / 2px 14px no-repeat')
   })

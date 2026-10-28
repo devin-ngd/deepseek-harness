@@ -467,6 +467,24 @@ describe('RichInline Host', () => {
     const context = assembly.contexts.find(item => item.name === 'rich-inline:output-format')?.text
     expect(context).toContain('Active built-in appearance: graphite (calm gray surfaces')
     expect(context).toContain('accent #5cd4c0')
+    // The live reminder carries the concrete palette and the color contract so a model cannot guess a light page.
+    expect(context).toContain('--rich-bg #121317')
+    expect(context).toContain('--rich-text #e3e5ea')
+    expect(context).toContain('--rich-accent-ink #0b0f19')
+    expect(context).toContain('Color contract')
+    expect(context).toContain('Never write hex, rgb(), hsl() or named colors')
+    expect(context).toContain('Do not set color, background or font-family on the outer wrapper')
+  })
+
+  it('states the color contract in the cached prompt and asks a disabled theme for an explicit color pair', async () => {
+    const h = await harness(undefined, [], { theme: 'none', accent: 'violet' })
+    const assembly = await h.ctx.systemPrompt.assemble()
+    const section = assembly.sections.find(item => item.name === 'rich-inline:authoring')?.text
+    expect(section).toContain('Color contract')
+    expect(section).toContain('#1f2937')
+    expect(section).not.toContain('You may make small local overrides')
+    expect(assembly.contexts.find(item => item.name === 'rich-inline:output-format')?.text)
+      .toContain('set an explicit readable text color and background together')
   })
 
   it('switches the theme live from profile settings without restarting or changing the cached system prompt', async () => {

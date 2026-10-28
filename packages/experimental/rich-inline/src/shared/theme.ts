@@ -115,17 +115,18 @@ const baseSheet = (palette: Readonly<Record<string, string>>, accent: string, ac
   --rich-mono: ${MONO};
   --dsw-alias-label-primary: var(--rich-text); --dsw-alias-label-secondary: var(--rich-muted);
   --dsw-alias-interactive-bg-hover: var(--rich-surface-raised); --dsw-radius-sm: var(--rich-radius);
+  background-color: var(--rich-bg);
   scrollbar-color: var(--rich-border-strong) transparent; scrollbar-width: thin;
 }
 :where(*, *::before, *::after) { box-sizing: border-box; }
 body {
   margin: 0; color: var(--rich-text); color-scheme: dark;
-  background: radial-gradient(720px 220px at 0 0, color-mix(in srgb, var(--rich-accent) 6%, transparent), transparent 72%) no-repeat, var(--rich-bg);
+  background: radial-gradient(720px 220px at 0 0, color-mix(in srgb, var(--rich-accent) 6%, transparent), transparent 72%) 0 0 / 100% 300px no-repeat, var(--rich-bg);
   font: 14px/1.65 var(--rich-font); letter-spacing: .005em;
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-wrap: anywhere;
 }
 ::selection { background: color-mix(in srgb, var(--rich-accent) 34%, transparent); color: var(--rich-text-strong); }
-[data-rich-content-root] { padding: clamp(16px, 3vw, 22px); min-width: 0; display: flow-root; }
+[data-rich-content-root] { padding: clamp(16px, 3vw, 22px); min-width: 0; display: flow-root; contain: layout style; }
 [hidden] { display: none !important; }
 :where(h1, h2, h3, h4, h5, h6) { margin: 0 0 10px; color: var(--rich-text-strong); font-weight: 600; line-height: 1.35; letter-spacing: -.01em; text-wrap: balance; }
 :where(h1) { font-size: 22px; line-height: 1.3; letter-spacing: -.02em; }
@@ -395,11 +396,10 @@ body {
   background:
     ${BRACKET} right 10px top 10px / 14px 2px no-repeat, ${BRACKET} right 10px top 10px / 2px 14px no-repeat,
     ${BRACKET} right 10px bottom 10px / 14px 2px no-repeat, ${BRACKET} right 10px bottom 10px / 2px 14px no-repeat,
-    radial-gradient(760px 260px at 0 0, ${tint('accent', 16)}, transparent 72%) no-repeat,
-    radial-gradient(600px 240px at 100% 0, ${tint('accent-2', 13)}, transparent 72%) no-repeat,
-    linear-gradient(transparent, var(--rich-bg) 560px) no-repeat,
-    linear-gradient(${tint('accent', 9)} 1px, transparent 1px) 0 0 / 24px 24px,
-    linear-gradient(90deg, ${tint('accent', 9)} 1px, transparent 1px) 0 0 / 24px 24px,
+    radial-gradient(760px 260px at 0 0, ${tint('accent', 16)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    radial-gradient(600px 240px at 100% 0, ${tint('accent-2', 13)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    linear-gradient(transparent, var(--rich-bg) 560px) 0 0 / 100% 560px no-repeat,
+    linear-gradient(90deg, ${tint('accent', 9)} 1px, transparent 1px) 0 0 / 24px 560px repeat-x,
     var(--rich-bg);
 }
 ` + GRADIENT_TITLE
@@ -409,9 +409,9 @@ const AURORA_OVERLAY = GLOW_OVERLAY + String.raw`
 :root { --rich-radius: 14px; --rich-radius-sm: 9px; }
 body {
   background:
-    radial-gradient(900px 300px at 12% -60px, ${tint('accent', 18)}, transparent 70%) no-repeat,
-    radial-gradient(700px 280px at 88% -40px, ${tint('accent-2', 16)}, transparent 72%) no-repeat,
-    radial-gradient(520px 220px at 50% -90px, ${tint('chart-2', 10)}, transparent 70%) no-repeat,
+    radial-gradient(900px 300px at 12% -60px, ${tint('accent', 18)}, transparent 70%) 0 0 / 100% 340px no-repeat,
+    radial-gradient(700px 280px at 88% -40px, ${tint('accent-2', 16)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    radial-gradient(520px 220px at 50% -90px, ${tint('chart-2', 10)}, transparent 70%) 0 0 / 100% 260px no-repeat,
     var(--rich-bg);
 }
 .rich-card, .rich-list, .rich-table-wrap { background-color: color-mix(in srgb, var(--rich-surface) 84%, transparent); }
@@ -425,10 +425,10 @@ const NEON_OVERLAY = GLOW_OVERLAY + CONSOLE_LABELS + String.raw`
 :root { --rich-radius: 8px; --rich-radius-sm: 5px; }
 body {
   background:
-    radial-gradient(900px 260px at 50% -120px, ${tint('accent', 22)}, transparent 70%) no-repeat,
-    radial-gradient(600px 240px at 100% 0, ${tint('accent-2', 14)}, transparent 72%) no-repeat,
-    linear-gradient(transparent, var(--rich-bg) 480px) no-repeat,
-    linear-gradient(90deg, ${tint('accent-2', 8)} 1px, transparent 1px) 0 0 / 40px 40px,
+    radial-gradient(900px 260px at 50% -120px, ${tint('accent', 22)}, transparent 70%) 0 0 / 100% 320px no-repeat,
+    radial-gradient(600px 240px at 100% 0, ${tint('accent-2', 14)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    linear-gradient(transparent, var(--rich-bg) 480px) 0 0 / 100% 480px no-repeat,
+    linear-gradient(90deg, ${tint('accent-2', 8)} 1px, transparent 1px) 0 0 / 40px 480px repeat-x,
     var(--rich-bg);
 }
 :where(h1) { color: var(--rich-text-strong); text-shadow: 0 0 2px ${tint('accent', 80)}, 0 0 18px ${tint('accent', 55)}; }
@@ -445,8 +445,9 @@ const TERMINAL_OVERLAY = GLOW_OVERLAY + CONSOLE_LABELS + String.raw`
 :root { --rich-radius: 4px; --rich-radius-sm: 3px; --rich-font: var(--rich-mono); }
 body {
   background:
-    repeating-linear-gradient(180deg, transparent 0 2px, ${tint('accent', 4)} 2px 3px),
-    radial-gradient(900px 320px at 0 0, ${tint('accent', 10)}, transparent 70%) no-repeat,
+    linear-gradient(transparent, var(--rich-bg) 320px) 0 0 / 100% 320px no-repeat,
+    repeating-linear-gradient(180deg, transparent 0 2px, ${tint('accent', 4)} 2px 3px) 0 0 / 100% 320px no-repeat,
+    radial-gradient(900px 320px at 0 0, ${tint('accent', 10)}, transparent 70%) 0 0 / 100% 320px no-repeat,
     var(--rich-bg);
 }
 :where(h1, h2, h3) { color: color-mix(in srgb, var(--rich-accent) 72%, var(--rich-text-strong)); letter-spacing: 0; }

@@ -1,6 +1,6 @@
 /** Browser interaction qualification for isolated content controls; native OS calls are observation substitutes. */
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import assert from 'node:assert/strict'
@@ -11,6 +11,10 @@ const { chromium } = require('playwright')
 const { build } = require(require.resolve('esbuild', { paths: [join(root, 'node_modules/.pnpm/node_modules')] }))
 const output = resolve(process.argv[2] ?? join(root, '.artifacts/rich-actions-browser'))
 await mkdir(output, { recursive: true })
+const documentModule = join(output, 'rich-document.mjs')
+await build({ entryPoints: [join(root, 'apps/desktop/src/rich-document.ts')], outfile: documentModule,
+  bundle: true, platform: 'node', format: 'esm', target: 'node22' })
+const { richDocument } = await import(pathToFileURL(documentModule).href)
 const labels = { text: 'Copy this section', image: 'Copy image', copied: 'Copied', failed: 'Could not copy',
   menu: { plain: 'Copy plain text', markdown: 'Copy Markdown', copyLink: 'Copy link address', openLink: 'Open link',
     more: 'More actions', selectAll: 'Select all content', openFailed: 'Could not open link' } }
@@ -165,6 +169,20 @@ try {
   await page.evaluate(() => disposeActions())
   assert.equal(await page.locator('[data-rich-copy-ui]').count(), 0)
   check('cleanup removes all controls and observers')
+  const documentPage = await browser.newPage({ viewport: { width: 600, height: 12000 } })
+  documentPage.on('pageerror', error => errors.push(error.message))
+  await documentPage.setContent(richDocument({ mountId: 'sticky-document', mountNonce: 'sticky-document-nonce',
+    html: '<header id="sticky">Sticky title</header><div id="long">Long content</div>',
+    css: '[data-rich-content-root]{contain:layout style}#sticky{position:sticky;top:0;height:32px}#long{height:12400px}',
+    js: "document.documentElement.style.overflowY='auto'",
+  }).html)
+  assert.equal(await documentPage.evaluate(() => document.documentElement.scrollHeight > innerHeight), true)
+  await documentPage.evaluate(() => scrollTo(0, 100))
+  await wait(async () => await documentPage.evaluate(() => scrollY) === 100)
+  const stickyTop = await documentPage.locator('#sticky').evaluate(element => element.getBoundingClientRect().top)
+  assert.ok(Math.abs(stickyTop) < 1, `Sticky title moved above the viewport: ${stickyTop}px`)
+  check('sticky title stays pinned while rich content beyond the 12000px inline cap scrolls')
+  await documentPage.close()
   assert.deepEqual(errors, [])
   check('no uncaught page errors')
 } catch (error) {

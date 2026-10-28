@@ -25,9 +25,10 @@
   --chrome-radius: var(--dsw-radius-md);
   position: relative;
   container-type: inline-size;
+  contain: layout style;
   width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--chrome-border);
   border-radius: var(--chrome-radius);
   background: var(--chrome-bg);
@@ -100,10 +101,9 @@
     0 18px 40px -28px color-mix(in srgb, var(--rich-accent) 48%, transparent);
 }
 
-.block:not([data-rich-theme='none'], [data-rich-theme='dark'])::before {
+.block:not([data-rich-theme='none'], [data-rich-theme='dark']) > .header::before {
   content: '';
   position: absolute;
-  z-index: 1;
   inset-inline: 0;
   top: 0;
   height: 1px;
@@ -112,7 +112,7 @@
 }
 
 /* While a preview streams, a bright pulse travels along the dimmed edge light. */
-.block:not([data-rich-theme='none'], [data-rich-theme='dark']):has(.live)::before {
+.block:not([data-rich-theme='none'], [data-rich-theme='dark']) > .header:has(.live)::before {
   height: 2px;
   background:
     linear-gradient(90deg, transparent 40%, var(--rich-accent) 50%, var(--rich-accent-2) 56%, transparent 66%) 0 0 / 250% 100% no-repeat,
@@ -136,6 +136,7 @@
 
 /* A quiet label row on the block's own background; the hairline below is the only separation from the content. */
 .header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -303,6 +304,8 @@
   display: flex;
   width: 100%;
   border: 0;
+  background: var(--chrome-bg);
+  contain: strict;
 }
 
 .file {
@@ -385,6 +388,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .live, .spin, .block:has(.live)::before { animation: none; }
+  .live, .spin, .header:has(.live)::before { animation: none; }
   .chevron { transition: none; }
 }
