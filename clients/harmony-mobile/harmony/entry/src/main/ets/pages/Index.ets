@@ -261,7 +261,7 @@ struct Index {
           }.width('100%').padding({ left: 16, right: 14, top: 14, bottom: 14 })
         }.id('product-setup-toggle').width('100%').borderRadius(14).backgroundColor($r('app.color.surface')).accessibilityText($r('app.string.mvp_setup')).onClick(() => { this.showSetup = !this.showSetup })
         if (this.showSetup) {
-        if (this.product.deviceBindingMode() && this.view.pairing === 'paired') {
+        if (this.product.deviceBindingMode() && productConfiguration.deviceAutoConnect !== true && this.view.pairing === 'paired') {
           Column({ space: 10 }) {
             Text($r('app.string.product_route_notice')).bodyText()
             TextArea({ text: this.routeOffer, placeholder: $r('app.string.product_route_offer') }).id('product-route-offer').areaField().height(100).enabled(!this.busy).onChange((value: string) => { this.routeOffer = value; this.routeSummary = ''; this.routeReply = ''; this.routeApproved = false })

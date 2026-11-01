@@ -32,5 +32,7 @@
   "maxChallenges": 64,
   "maxCatalogRows": 10000,
   "maxPublicBytes": 65536,
-  "routingTtlMs": 86400000
+  "routingTtlMs": 86400000,
+  "connectionMode": "paired",
+  "reconnectMs": 5000
 }

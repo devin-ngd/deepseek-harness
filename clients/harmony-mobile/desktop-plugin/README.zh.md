@@ -8,6 +8,8 @@
 
 [English](README.md) | 中文
 
+rc2.30 的 `/device` 组件默认使用 `connectionMode: paired`，自动等待已配对手机，掉线后重试。`connectionMode: window` 保留显式临时窗口流程。双端和中继的一次更新见[已配对自动连接](../docs/paired-connection-rc2.30.md)，原双端及常驻中继已更新，手机自动连接及真实会话列表已核验。下列版本记录为历史。
+
 最后核实的桌面运行版本为 rc2.12。rc2.16 控制面板是离线候选，构建与验证方式见[控制面板参考](../docs/control-panel-rc2.16.md)。安装和实机测试仍为独立操作。[交接](../docs/HANDOFF-2026-10-28.md)保留原配对和已关闭窗口的证据。
 
 本包是默认禁用的实验性 Profile Bundle。安装与激活分别进行。通过受管桌面插件管理器安装时设置 `enabled: false`，保持该 Bundle 未选中。其自身条目也设置 `disabled: true` 和 `config.enabled: false`。导入或加载禁用插件不会打开日志、创建服务/描述符/Peer，也不会启动传输。

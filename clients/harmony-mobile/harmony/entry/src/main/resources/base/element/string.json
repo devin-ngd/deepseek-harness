@@ -490,7 +490,7 @@
     },
     {
       "name": "product_route_stop",
-      "value": "关闭连接窗口"
+      "value": "断开连接"
     },
     {
       "name": "product_log_selfcheck",

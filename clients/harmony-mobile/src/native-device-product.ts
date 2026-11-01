@@ -4,7 +4,7 @@ import { deviceStartupFailure, deviceStartupDiagnosticText, type DeviceStartupFa
 import { deviceConnectionFailure, deviceConnectionDiagnosticText, type DeviceConnectionStage } from './device-connection-diagnostic.ts'
 export { DeviceConnectionFailure, deviceConnectionFailure, deviceConnectionDiagnosticText } from './device-connection-diagnostic.ts'
 import { DeviceBindingClient } from './device-binding-client.ts'
-import { deviceBindingSchema, deviceBindingOfferSchema, type DeviceBinding, type DeviceBindingOffer } from './device-binding-protocol.ts'
+import { deviceBindingSchema, deviceBindingOfferSchema, deviceRelayPairId, type DeviceBinding, type DeviceBindingOffer } from './device-binding-protocol.ts'
 import { DeviceBoundMobileProduct, type DeviceProductConnection, type DeviceMobileView } from './mobile-device-product.ts'
 import { DevicePhoneSession } from './device-phone-session.ts'
 import { DeviceProductRpc } from './device-product-rpc.ts'
@@ -49,9 +49,12 @@ export class NativeDeviceProductFacade {
   private recoveryVerified = false
   private hasRoute = false
   private routeDeadline = 0
+  private readonly routingLeaseMs: number
   /** @param authority - exact native UI owner. @param policyJson - existing default-disabled product/domain limits. @param identityAlias - original selected HUKS alias. @param host - approved existing relay host. @param routingExpiresAt - independent public relay directory deadline. @param relay - existing control/E2E capacities. @param publicStorage - separate app-private device public file. @param crypto - original native signer and maintained backend. @param scheduler - native timers. @param clock - trusted native clock. @param acquire - original native WSS acquisition, called only on connect. @param publish - sanitized original page DTO sink. */
-  constructor(private readonly authority: object, policyJson: string, private readonly identityAlias: string, private readonly host: string, private readonly routingExpiresAt: number, private readonly relay: PairedRelayPolicy, private readonly publicStorage: ProductTrustStorage, private readonly crypto: NativeDeviceCrypto, private readonly scheduler: CleanupScheduler, private readonly clock: () => number, private readonly acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, private readonly publish: (view: string) => void, private readonly catalogRefreshMs: number, routeStorage?: ProductTrustStorage) {
+  constructor(private readonly authority: object, policyJson: string, private readonly identityAlias: string, private readonly host: string, private readonly routingExpiresAt: number, private readonly relay: PairedRelayPolicy, private readonly publicStorage: ProductTrustStorage, private readonly crypto: NativeDeviceCrypto, private readonly scheduler: CleanupScheduler, private readonly clock: () => number, private readonly acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, private readonly publish: (view: string) => void, private readonly catalogRefreshMs: number, routeStorage?: ProductTrustStorage, private readonly pairedConnection = false) {
     this.policy = parseProductPolicy(policyJson)
+    this.routingLeaseMs = routingExpiresAt - clock()
+    if (pairedConnection && (!Number.isSafeInteger(this.routingLeaseMs) || this.routingLeaseMs <= relay.maxRoomTtlMs || this.routingLeaseMs > 0x7fffffff)) throw new Error('invalid paired connection lease')
     if (!Number.isSafeInteger(catalogRefreshMs) || catalogRefreshMs <= 0 || catalogRefreshMs > 0x7fffffff) throw new Error('native device catalogue interval denied')
     this.storage = { read: () => this.readPublic(), compareAndSet: (previous, next) => {
       const operation = this.writeTail.then(async () => { if (this.closed || this.ioBlocked || await this.readPublic() !== previous) throw new Error('native device public CAS conflict'); try { await this.publicStorage.write(next); this.cached = next } catch (error) { this.ioBlocked = true; throw error } })
@@ -71,7 +74,7 @@ export class NativeDeviceProductFacade {
   /** @param raw - strict public device offer or receipt. @returns only original identity/host selection for native bootstrap; no signing or network occurs. */
   static selectionInput(raw: string): string { const value: unknown = JSON.parse(raw), offer = deviceBindingOfferSchema.safeParse(value), record = offer.success ? offer.data.registration : deviceBindingSchema.parse(value); return JSON.stringify({ identityAlias: record.identityAlias, audience: record.audience, bindingId: record.bindingId, desktopPublicSpki: record.desktopPublicSpki }) }
   /** Used only after the facade verifies both signatures before native socket acquisition. */
-  static routingInput(raw: string): string { const route = deviceRouteSchema.parse(JSON.parse(raw)), value = route.offer.binding; return JSON.stringify({ identityAlias: value.identityAlias, audience: value.audience, bindingId: value.bindingId, desktopPublicSpki: value.desktopPublicSpki, routeId: route.offer.routeId }) }
+  static routingInput(raw: string): string { const candidate: unknown = JSON.parse(raw), route = deviceRouteSchema.safeParse(candidate), value = route.success ? route.data.offer.binding : deviceBindingSchema.parse(candidate); return JSON.stringify({ identityAlias: value.identityAlias, audience: value.audience, bindingId: value.bindingId, desktopPublicSpki: value.desktopPublicSpki, routeId: route.success ? route.data.offer.routeId : deviceRelayPairId(value) }) }
   private local(authority: object): void { if (this.closed || this.startupFailure !== undefined || !this.policy.enabled || authority !== this.authority) throw new Error('native device product disabled') }
   private makeClient(value: DeviceBinding | DeviceBindingOffer['registration']): DeviceBindingClient {
     if (value.identityAlias !== this.identityAlias || value.audience !== this.host || value.profileId !== 'desktop') throw new Error('native device local selection denied')
@@ -100,11 +103,11 @@ export class NativeDeviceProductFacade {
   async boot(): Promise<void> {
     this.local(this.authority)
     let stage: DeviceStartupStage = 'binding-read', verified = false
-    try { const raw = await this.storage.read(); if (raw === null) { this.empty(); return }; const value = deviceBindingSchema.parse(JSON.parse(raw)), client = this.makeClient(value), checked = await client.load(this.authority); this.local(this.authority); verified = true; const device = this.install(checked, client); stage = 'route-history-restore'; const route = await this.routes?.current(this.authority); this.local(this.authority); this.hasRoute = route != null; this.routeDeadline = route?.offer.expiresAt ?? 0; this.project(device.view) }
+    try { const raw = await this.storage.read(); if (raw === null) { this.empty(); return }; const value = deviceBindingSchema.parse(JSON.parse(raw)), client = this.makeClient(value), checked = await client.load(this.authority); this.local(this.authority); verified = true; const device = this.install(checked, client); stage = 'route-history-restore'; const route = this.pairedConnection ? null : await this.routes?.current(this.authority); this.local(this.authority); this.hasRoute = route != null; this.routeDeadline = route?.offer.expiresAt ?? 0; this.project(device.view) }
     catch (error) { const failure = deviceStartupFailure(error, stage, verified); this.startupFailure = failure; this.hasRoute = false; this.routeDeadline = 0; if (!this.closed) this.publish(JSON.stringify({ pairing: failure.bindingVerified ? 'paired' : 'blocked', connection: 'blocked', error: failure.bindingVerified ? 'device-route-history-unavailable' : 'device-binding-unavailable', startupDiagnostic: deviceStartupDiagnosticText(failure, stage), projects: [], sessions: [], selected: '', task: 'idle', readOnly: true, messages: [], liveText: '', richJson: '' })); throw failure }
   }
   private async connection(registration: DeviceBinding, proof: DeviceBindingClient, lifetime: AbortSignal): Promise<DeviceProductConnection> {
-    this.local(this.authority); if (!this.connectionApproved || this.routingExpiresAt <= this.clock()) throw new Error('native device network approval or directory lease missing')
+    this.local(this.authority); if (!this.connectionApproved || !this.pairedConnection && this.routingExpiresAt <= this.clock()) throw new Error('native device network approval or directory lease missing')
     let stage: DeviceConnectionStage = 'route-verify', cleanupFailed = false
     let acquisition: NativeDeviceNetwork | undefined, core: NativeDeviceCore | undefined, rpc: DeviceProductRpc | undefined
     let closing: Promise<void> | undefined
@@ -112,20 +115,21 @@ export class NativeDeviceProductFacade {
     const abort = () => { void close().catch(error => { void error; cleanupFailed = true }) }
     try {
     lifetime.throwIfAborted()
-    const route = await this.routes?.current(this.authority)
+    const route = this.pairedConnection ? undefined : await this.routes?.current(this.authority)
     lifetime.throwIfAborted()
-    if (route == null) { this.hasRoute = false; throw new Error('native signed route window required') }
-    const context = { routeId: route.offer.routeId, routeEpoch: route.offer.routeEpoch, expiresAt: route.offer.expiresAt }
+    if (!this.pairedConnection && route == null) { this.hasRoute = false; throw new Error('native signed route window required') }
+    const context = route == null ? undefined : { routeId: route.offer.routeId, routeEpoch: route.offer.routeEpoch, expiresAt: route.offer.expiresAt }
+    const expiresAt = route?.offer.expiresAt ?? this.clock() + this.routingLeaseMs
     stage = 'native-channel'
-      acquisition = await this.acquire(JSON.stringify(route), fact => { if (fact === 'identity-read' || fact === 'native-channel') stage = fact; if (fact === 'cleanup-failed') cleanupFailed = true })
+      acquisition = await this.acquire(JSON.stringify(route ?? registration), fact => { if (fact === 'identity-read' || fact === 'native-channel') stage = fact; if (fact === 'cleanup-failed') cleanupFailed = true })
       lifetime.throwIfAborted()
       const acquired = acquisition
-      core = new NativeDeviceCore(JSON.stringify(registration), route.offer.expiresAt, this.relay, acquisition.ports, state => { if (state === 'identity-authenticated') acquired.authenticated() }, packet => rpc?.receive(packet), route)
+      core = new NativeDeviceCore(JSON.stringify(registration), expiresAt, this.relay, acquisition.ports, state => { if (state === 'identity-authenticated') acquired.authenticated() }, packet => rpc?.receive(packet), route ?? undefined)
       rpc = new DeviceProductRpc(core, this.scheduler, this.policy.transport.timeoutMs, this.policy.transport.maxPending, this.policy.commandPrefix)
       lifetime.addEventListener('abort', abort, { once: true })
       stage = 'identity-read'; await core.initialize(); lifetime.throwIfAborted(); stage = 'native-channel'; await acquired.open(); lifetime.throwIfAborted(); stage = 'control-handshake'; await core.ready(); lifetime.throwIfAborted(); this.local(this.authority)
       const network = core, calls = rpc
-      return { authentication: 'native', route: context, binding: network.binding, failure: fallback => network.connectionFailure(fallback, 'active-channel'), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => {
+      return { authentication: 'native', ...(context === undefined ? {} : { route: context }), binding: network.binding, failure: fallback => network.connectionFailure(fallback, 'active-channel'), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => {
         const value = fields(await calls.call({ method: 'metadata', argument: null }), ['desktopId', 'profileId', 'sessions'])
         if (value.desktopId !== registration.desktopId || value.profileId !== 'desktop') throw new Error('native device catalogue identity denied')
         return z.array(z.object({ profileId: z.literal('desktop'), sessionId: z.string(), title: z.string(), projectId: z.string().nullable() }).strict()).parse(value.sessions)
@@ -151,10 +155,10 @@ export class NativeDeviceProductFacade {
   /** @returns the original host after binding/identity verification; this does not approve network access. */
   connectionHost(): string { return this.bound() ? this.host : '' }
   /** No network is acquired; cold restore still requires fresh foreground host consent. */
-  routeReady(): boolean { return this.startupFailure === undefined && this.hasRoute && this.routeDeadline > this.clock() }
+  routeReady(): boolean { return this.startupFailure === undefined && (this.pairedConnection ? this.bound() : this.hasRoute && this.routeDeadline > this.clock()) }
   async previewRoute(raw: string): Promise<string> { this.local(this.authority); if (this.routes === undefined) throw new Error('native route storage unavailable'); const offer = await this.routes.inspectOffer(this.authority, JSON.parse(raw)); return JSON.stringify({ routeId: offer.routeId, audience: offer.binding.audience, bindingId: offer.binding.bindingId, profileId: offer.binding.profileId, expiresAt: offer.expiresAt, desktopFingerprint: offer.binding.desktopCredentialId, phoneFingerprint: offer.binding.credentialId }) }
   async signRoute(raw: string, approved: boolean): Promise<string> { this.local(this.authority); if (this.routes === undefined) throw new Error('native route storage unavailable'); const route = await this.routes.acceptOffer(this.authority, JSON.parse(raw), approved); this.hasRoute = true; this.routeDeadline = route.offer.expiresAt; return JSON.stringify(route) }
-  async stopRoute(): Promise<void> { this.local(this.authority); this.hasRoute = false; const results = await Promise.allSettled([this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]); if (results.some(value => value.status === 'rejected')) throw new Error('native route cleanup outcome unknown') }
+  async stopRoute(): Promise<void> { this.local(this.authority); this.hasRoute = false; const results = await Promise.allSettled([this.pairedConnection ? undefined : this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]); if (results.some(value => value.status === 'rejected')) throw new Error('native route cleanup outcome unknown') }
   /** @param raw - strict public device receipt. @returns pure public preview; activation still verifies the original identity and signature. */
   preview(raw: string): string { if (new TextEncoder().encode(raw).length > this.policy.trustMaxBytes) throw new Error('native device preview capacity'); return JSON.stringify(NativeDeviceProductFacade.previewObject(deviceBindingSchema.parse(JSON.parse(raw)))) }
   /** @param raw - signed confirmed receipt. @param compared - explicit native fingerprint/scope decision. @param networkApproved - native relay disclosure consent. @returns after original public receipt persistence only; no socket is opened. */

@@ -14,6 +14,7 @@ export interface EnabledRelay extends RelayLimits {
   readonly broker: BrokerPolicy | DisabledBroker
   readonly publicTrust?: PublicTrustPolicy
   readonly deviceRoutes?: PublicTrustPolicy
+  readonly pairedDevices?: boolean
   readonly nativeOrigin: RelayNativeOrigin
 }
 /** @param value - untrusted configuration JSON. @returns explicit disabled or fully resolved enabled settings; unknown fields and non-loopback listeners fail before allocation. */
@@ -22,7 +23,9 @@ export function resolveRelayConfig(value: unknown): DisabledRelay | EnabledRelay
   if (!('enabled' in value) || typeof value.enabled !== 'boolean') throw new Error('invalid relay configuration')
   if (!value.enabled) { if (Object.keys(value).length !== 1) throw new Error('invalid relay configuration'); return { enabled: false } }
   const fields = ['enabled', 'host', 'port', 'publicHost', 'sweepIntervalMs', 'maxControlFrames', 'maxConnections', 'shutdownTimeoutMs', 'requestTimeoutMs', 'headersTimeoutMs', 'connectionCheckIntervalMs', 'maxHeaderBytes', 'maxRooms', 'maxRoomTtlMs', 'pairTimeoutMs', 'maxFrameBytes', 'maxBufferedBytes', 'maxFrames', 'idleTimeoutMs']
-  if (Object.keys(value).length !== fields.length + (Object.hasOwn(value, 'broker') ? 1 : 0) + (Object.hasOwn(value, 'publicTrust') ? 1 : 0) + (Object.hasOwn(value, 'deviceRoutes') ? 1 : 0) + (Object.hasOwn(value, 'nativeOrigin') ? 1 : 0) || !fields.every(key => key in value)) throw new Error('invalid relay configuration')
+  if (Object.keys(value).length !== fields.length + (Object.hasOwn(value, 'broker') ? 1 : 0) + (Object.hasOwn(value, 'publicTrust') ? 1 : 0) + (Object.hasOwn(value, 'deviceRoutes') ? 1 : 0) + (Object.hasOwn(value, 'nativeOrigin') ? 1 : 0) + (Object.hasOwn(value, 'pairedDevices') ? 1 : 0) || !fields.every(key => key in value)) throw new Error('invalid relay configuration')
+  const pairedDevices = Object.hasOwn(value, 'pairedDevices') ? Reflect.get(value, 'pairedDevices') : false
+  if (typeof pairedDevices !== 'boolean' || pairedDevices && !Object.hasOwn(value, 'deviceRoutes')) throw new Error('paired devices require saved device history')
   const nativeOrigin = Object.hasOwn(value, 'nativeOrigin') ? Reflect.get(value, 'nativeOrigin') : 'deny'
   if (nativeOrigin !== 'deny' && nativeOrigin !== 'networkkit-v1') throw new Error('invalid relay configuration')
   const numeric = (key: string, minimum = 1) => { const result: unknown = Reflect.get(value, key); if (typeof result !== 'number' || !Number.isSafeInteger(result) || result < minimum) throw new Error('invalid relay configuration'); return result }
@@ -37,7 +40,7 @@ export function resolveRelayConfig(value: unknown): DisabledRelay | EnabledRelay
     if (Object.hasOwn(value, 'deviceRoutes')) {
       const route: unknown = Reflect.get(value, 'deviceRoutes')
       if (nativeOrigin !== 'networkkit-v1' || route === null || typeof route !== 'object' || Array.isArray(route) || Object.keys(route).length !== 3 || !('path' in route) || !('maxBytes' in route) || !('maxRecords' in route) || typeof route.path !== 'string' || !isAbsolute(route.path) || resolve(route.path) !== route.path || route.path === trust.path || typeof route.maxBytes !== 'number' || typeof route.maxRecords !== 'number' || ![route.maxBytes, route.maxRecords].every(number => Number.isSafeInteger(number) && number > 0)) throw new Error('invalid device route configuration')
-      return { ...base, deviceRoutes: { path: route.path, maxBytes: route.maxBytes, maxRecords: route.maxRecords } }
+      return { ...base, ...(pairedDevices ? { pairedDevices: true } : {}), deviceRoutes: { path: route.path, maxBytes: route.maxBytes, maxRecords: route.maxRecords } }
     }
     return base
   }

@@ -29,7 +29,7 @@ export async function openRelayApplication(candidate: unknown = { enabled: false
   let routes: DeviceRouteJournal | undefined
   try {
     if (config.deviceRoutes !== undefined) routes = await DeviceRouteJournal.reopen(config.deviceRoutes, store.fingerprint(), store.pairs(), config.broker.maxPairs, clock, io)
-    const writer = routes ?? store, pairs = writer.pairs(), storage = { close: async () => { const results = await Promise.allSettled([routes?.close(), store.close()]); if (results.some(item => item.status === 'rejected')) throw new Error('relay public storage cleanup failed') } }
+    const writer = routes ?? store, pairs = config.pairedDevices && routes !== undefined ? routes.pairedDevices() : writer.pairs(), storage = { close: async () => { const results = await Promise.allSettled([routes?.close(), store.close()]); if (results.some(item => item.status === 'rejected')) throw new Error('relay public storage cleanup failed') } }
     let application: RelayApplication | undefined
     const owner = new StandaloneRelay({ ...config, broker: { ...config.broker, pairs } }, authority, clock, () => { void application?.close().catch(error => { void error; /* CLI stop/start completion retains the content-free failure. */ }) }, source ?? freshRelayIssueSource(), writer)
     application = new RelayApplication(owner, storage); return application

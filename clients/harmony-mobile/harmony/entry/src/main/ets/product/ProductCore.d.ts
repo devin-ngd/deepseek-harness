@@ -10,7 +10,7 @@ import { NativePorts, NativePrimitives, NativeRelayBudgets } from '../paired/Pai
 export interface NativeDeviceCrypto { signer: { publicSpki: string; sign(bytes: Uint8Array): Promise<Uint8Array> }; primitives: NativePrimitives }
 export interface NativeDeviceNetwork { readonly ports: NativePorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
 export declare class NativeDeviceProductFacade {
-  constructor(authority: object, policy: string, identityAlias: string, host: string, routingExpiresAt: number, relay: NativeRelayBudgets, storage: ProductStorage, crypto: NativeDeviceCrypto, scheduler: ProductScheduler, clock: () => number, acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, publish: (view: string) => void, catalogRefreshMs: number, routeStorage?: ProductStorage)
+  constructor(authority: object, policy: string, identityAlias: string, host: string, routingExpiresAt: number, relay: NativeRelayBudgets, storage: ProductStorage, crypto: NativeDeviceCrypto, scheduler: ProductScheduler, clock: () => number, acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, publish: (view: string) => void, catalogRefreshMs: number, routeStorage?: ProductStorage, pairedConnection?: boolean)
   verifyStorageRecovery(expected: string): Promise<string>
   bootStatus(): Promise<void>
   static startupDiagnostic(error: Error, stage: string): string
@@ -39,4 +39,12 @@ export declare class NativeDeviceProductFacade {
   richRefusal(raw: string): string
   revoke(): Promise<void>
   close(): Promise<void>
+}
+
+/** App-owned automatic saved-device connection; no pairing or task is created. */
+export interface AutomaticConnectionPort { available(): boolean; connected(): boolean; connect(): Promise<void>; disconnect(): Promise<void>; failed(): void }
+export declare class AutomaticConnection {
+  constructor(port: AutomaticConnectionPort, scheduler: { after(ms: number, callback: () => void): () => void }, retryDelayMs: number)
+  start(): Promise<void>
+  stop(): Promise<void>
 }

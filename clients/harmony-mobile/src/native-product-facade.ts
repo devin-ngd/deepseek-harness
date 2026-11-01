@@ -68,3 +68,5 @@ export class NativeProductFacade {
 /** Device binding is an explicit separate native mode; legacy records are not promoted. */
 export { NativeDeviceProductFacade } from './native-device-product.ts'
 export type { NativeDeviceNetwork, NativeDeviceCrypto } from './native-device-product.ts'
+
+export { AutomaticConnection } from './automatic-connection.ts'

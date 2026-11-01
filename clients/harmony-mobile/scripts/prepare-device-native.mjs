@@ -13,7 +13,7 @@ for(const directory of ['AppScope','entry/src','hvigor']) await cp(join(source,d
 for(const file of ['platform.json','build-profile.json5','hvigorfile.ts','oh-package.json5','entry/hvigorfile.ts','entry/build-profile.json5','entry/oh-package.json5']) {await mkdir(resolve(target,file,'..'),{recursive:true});await writeFile(join(target,file),await readFile(join(source,file)))}
 const appPath=join(target,'AppScope/app.json5'),app=JSON.parse(await readFile(appPath,'utf8'));app.app.bundleName='local.dsh.mobile.offlineproduct';app.app.versionName=version;app.app.versionCode=2;await writeFile(appPath,JSON.stringify(app,null,2)+'\n')
 const config=JSON.parse(await readFile('product.config.json','utf8')); if(config.enabled!==false||config.core.enabled!==false)throw new Error('source must remain disabled')
-Object.assign(config,{deviceBindingMode:true,deviceRoutingTtlMs:86400000,deviceCatalogRefreshMs:5000})
+Object.assign(config,{deviceBindingMode:true,deviceAutoConnect:true,deviceReconnectMs:5000,deviceRoutingTtlMs:86400000,deviceCatalogRefreshMs:5000})
 await writeFile(join(target,'entry/src/main/ets/product/ProductConfiguration.ets'),"/** Independent default-disabled device-mode candidate. */\nimport {NativeProductConfiguration} from './NativeProductOwner'\nexport const productConfiguration: NativeProductConfiguration = "+JSON.stringify({...config,core:undefined,corePolicyJson:JSON.stringify(config.core)},null,2)+'\n')
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex'),project=resolve('.'),root=JSON.parse(await readFile('source.json','utf8')).dshRoot,require=createRequire(join(root,'package.json')),esbuild=require(require.resolve('esbuild',{paths:[join(root,'node_modules/.pnpm')]})),tsconfig=await projectionTsconfig(project,root)

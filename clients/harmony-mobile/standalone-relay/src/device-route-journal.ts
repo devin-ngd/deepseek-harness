@@ -4,7 +4,7 @@ import { constants } from 'node:fs'
 import { resolve, dirname, isAbsolute } from 'node:path'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { deviceBindingSchema, deviceBindingBytes, type DeviceBinding } from '../../src/device-binding-protocol.ts'
+import { deviceBindingSchema, deviceBindingBytes, deviceRelayPairId, type DeviceBinding } from '../../src/device-binding-protocol.ts'
 import { deviceRouteSchema, verifyDeviceRoute, type DeviceRoute } from '../../src/device-route-protocol.ts'
 import { routeVerifier } from './route-verifier.ts'
 import { id } from '../../src/protocol.ts'
@@ -98,6 +98,14 @@ export class DeviceRouteJournal {
   /** Existing broker's durable route-only revocation adapter; the persistent device binding is untouched. */
   async commit(pair: RelayPairTrust): Promise<void> { const item = this.routes.get(pair.pairId); if (item === undefined || !pair.revoked || pair.epoch !== 2 || pair.desktopPublicSpki !== item.route.offer.binding.desktopPublicSpki || pair.phonePublicSpki !== item.route.offer.binding.phonePublicSpki || pair.expiresAt !== item.route.offer.expiresAt) throw new Error('route broker revocation denied'); await this.revokeRoute(pair.pairId) }
   pairs(): readonly RelayPairTrust[] { if (this.closed || this.failed) throw new Error('route journal unavailable'); return [...this.routes.values()].filter(item => !item.revoked && !this.devices.has(item.route.offer.binding.bindingId) && item.route.offer.expiresAt > this.clock()).map(({ route }) => ({ pairId: id<'harmony-relay-pair'>(route.offer.routeId), desktopPublicSpki: route.offer.binding.desktopPublicSpki, phonePublicSpki: route.offer.binding.phonePublicSpki, epoch: route.offer.routeEpoch, expiresAt: route.offer.expiresAt, revoked: false })) }
+  /** @returns saved original devices, independently of retired test windows; device revocation still denies the pairing. No history is written. */
+  pairedDevices(): readonly RelayPairTrust[] {
+    if (this.closed || this.failed) throw new Error('route journal unavailable')
+    const saved = new Map<string, DeviceBinding>()
+    for (const { route } of this.routes.values()) if (!this.devices.has(route.offer.binding.bindingId)) saved.set(route.offer.binding.bindingId, route.offer.binding)
+    if (saved.size > this.maxActive) throw new Error('paired device capacity')
+    return [...saved.values()].map(binding => ({ pairId: deviceRelayPairId(binding), desktopPublicSpki: binding.desktopPublicSpki, phonePublicSpki: binding.phonePublicSpki, epoch: binding.epoch, expiresAt: Number.MAX_SAFE_INTEGER - 1, revoked: false }))
+  }
   status(routeId: string): { routeId: string; epoch: number; revoked: boolean; expiresAt: number } { if (this.closed || this.failed) throw new Error('route journal unavailable'); const item = this.routes.get(routeId); if (item === undefined) throw new Error('route record absent'); return { routeId, epoch: item.revoked ? 2 : 1, revoked: item.revoked, expiresAt: item.route.offer.expiresAt } }
   verifySelection(route: DeviceRoute): void { if (this.closed || this.failed || JSON.stringify(this.routes.get(route.offer.routeId)?.route) !== JSON.stringify(deviceRouteSchema.parse(route))) throw new Error('route public selection mismatch') }
   deviceStatus(binding: DeviceBinding): { bindingId: string; epoch: number; revoked: true } { if (this.closed || this.failed || JSON.stringify(this.devices.get(binding.bindingId)) !== JSON.stringify(deviceBindingSchema.parse(binding))) throw new Error('device route tombstone absent'); return { bindingId: binding.bindingId, epoch: binding.epoch, revoked: true } }

@@ -3,7 +3,7 @@ import { util } from '@kit.ArkTS'
 import { huks } from '@kit.UniversalKeystoreKit'
 import { deviceInfo } from '@kit.BasicServicesKit'
 import { common } from '@kit.AbilityKit'
-import { NativeDeviceProductFacade, NativeDeviceNetwork, NativeDeviceCrypto, ProductStorage } from './ProductCore'
+import { NativeDeviceProductFacade, NativeDeviceNetwork, NativeDeviceCrypto, ProductStorage, AutomaticConnection } from './ProductCore'
 import { NativePorts } from '../paired/PairedCore'
 import { NativeProductConfiguration, NativeProductPublicStorage } from './NativeProductOwner'
 import { NativeDeviceTrustFile } from './NativeDeviceTrustFile'
@@ -49,6 +49,9 @@ export class NativeDeviceProductOwner {
   private startupStorage: string = ''
   private loaded: boolean = false
   private starting: boolean = false
+  private automatic: AutomaticConnection | undefined = undefined
+  private connectionState: string = 'disconnected'
+  private autoStopped: boolean = false
   private preparing: Promise<void> | undefined = undefined
   private closing: Promise<void> | undefined = undefined
   private publish: (view: string) => void = () => {}
@@ -103,8 +106,14 @@ export class NativeDeviceProductOwner {
           const record = JSON.parse(NativeDeviceProductFacade.routingInput(raw)) as DeviceRoutingSelection, owner = new NativePairedConnectionOwner(authority, new NativePairedPolicy(this.host, record.routeId, this.alias, huks.HuksAuthStorageLevel.HUKS_AUTH_STORAGE_LEVEL_ECE, deviceInfo.sdkApiVersion, this.config.maxCryptoBytes, this.config.maxTotalSendBytes, this.config.relay))
           try { const ports = await owner.acquireDevicePortsNative(authority, record.desktopPublicSpki, diagnostic); if (this.closed || generation !== this.generation) throw new Error('native device network retired'); return new DeviceNetwork(ports, owner, authority) }
           catch (error) { try { await owner.closeNative(authority) } catch (cleanup) { void cleanup; diagnostic?.('cleanup-failed') }; throw (error as Error) }
-        }, view => { if (!this.closed && generation === this.generation) { const next = JSON.parse(view) as ProductView; if (typeof next.startupDiagnostic === 'string' && next.startupDiagnostic.length > 0) { this.startupReported = true; if (this.config.deviceRecovery !== undefined && (this.storage?.recoveryRequired?.() === true || this.routeStorage?.recoveryRequired?.() === true)) this.recoveryState = 'required' }; next.storageRecoveryAudit = this.recoveryAudit; next.storageRecovery = this.recoveryState; next.startupStorage = this.startupStorage; next.connectionGeneration = generation; this.publish(JSON.stringify(next)) } }, this.config.deviceCatalogRefreshMs === undefined ? 0 : this.config.deviceCatalogRefreshMs, this.routeStorage)
+        }, view => { if (!this.closed && generation === this.generation) { const next = JSON.parse(view) as ProductView; if (typeof next.startupDiagnostic === 'string' && next.startupDiagnostic.length > 0) { this.startupReported = true; if (this.config.deviceRecovery !== undefined && (this.storage?.recoveryRequired?.() === true || this.routeStorage?.recoveryRequired?.() === true)) this.recoveryState = 'required' }; next.storageRecoveryAudit = this.recoveryAudit; next.storageRecovery = this.recoveryState; next.startupStorage = this.startupStorage; next.connectionGeneration = generation; this.connectionState = next.connection; this.publish(JSON.stringify(next)) } }, this.config.deviceCatalogRefreshMs === undefined ? 0 : this.config.deviceCatalogRefreshMs, this.routeStorage, this.config.deviceAutoConnect === true)
         this.originalSigner = signer; this.runtime = runtime; await runtime.boot()
+        if (this.config.deviceAutoConnect === true && !this.closed && generation === this.generation) {
+          const retry = this.config.deviceReconnectMs
+          if (retry === undefined) throw new Error('device reconnect interval missing')
+          this.automatic = new AutomaticConnection({ available: (): boolean => !this.closed && runtime.bound() && runtime.routeReady(), connected: (): boolean => this.connectionState === 'connected', connect: (): Promise<void> => runtime.connect(true), disconnect: (): Promise<void> => runtime.stopRoute(), failed: (): void => { console.info('DSH_AUTOCONNECT_FAILED') } }, { after: (ms: number, callback: () => void): () => void => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } }, retry)
+          if (!this.autoStopped) void this.automatic.start().catch((_error: Error) => { console.info('DSH_AUTOCONNECT_FAILED') })
+        }
       } catch (error) { if (this.runtime === undefined) signer.closeNative(authority); throw new Error('native device preparation failed; original state retained') }
     })()
     this.preparing = operation
@@ -130,10 +139,10 @@ export class NativeDeviceProductOwner {
   }
   async initializeIdentity(alias: string, confirmed: boolean): Promise<string> { if (!confirmed) throw new Error('native original identity inspection denied'); return this.publicIdentity(alias) }
   /** @param networkApproved - explicit host decision from the current native page. @returns after fresh connection with the original binding. */
-  connect(networkApproved: boolean): Promise<void> { if (this.recovering || this.recoveryState === 'refused') return Promise.reject(new Error('device recovery blocks network')); return this.core().connect(networkApproved) }
+  connect(networkApproved: boolean): Promise<void> { if (this.recovering || this.recoveryState === 'refused' || !networkApproved) return Promise.reject(new Error('device connection not available')); this.autoStopped = false; return this.automatic === undefined ? this.core().connect(networkApproved) : this.automatic.start() }
   previewRoute(raw: string): Promise<string> { return this.core().previewRoute(raw) }
   signRoute(raw: string, approved: boolean): Promise<string> { return this.core().signRoute(raw, approved) }
-  stopRoute(): Promise<void> { return this.core().stopRoute() }
+  stopRoute(): Promise<void> { this.autoStopped = true; return this.automatic === undefined ? this.core().stopRoute() : this.automatic.stop() }
   select(session: string): Promise<void> { return this.core().select(session) }
   refresh(): Promise<void> { return this.core().refresh() }
   submit(request: string, text: string): Promise<string> { return this.core().submit(request, text) }
@@ -141,16 +150,17 @@ export class NativeDeviceProductOwner {
   cancel(): Promise<void> { return this.core().cancel() }
   richRequest(packet: string): Promise<string> { return this.core().richRequest(packet) }
   richRefusal(packet: string): string { return this.core().richRefusal(packet) }
-  revoke(): Promise<void> { return this.core().revoke() }
+  async revoke(): Promise<void> { this.autoStopped = true; await this.automatic?.stop(); await this.core().revoke() }
   async foreground(): Promise<void> { await this.closing; if (!this.closed) return; this.closing = undefined; this.loaded = false; this.raw = null; if (this.filesDir === '') throw new Error('native device foreground storage missing'); await this.start(new NativeDeviceTrustFile(this.filesDir, this.config.publicTrustMaxBytes, 'device-binding-v1', this.recovering), this.publish) }
   close(): Promise<void> {
     if (this.closing !== undefined) return this.closing
-    this.closed = true; this.generation++; const runtime = this.runtime; this.runtime = undefined
+    this.closed = true; this.generation++; const runtime = this.runtime, automatic = this.automatic; this.runtime = undefined; this.automatic = undefined
     this.closing = (async () => {
+      const automaticStop = await Promise.allSettled([automatic?.stop()])
       const outcomes = await Promise.allSettled([this.preparing, runtime?.close()]); this.originalSigner?.closeNative(this.authority); this.originalSigner = undefined
       let storeFailed: boolean = false
       if (runtime === undefined) { const stores = await Promise.allSettled([this.storage?.close(), this.routeStorage?.close()]); storeFailed = stores.some(value => value.status === 'rejected') }
-      if (outcomes.some(value => value.status === 'rejected') || storeFailed) throw new Error('native device product close failed')
+      if (automaticStop.some(value => value.status === 'rejected') || outcomes.some(value => value.status === 'rejected') || storeFailed) throw new Error('native device product close failed')
     })()
     return this.closing
   }

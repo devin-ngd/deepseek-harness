@@ -20,7 +20,7 @@ export class RoomBroker {
   private closed = false
   private failed = false
   /** @param authority - exact local trust/revocation owner. @param relay - shared routing core. @param policy - validated public pins and bounds. @param audience - exact selected TLS host. @param clock - expiry clock. @param source - fresh per-generation material, deterministic only in tests. @param revocations - public-only persistence seam; absent means revocation cannot report durable success. */
-  constructor(private readonly authority: object, private readonly relay: RelayRooms, private readonly policy: BrokerPolicy, private readonly audience: string, private readonly clock: () => number, private readonly source: RelayIssueSource, private readonly revocations?: PublicPairRevocations) {
+  constructor(private readonly authority: object, private readonly relay: RelayRooms, private readonly policy: BrokerPolicy, private readonly audience: string, private readonly clock: () => number, private readonly source: RelayIssueSource, private readonly revocations?: PublicPairRevocations, private readonly waitForPeer = false) {
     this.rooms = new ShortPairingRooms(authority, { publish: plan => relay.provision(authority, plan), revoke: room => relay.revoke(authority, room) }, clock, policy.roomTtlMs, policy.maxPairs, policy.maxOwnerRoomIssues)
     for (const trust of policy.pairs) this.pairs.set(trust.pairId, { trust, round: this.round(), desktop: undefined, phone: undefined, lease: undefined, lifetime: undefined, windowStart: clock(), issues: 0 })
   }
@@ -36,6 +36,11 @@ export class RoomBroker {
     try {
       peer.stops.push(socket.onEnd(() => { this.attempt(() => this.remove(peer)); this.contain() }))
       peer.stops.push(socket.onFrame((bytes, binary) => { try { if (binary || bytes.byteLength > this.policy.maxControlPayloadBytes || peer.closed) throw new Error('room denied'); this.proof(peer, JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))) } catch (error) { void error; this.attempt(() => this.remove(peer)) }; this.contain() }))
+      if (this.waitForPeer) {
+        const other = [...this.peers].find(value => value.pair === pair && value.role !== role && !value.closed)
+        if (other === undefined) return
+        if (other.challenge === undefined && other.provedUntil === 0) this.challenge(other)
+      }
       this.challenge(peer)
     } catch (error) { void error; this.attempt(() => this.remove(peer)); this.contain(); throw new Error('room denied') }
   }
@@ -62,7 +67,7 @@ export class RoomBroker {
     this.send(pair.phone, { ...base, role: 'phone', token: lease.phoneToken() })
   }
   private clearRoom(pair: Pair): void { const lease = pair.lease, lifetime = pair.lifetime; pair.lease = undefined; pair.lifetime = undefined; this.attempt(() => lifetime?.abort()); this.attempt(() => lease?.close()) }
-  private reset(pair: Pair): void { this.clearRoom(pair); pair.round = this.round(); const round = pair.round; for (const peer of [pair.desktop, pair.phone]) { if (pair.round !== round) return; if (peer !== undefined) this.challenge(peer) } }
+  private reset(pair: Pair): void { this.clearRoom(pair); pair.round = this.round(); if (this.waitForPeer && (pair.desktop === undefined || pair.phone === undefined)) { for (const peer of [pair.desktop, pair.phone]) if (peer !== undefined) { peer.challenge = undefined; peer.provedUntil = 0 }; return }; const round = pair.round; for (const peer of [pair.desktop, pair.phone]) { if (pair.round !== round) return; if (peer !== undefined) this.challenge(peer) } }
   private remove(peer: Peer | undefined, renew = true): void {
     if (peer === undefined || peer.closed) return; peer.closed = true; peer.challenge = undefined; this.peers.delete(peer); const current = peer.pair[peer.role] === peer
     if (current) peer.pair[peer.role] = undefined; for (const stop of peer.stops) this.attempt(stop); this.attempt(() => peer.socket.terminate())

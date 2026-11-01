@@ -14688,6 +14688,755 @@ function richMarkerIds(text4) {
   return ids;
 }
 
+// ../../packages/util/values/src/partial-json.ts
+var SIMPLE_ESCAPES = {
+  '"': '"',
+  "\\": "\\",
+  "/": "/",
+  b: "\b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "	"
+};
+var CONTENT_ESCAPE = /[\\\u0000-\u001f]/u;
+function isWhitespace(c) {
+  return c === " " || c === "\n" || c === "\r" || c === "	";
+}
+function isHex(c) {
+  return c >= "0" && c <= "9" || c >= "a" && c <= "f" || c >= "A" && c <= "F";
+}
+var PartialArguments = class _PartialArguments {
+  /** The view of a call with no arguments available. */
+  static EMPTY = _PartialArguments.fromObject({});
+  /**
+   * View finished argument text without scanning it until a reader asks.
+   * @param text - the complete argument JSON text.
+   * @returns a sealed view.
+   */
+  static fromText(text4) {
+    const view = new _PartialArguments();
+    view.append(text4);
+    view.sealed = true;
+    return view;
+  }
+  /**
+   * View an already parsed argument payload, such as a PTC dispatch object.
+   * @param value - the parsed argument value.
+   * @returns a sealed view; a non-object payload has no fields.
+   */
+  static fromObject(value) {
+    const view = new _PartialArguments();
+    view.object = typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+    view.sealed = true;
+    return view;
+  }
+  /**
+   * The source: text so far or a parsed object, plus whether it can still grow.
+   * These are the only enumerable fields, so two views over the same source
+   * compare equal structurally however far each has been read.
+   */
+  chunks = [];
+  object;
+  sealed = false;
+  // Scan progress, located fields, and remembered reads are caches over the source.
+  #ends = [];
+  #size = 0;
+  #consumed = 0;
+  #mode = "root";
+  #escape = false;
+  #keyStart = 0;
+  #keyEscaped = false;
+  #key = "";
+  #current = null;
+  #nestedEnds = [];
+  #nestedInString = false;
+  #invalidAt;
+  #invalidValue = false;
+  #entries = /* @__PURE__ */ new Map();
+  #order = [];
+  #reads = /* @__PURE__ */ new Map();
+  /** Whether this view rejects further appends; does not scan text or register reads. */
+  get isSealed() {
+    return this.sealed;
+  }
+  /** Whether indexing or a content read found invalid JSON; unread value contents are not validated. */
+  get invalid() {
+    this.scan();
+    return this.#mode === "invalid" || this.#invalidValue;
+  }
+  /**
+   * Retain streamed argument text without scanning or comparing observed answers.
+   * @param fragment - the text following every fragment appended before.
+   */
+  append(fragment) {
+    if (this.sealed) throw new Error("PartialArguments: cannot append to a sealed view");
+    if (fragment.length === 0) return;
+    this.chunks.push(fragment);
+    this.#size += fragment.length;
+    this.#ends.push(this.#size);
+  }
+  /**
+   * Reconcile a streamed prefix with authoritative complete text without joining the fragments.
+   * @param text - the final argument text, which replaces missing or conflicting deltas.
+   * @returns this view sealed with its caches retained when every character matches; otherwise a new sealed view.
+   */
+  settle(text4) {
+    if (this.object !== void 0 || text4.length !== this.#size) return _PartialArguments.fromText(text4);
+    let offset = 0;
+    for (const chunk of this.chunks) {
+      if (!text4.startsWith(chunk, offset)) return _PartialArguments.fromText(text4);
+      offset += chunk.length;
+    }
+    this.chunks = text4.length === 0 ? [] : [text4];
+    this.#ends = text4.length === 0 ? [] : [text4.length];
+    this.sealed = true;
+    return this;
+  }
+  /**
+   * Compare observed answers and advance their publication baseline. Unread views remain unscanned.
+   * @returns whether any observed answer changed since its first read or the preceding refresh.
+   */
+  refresh() {
+    if (this.#reads.size === 0) return false;
+    this.scan();
+    let changed = false;
+    let completions = false;
+    for (const read of this.#reads.values()) {
+      if (read.completion) {
+        completions = true;
+        continue;
+      }
+      changed = this.refreshRead(read) || changed;
+    }
+    if (completions) {
+      for (const read of this.#reads.values()) if (read.completion) changed = this.refreshRead(read) || changed;
+    }
+    if (this.sealed) this.#reads.clear();
+    return changed;
+  }
+  refreshRead(read) {
+    const now = read.answer();
+    if (Object.is(now, read.last)) return false;
+    read.last = now;
+    return true;
+  }
+  /**
+   * Check whether no further fields can arrive.
+   * @returns whether the outer object closed, indexing failed, or the view is sealed; unread values are not validated.
+   */
+  closed() {
+    return this.remember("closed", "", () => this.closedNow());
+  }
+  /**
+   * List discovered fields in first-appearance order.
+   * @returns top-level keys seen so far, in first-appearance order.
+   */
+  keys() {
+    return this.remember("keys", "", () => this.keysNow(), (keys2) => keys2.length);
+  }
+  /**
+   * Check whether a top-level field has appeared.
+   * @param key - argument name.
+   * @returns whether the field has appeared (a string opened or another value began).
+   */
+  has(key) {
+    return this.remember("has", key, () => this.hasNow(key));
+  }
+  /**
+   * Check whether a field's closing delimiter has arrived, without validating its contents.
+   * @param key - argument name.
+   * @returns whether its delimiter arrived and no content reader has reported an error for this value.
+   */
+  complete(key) {
+    return this.remember("complete", key, () => this.completeNow(key));
+  }
+  /**
+   * Read string length without materializing its text.
+   * @param key - argument name.
+   * @param options - change granularity for a streaming string.
+   * @returns decoded UTF-16 length of the string field so far; undefined when absent or not a string.
+   */
+  stringLength(key, options) {
+    const step = Math.max(1, Math.floor(options?.step ?? 1));
+    const offset = options?.offset ?? 0;
+    return this.remember(
+      `length:${step}:${offset}`,
+      key,
+      () => this.lengthNow(key),
+      (length) => length === void 0 ? void 0 : Math.ceil((length + offset) / step)
+    );
+  }
+  /**
+   * Check a string against a decoded UTF-16 length limit without materializing it.
+   * @param key - argument name.
+   * @param maxLength - decoded UTF-16 limit, floored to at least zero.
+   * @returns whether the string is longer than the limit; false when absent or not a string.
+   */
+  stringExceeds(key, maxLength) {
+    const limit = Math.max(0, Math.floor(maxLength));
+    return this.remember(
+      `exceeds:${limit}`,
+      key,
+      () => (this.lengthNow(key, limit + 1) ?? 0) > limit
+    );
+  }
+  /**
+   * Read a decoded string, including a streaming prefix.
+   * @param key - argument name.
+   * @returns the string field's decoded text so far; undefined when absent or not a string.
+   */
+  text(key) {
+    return this.remember("text", key, () => this.textNow(key));
+  }
+  /**
+   * Read at most the first decoded UTF-16 units of a string.
+   * @param key - argument name.
+   * @param maxLength - maximum decoded UTF-16 length, floored to at least one.
+   * @returns the bounded string prefix; undefined when absent or not a string.
+   */
+  textPrefix(key, maxLength) {
+    const limit = Math.max(1, Math.floor(maxLength));
+    return this.remember(
+      `prefix:${limit}`,
+      key,
+      () => this.textPrefixNow(key, limit)
+    );
+  }
+  /**
+   * Read a completed non-string argument.
+   * @param key - argument name.
+   * @returns the parsed non-string value once it closed; undefined while open, absent, or a string.
+   */
+  value(key) {
+    return this.remember("value", key, () => this.valueNow(key));
+  }
+  /** Answer a question and, on a streaming view, remember it for change detection. */
+  remember(kind, key, read, comparison) {
+    this.scan();
+    const result = read();
+    if (!this.sealed) {
+      const id2 = `${kind}/${key}`;
+      if (!this.#reads.has(id2)) {
+        this.#reads.set(id2, {
+          completion: kind === "complete",
+          answer: comparison === void 0 ? read : () => comparison(read()),
+          last: comparison === void 0 ? result : comparison(result)
+        });
+      }
+    }
+    return result;
+  }
+  closedNow() {
+    return this.sealed || this.#mode === "closed" || this.#mode === "invalid";
+  }
+  keysNow() {
+    return this.object === void 0 ? this.#order : Object.keys(this.object);
+  }
+  hasNow(key) {
+    return this.object === void 0 ? this.#entries.has(key) : Object.hasOwn(this.object, key);
+  }
+  completeNow(key) {
+    if (this.object !== void 0) return Object.hasOwn(this.object, key);
+    const entry = this.#entries.get(key);
+    return entry !== void 0 && entry.end >= 0 && (entry.kind === "string" ? entry.invalidAt === void 0 : !entry.invalid);
+  }
+  lengthNow(key, limit = Number.POSITIVE_INFINITY) {
+    if (this.object !== void 0) {
+      const field = Object.hasOwn(this.object, key) ? this.object[key] : void 0;
+      return typeof field === "string" ? field.length : void 0;
+    }
+    const entry = this.#entries.get(key);
+    if (entry?.kind !== "string") return void 0;
+    if (entry.text !== void 0 && entry.text.at === entry.end) return entry.text.length;
+    const read = entry.length ??= { at: entry.start, length: 0, text: "" };
+    this.readString(entry, read, limit, false);
+    return read.length;
+  }
+  textNow(key) {
+    if (this.object !== void 0) {
+      const field = Object.hasOwn(this.object, key) ? this.object[key] : void 0;
+      return typeof field === "string" ? field : void 0;
+    }
+    const entry = this.#entries.get(key);
+    if (entry?.kind !== "string") return void 0;
+    if (entry.text === void 0 && entry.end >= 0 && entry.needsDecoding && entry.invalidAt === void 0) {
+      let text4;
+      try {
+        text4 = JSON.parse(`"${this.slice(entry.start, entry.end)}"`);
+      } catch (_error) {
+      }
+      if (text4 !== void 0) entry.text = { at: entry.end, length: text4.length, text: text4 };
+    }
+    const read = entry.text ??= { at: entry.start, length: 0, text: "" };
+    this.readString(entry, read, Number.POSITIVE_INFINITY, true);
+    return read.text;
+  }
+  textPrefixNow(key, maxLength) {
+    if (this.object !== void 0) {
+      const field = Object.hasOwn(this.object, key) ? this.object[key] : void 0;
+      return typeof field === "string" ? field.slice(0, maxLength) : void 0;
+    }
+    const entry = this.#entries.get(key);
+    if (entry?.kind !== "string") return void 0;
+    const prefixes = entry.prefixes ??= /* @__PURE__ */ new Map();
+    let read = prefixes.get(maxLength);
+    if (read === void 0) {
+      read = { at: entry.start, length: 0, text: "" };
+      prefixes.set(maxLength, read);
+    }
+    this.readString(entry, read, maxLength, true);
+    return read.text;
+  }
+  valueNow(key) {
+    if (this.object !== void 0) {
+      if (!Object.hasOwn(this.object, key)) return void 0;
+      const field = this.object[key];
+      return typeof field === "string" ? void 0 : field;
+    }
+    const entry = this.#entries.get(key);
+    if (entry?.kind !== "value" || entry.end < 0 || entry.invalid) return void 0;
+    if (entry.parsed === void 0) {
+      try {
+        entry.parsed = JSON.parse(this.slice(entry.start, entry.end));
+      } catch (_error) {
+        entry.invalid = true;
+        this.#invalidValue = true;
+      }
+    }
+    return entry.parsed;
+  }
+  chunkAt(at) {
+    let low = 0;
+    let high = this.#ends.length;
+    while (low < high) {
+      const mid = low + high >>> 1;
+      if (this.#ends[mid] <= at) low = mid + 1;
+      else high = mid;
+    }
+    return low;
+  }
+  /** Materialize only a requested range, never the cumulative source. */
+  slice(start, end) {
+    if (start >= end) return "";
+    const first = this.chunkAt(start);
+    const last = this.chunkAt(end - 1);
+    const base = first === 0 ? 0 : this.#ends[first - 1];
+    if (first === last) return this.chunks[first].slice(start - base, end - base);
+    const parts2 = [this.chunks[first].slice(start - base)];
+    for (let i = first + 1; i < last; i++) parts2.push(this.chunks[i]);
+    parts2.push(this.chunks[last].slice(0, end - this.#ends[last - 1]));
+    return parts2.join("");
+  }
+  readString(entry, read, limit, materialize) {
+    const end = Math.min(
+      entry.end < 0 ? this.#consumed : entry.end,
+      entry.invalidAt ?? Number.POSITIVE_INFINITY,
+      this.#invalidAt ?? Number.POSITIVE_INFINITY
+    );
+    if (!entry.needsDecoding) {
+      const length = Math.min(end - read.at, limit - read.length);
+      if (length <= 0) return;
+      if (materialize) read.text += this.slice(read.at, read.at + length);
+      read.at += length;
+      read.length += length;
+      return;
+    }
+    let chunkIndex = this.chunkAt(read.at);
+    while (read.at < end && read.length < limit) {
+      const base = chunkIndex === 0 ? 0 : this.#ends[chunkIndex - 1];
+      const chunk = this.chunks[chunkIndex];
+      const remaining = chunk.slice(read.at - base, Math.min(chunk.length, end - base));
+      const boundary = remaining.search(CONTENT_ESCAPE);
+      const length = Math.min(boundary < 0 ? remaining.length : boundary, limit - read.length);
+      if (length > 0) {
+        if (materialize) read.text += remaining.slice(0, length);
+        read.at += length;
+        read.length += length;
+        if (read.at === base + chunk.length) chunkIndex++;
+        continue;
+      }
+      const type = remaining.length > 1 ? remaining[1] : read.at + 1 < end ? this.chunks[chunkIndex + 1][0] : void 0;
+      let decoded;
+      let width = 2;
+      if (remaining[0] === "\\" && type === void 0 && entry.end < 0) return;
+      if (remaining[0] === "\\" && type === "u") {
+        const hex3 = this.slice(read.at + 2, Math.min(end, read.at + 6));
+        let valid = true;
+        for (let i = 0; i < hex3.length; i++) if (!isHex(hex3[i])) valid = false;
+        if (valid) {
+          if (hex3.length < 4 && entry.end < 0) return;
+          if (hex3.length === 4) decoded = String.fromCharCode(Number.parseInt(hex3, 16));
+        }
+        width = 6;
+      } else if (remaining[0] === "\\" && type !== void 0) {
+        decoded = SIMPLE_ESCAPES[type];
+      }
+      if (decoded === void 0) {
+        entry.invalidAt = read.at;
+        this.#invalidValue = true;
+        return;
+      }
+      if (materialize) read.text += decoded;
+      read.length++;
+      read.at += width;
+      while (chunkIndex < this.chunks.length && read.at >= this.#ends[chunkIndex]) chunkIndex++;
+    }
+  }
+  /** Locate new field ranges without decoding or parsing their contents. */
+  scan() {
+    if (this.object !== void 0 || this.#consumed === this.#size) return;
+    for (let i = this.chunkAt(this.#consumed); i < this.chunks.length && this.#invalidAt === void 0; i++) {
+      const pending = this.chunks[i];
+      const base = i === 0 ? 0 : this.#ends[i - 1];
+      for (let index3 = this.#consumed - base; index3 < pending.length && this.#mode !== "invalid"; index3++) {
+        if (this.#mode === "string" || this.#mode === "nested" && this.#nestedInString) {
+          const end = this.stringBoundary(pending, index3);
+          this.#consumed += end - index3;
+          index3 = end;
+          if (index3 === pending.length) break;
+        }
+        this.step(pending[index3], this.#consumed);
+        this.#consumed++;
+      }
+    }
+  }
+  /** Only raw quotes and their preceding backslash runs can terminate a string. */
+  stringBoundary(fragment, start) {
+    let at = start;
+    while (true) {
+      const quote = fragment.indexOf('"', at);
+      const end = quote < 0 ? fragment.length : quote;
+      if (this.#mode === "string") {
+        const entry = this.#current;
+        if (!entry.needsDecoding && CONTENT_ESCAPE.test(fragment.slice(at, end))) entry.needsDecoding = true;
+      }
+      let slashStart = end;
+      while (slashStart > at && fragment[slashStart - 1] === "\\") slashStart--;
+      const escaped = (end - slashStart) % 2 === 1 !== (slashStart === at && this.#escape);
+      this.#escape = quote < 0 && escaped;
+      if (quote < 0 || !escaped) return end;
+      at = quote + 1;
+    }
+  }
+  step(c, at) {
+    switch (this.#mode) {
+      case "root":
+        if (isWhitespace(c)) return;
+        if (c === "{") {
+          this.#mode = "key-or-end";
+          return;
+        }
+        this.fail();
+        return;
+      case "key-or-end":
+        if (isWhitespace(c)) return;
+        if (c === "}") {
+          this.#mode = "closed";
+          return;
+        }
+        if (c === '"') {
+          this.beginKey(at);
+          return;
+        }
+        this.fail();
+        return;
+      case "key-only":
+        if (isWhitespace(c)) return;
+        if (c === '"') {
+          this.beginKey(at);
+          return;
+        }
+        this.fail();
+        return;
+      case "key":
+        this.stepKey(c, at);
+        return;
+      case "colon":
+        if (isWhitespace(c)) return;
+        if (c === ":") {
+          this.#mode = "value";
+          return;
+        }
+        this.fail();
+        return;
+      case "value":
+        this.beginValue(c, at);
+        return;
+      case "string": {
+        const entry = this.#current;
+        entry.end = at;
+        this.#current = null;
+        this.#mode = "comma-or-end";
+        return;
+      }
+      case "scalar":
+        this.stepScalar(c, at);
+        return;
+      case "nested":
+        this.stepNested(c, at);
+        return;
+      case "comma-or-end":
+        if (isWhitespace(c)) return;
+        if (c === ",") {
+          this.#mode = "key-only";
+          return;
+        }
+        if (c === "}") {
+          this.#mode = "closed";
+          return;
+        }
+        this.fail();
+        return;
+      case "closed":
+        if (isWhitespace(c)) return;
+        this.fail();
+        return;
+      /* v8 ignore next 2 -- scan() stops stepping once the view is invalid. */
+      case "invalid":
+        return;
+      /* v8 ignore next 2 -- Every scanner mode has a handler above. */
+      default:
+        assertNever2(this.#mode);
+    }
+  }
+  fail() {
+    this.#invalidAt = this.#consumed;
+    this.#mode = "invalid";
+    this.#current = null;
+  }
+  beginKey(at) {
+    this.#mode = "key";
+    this.#keyStart = at + 1;
+    this.#keyEscaped = false;
+    this.#escape = false;
+  }
+  stepKey(c, at) {
+    if (c < " ") {
+      this.fail();
+      return;
+    }
+    if (this.#escape) {
+      this.#escape = false;
+      return;
+    }
+    if (c === "\\") {
+      this.#escape = true;
+      this.#keyEscaped = true;
+      return;
+    }
+    if (c !== '"') return;
+    const raw = this.slice(this.#keyStart, at);
+    if (this.#keyEscaped) {
+      try {
+        this.#key = JSON.parse(`"${raw}"`);
+      } catch (_error) {
+        this.fail();
+        return;
+      }
+    } else {
+      this.#key = raw;
+    }
+    this.#mode = "colon";
+  }
+  open(entry) {
+    if (!this.#entries.has(this.#key)) this.#order.push(this.#key);
+    this.#entries.set(this.#key, entry);
+    this.#current = entry;
+  }
+  beginValue(c, at) {
+    if (isWhitespace(c)) return;
+    if (c === '"') {
+      this.open({
+        kind: "string",
+        start: at + 1,
+        end: -1,
+        needsDecoding: false,
+        invalidAt: void 0,
+        length: void 0,
+        text: void 0,
+        prefixes: void 0
+      });
+      this.#escape = false;
+      this.#mode = "string";
+      return;
+    }
+    if (c === "}" || c === "," || c === ":" || c === "]") {
+      this.fail();
+      return;
+    }
+    this.open({ kind: "value", start: at, end: -1, parsed: void 0, invalid: false });
+    if (c === "{" || c === "[") {
+      this.#mode = "nested";
+      this.#nestedEnds = [c === "{" ? "}" : "]"];
+      this.#nestedInString = false;
+      this.#escape = false;
+      return;
+    }
+    this.#mode = "scalar";
+  }
+  stepScalar(c, at) {
+    if (c !== "," && c !== "}" && !isWhitespace(c)) return;
+    this.closeValue(at);
+    this.#mode = c === "," ? "key-only" : c === "}" ? "closed" : "comma-or-end";
+  }
+  stepNested(c, at) {
+    if (this.#nestedInString) {
+      this.#nestedInString = false;
+      return;
+    }
+    if (c === '"') {
+      this.#nestedInString = true;
+      return;
+    }
+    if (c === "{" || c === "[") {
+      this.#nestedEnds.push(c === "{" ? "}" : "]");
+      return;
+    }
+    if (c === "}" || c === "]") {
+      if (this.#nestedEnds.pop() !== c) {
+        this.fail();
+        return;
+      }
+      if (this.#nestedEnds.length === 0) {
+        this.closeValue(at + 1);
+        this.#mode = "comma-or-end";
+      }
+    }
+  }
+  closeValue(end) {
+    const entry = this.#current;
+    entry.end = end;
+    this.#current = null;
+  }
+};
+
+// ../../packages/util/values/src/index.ts
+function assertNever2(value, context) {
+  const rendered = JSON.stringify(value) ?? String(value);
+  throw new Error(`unreachable variant${context ? ` in ${context}` : ""}: ${rendered}`);
+}
+function hasIntrinsicConstructor(prototype, name) {
+  const descriptor2 = Object.getOwnPropertyDescriptor(prototype, "constructor");
+  const constructor = descriptor2?.value;
+  if (typeof constructor !== "function") return false;
+  try {
+    return constructor.name === name && constructor.prototype === prototype && Function.prototype.toString.call(constructor) === Function.prototype.toString.call(name === "Array" ? Array : Object);
+  } catch {
+    return false;
+  }
+}
+function isIntrinsicObjectPrototype(value) {
+  return Object.getPrototypeOf(value) === null && hasIntrinsicConstructor(value, "Object");
+}
+function hasPlainArrayPrototype(value) {
+  const prototype = Object.getPrototypeOf(value);
+  if (!Array.isArray(prototype) || !hasIntrinsicConstructor(prototype, "Array")) return false;
+  const objectPrototype = Object.getPrototypeOf(prototype);
+  return typeof objectPrototype === "object" && objectPrototype !== null && isIntrinsicObjectPrototype(objectPrototype);
+}
+function hasPlainObjectPrototype(value) {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === null || typeof prototype === "object" && isIntrinsicObjectPrototype(prototype);
+}
+function enumerableStringKeys(value) {
+  const keys2 = Reflect.ownKeys(value);
+  if (keys2.some((key) => typeof key !== "string" || !Object.prototype.propertyIsEnumerable.call(value, key))) return void 0;
+  return keys2;
+}
+function walkJsonValue(value, detach) {
+  const ancestors = /* @__PURE__ */ new Set();
+  let root;
+  const assign = (destination, item) => {
+    if (destination === void 0) return;
+    if (destination.kind === "root") {
+      root = item;
+    } else if (destination.kind === "array") {
+      destination.target[destination.index] = item;
+    } else {
+      Object.defineProperty(destination.target, destination.key, {
+        value: item,
+        enumerable: true,
+        configurable: true,
+        writable: true
+      });
+    }
+  };
+  const tasks = [{
+    kind: "visit",
+    value,
+    ...detach ? { destination: { kind: "root" } } : {}
+  }];
+  for (let task = tasks.pop(); task !== void 0; task = tasks.pop()) {
+    if (task.kind === "leave") {
+      ancestors.delete(task.source);
+      continue;
+    }
+    if (task.kind === "array-item") {
+      if (!Object.prototype.hasOwnProperty.call(task.source, task.index)) return void 0;
+      tasks.push({
+        kind: "visit",
+        value: task.source[task.index],
+        ...task.target === void 0 ? {} : { destination: { kind: "array", target: task.target, index: task.index } }
+      });
+      continue;
+    }
+    if (task.kind === "object-property") {
+      tasks.push({
+        kind: "visit",
+        value: task.source[task.key],
+        ...task.target === void 0 ? {} : { destination: { kind: "object", target: task.target, key: task.key } }
+      });
+      continue;
+    }
+    const current = task.value;
+    if (current === null) {
+      assign(task.destination, null);
+      continue;
+    }
+    if (typeof current === "boolean" || typeof current === "string") {
+      assign(task.destination, current);
+      continue;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current) || Object.is(current, -0)) return void 0;
+      assign(task.destination, current);
+      continue;
+    }
+    if (typeof current !== "object") return void 0;
+    if (ancestors.has(current)) return void 0;
+    if (Array.isArray(current)) {
+      if (!hasPlainArrayPrototype(current)) return void 0;
+      const length = current.length;
+      if (Reflect.ownKeys(current).length !== length + 1) return void 0;
+      const target2 = detach ? [] : void 0;
+      if (target2 !== void 0) assign(task.destination, target2);
+      ancestors.add(current);
+      tasks.push({ kind: "leave", source: current });
+      for (let index3 = length - 1; index3 >= 0; index3--) {
+        tasks.push({ kind: "array-item", source: current, index: index3, ...target2 === void 0 ? {} : { target: target2 } });
+      }
+      continue;
+    }
+    if (!hasPlainObjectPrototype(current)) return void 0;
+    const keys2 = enumerableStringKeys(current);
+    if (keys2 === void 0) return void 0;
+    const target = detach ? {} : void 0;
+    if (target !== void 0) assign(task.destination, target);
+    ancestors.add(current);
+    tasks.push({ kind: "leave", source: current });
+    for (let index3 = keys2.length - 1; index3 >= 0; index3--) {
+      const key = keys2[index3];
+      if (key === void 0) return void 0;
+      tasks.push({ kind: "object-property", source: current, key, ...target === void 0 ? {} : { target } });
+    }
+  }
+  return detach ? root : true;
+}
+function isJsonValue(value) {
+  return walkJsonValue(value, false) === true;
+}
+
 // src/link-protocol.ts
 var MOBILE_LINK_PROTOCOL = "dsh-mobile-lab/2";
 var LinkError = class extends Error {
@@ -14699,7 +15448,7 @@ var LinkError = class extends Error {
   code;
 };
 function fields(candidate, expected) {
-  if (!isRichJson(candidate) || candidate === null || typeof candidate !== "object" || Array.isArray(candidate) || Object.keys(candidate).length !== expected.length || Object.keys(candidate).some((key) => !expected.includes(key))) throw new LinkError("invalid-packet");
+  if (!isJsonValue(candidate) || candidate === null || typeof candidate !== "object" || Array.isArray(candidate) || Object.keys(candidate).length !== expected.length || Object.keys(candidate).some((key) => !expected.includes(key))) throw new LinkError("invalid-packet");
   return candidate;
 }
 function natural(value) {
@@ -14743,11 +15492,8 @@ function parseWireItem(candidate) {
   };
 }
 function jsonPayload(candidate) {
-  const value = fields({ payload: candidate }, ["payload"]);
-  const checked = value.payload;
-  if (checked === void 0) throw new TransportError("invalid-frame");
-  if (!isRichJson(checked)) throw new TransportError("invalid-frame");
-  return checked;
+  if (!isJsonValue(candidate)) throw new TransportError("invalid-frame");
+  return candidate;
 }
 var WireCursor = class _WireCursor {
   /** @param owner - native-selected routing identity. @param maxRemembered - positive duplicate fingerprint cap. */
@@ -15078,10 +15824,10 @@ function publicTrustRecord(value) {
     case "harmony-product-public-trust/2":
       return { ...value.record, revoked: value.revoked || value.record.revoked };
     default:
-      return assertNever2(value);
+      return assertNever3(value);
   }
 }
-function assertNever2(value) {
+function assertNever3(value) {
   throw new Error("unsupported public trust generation: " + String(value));
 }
 function successorHistory(value) {
@@ -15091,7 +15837,7 @@ function successorHistory(value) {
     case "harmony-product-public-trust/2":
       return [...value.history, { record: value.record, receipt: { previousDigest: value.previousDigest, revokedEpoch: value.revokedEpoch, signature: value.signature }, localRevoked: value.revoked }];
     default:
-      return assertNever2(value);
+      return assertNever3(value);
   }
 }
 function publicTrustRenewalBytes(value) {
@@ -15473,15 +16219,22 @@ var PROFILE_RPC_CODEC = "dsh-mobile-profile-rpc/1";
 
 // src/paired-product-transport.ts
 var PairedProductTransport = class {
-  /** @param policy - explicit transport limits. @param expiresAt - local trust/grant minimum deadline. @param clock - native clock. @param scheduler - native timers. @param factory - exact locally paired IO; no endpoint JSON selector. @param status - trusted native UI connection state. @param lifetime - local revoke/foreground lifetime. */
+  /** @param policy - explicit transport limits. @param expiresAt - local trust/grant minimum deadline. @param clock - native clock. @param scheduler - native timers. @param factory - exact locally paired IO; authorization may precede its return. @param status - trusted native UI connection state; connected permits immediate reads on the acquired transport. @param lifetime - local revoke/foreground lifetime. */
   constructor(policy, expiresAt, clock, scheduler, factory, status, lifetime) {
     this.policy = policy;
     this.scheduler = scheduler;
     this.status = status;
     if (![policy.maxPending, policy.maxQueuedFrames, policy.maxPacketBytes, policy.timeoutMs].every((value) => Number.isSafeInteger(value) && value > 0)) throw new Error("invalid product transport policy");
     this.supervisor = new ConnectionSupervisor(policy.recovery, expiresAt, clock, scheduler, async (ended) => {
-      let current;
+      let current, proofAccepted = false;
+      const connected = () => {
+        if (this.closed || current === void 0 || !proofAccepted) return;
+        this.authorized = true;
+        this.report("connected");
+        for (const wake of this.ready) this.stop(wake);
+      };
       const lost = () => {
+        proofAccepted = false;
         this.authorized = false;
         this.failAll(new TransportError("transport-lost"));
         this.report("disconnected");
@@ -15490,15 +16243,15 @@ var PairedProductTransport = class {
         current = await factory((state) => {
           if (this.closed) return;
           if (state === "authorized") {
-            this.authorized = true;
-            this.report("connected");
-            for (const wake of this.ready) this.stop(wake);
+            proofAccepted = true;
+            connected();
           } else if (state === "control-closed" || state === "connection-failed") {
             lost();
             ended();
           } else if (state === "disconnected") lost();
         }, (packet) => this.receive(packet));
         this.connection = current;
+        connected();
         const owned = current;
         return { close: async () => {
           lost();
@@ -15666,6 +16419,7 @@ var PairedProductTransport = class {
       }
     });
   }
+  /** A local read deadline ends the segment normally; PhoneCore owns finite session.sync renewal. Remote errors still reject and mutations are never replayed. */
   async *follow(command, resume, signal) {
     const connection = await this.connected(signal);
     if (this.pending.size >= this.policy.maxPending) throw new TransportError("queue-full");
@@ -15696,7 +16450,10 @@ var PairedProductTransport = class {
     }, fail });
     signal?.addEventListener("abort", abort, { once: true });
     try {
-      cancel = this.scheduler.after(this.policy.timeoutMs, () => fail(new TransportError("timeout")));
+      cancel = this.scheduler.after(this.policy.timeoutMs, () => {
+        complete = true;
+        wake();
+      });
       if (signal?.aborted) return;
       await connection.follow(id2, JSON.stringify({ argument: { version: PROFILE_RPC_CODEC, packet: JSON.stringify(command) }, resume }));
       while (!signal?.aborted) {
@@ -17593,7 +18350,7 @@ function decodeDomain(value, owner, limits) {
       integer2(active.startedAfterSeq, -1);
       integer2(active.turn, 1);
       integer2(active.step, 1);
-      if (!Array.isArray(active.stream) || active.stream.length > limits.maxBlocks) throw new TransportError("domain-too-large");
+      if (!Array.isArray(active.stream)) throw new TransportError("domain-invalid");
       active.stream.forEach((chunk) => validateChunk(chunk, limits));
       live = { revision: revision2, attemptId: string4(active.attemptId, 128), nextIndex: integer2(active.nextIndex), chunks: active.stream, committedSeq: null };
     }
@@ -17736,7 +18493,14 @@ var PhoneCore = class {
       }
     } catch (error51) {
       if (!signal.aborted) {
-        this.model.failFollow(error51 instanceof TransportError ? error51.code : "follow-failed");
+        const code = error51 instanceof TransportError ? error51.code : "follow-failed";
+        this.model.failFollow(code);
+        const diagnostic = ["domain-too-large", "domain-window-full", "domain-live-gap", "domain-gap", "domain-invalid", "domain-conflict", "domain-rollback", "follow-budget-exhausted", "follow-recovery-exhausted", "timeout", "transport-lost", "unknown-outcome", "request-expired"].includes(code) ? code : "follow-failed";
+        try {
+          console.info("DSH_PHONE_READ_FAILURE=" + diagnostic);
+        } catch (error52) {
+          void error52;
+        }
         throw error51;
       }
     } finally {
@@ -17848,12 +18612,13 @@ var PhoneCore = class {
     this.model.verifiedConnection();
     return value;
   }
-  /** Cancel is a native user operation, never a side effect of losing the stream. @returns acknowledgement separate from terminal turn evidence. */
+  /** Cancel is a native user operation. Terminal events after invocation remain authoritative even when acknowledgement arrives later. @returns acknowledgement separate from terminal turn evidence. */
   async cancel() {
     if (this.model.view.readOnly) throw new TransportError("read-only");
+    const cut = this.model.view.cursor;
     const value = object2(await this.provider.request(this.command("session.cancel", { sessionId: this.model.owner.sessionId })));
     if (value.accepted !== true) throw new TransportError("domain-invalid");
-    this.model.admissionState("cancel_requested");
+    this.model.admissionState("cancel_requested", null, cut);
   }
   /** @param reference - trusted persisted block. @returns fresh mount; history restoration never resubmits a task. */
   async mount(reference) {
@@ -17953,7 +18718,6 @@ var SemanticPhone = class _SemanticPhone {
         else {
           if (frame.attemptId !== next.live.attemptId || frame.index !== next.live.nextIndex) throw new TransportError("domain-live-gap");
           if (frame.type === "chunk") {
-            if (next.live.chunks.length >= this.limits.maxBlocks) throw new TransportError("domain-too-large");
             live = { ...next.live, revision: revision2, nextIndex: next.live.nextIndex + 1, chunks: [...next.live.chunks, frame.chunk] };
           } else {
             const outcome = object2(frame.outcome), committedSeq = outcome.kind === "committed" ? outcome.seq : null;
@@ -18675,6 +19439,9 @@ var deviceBindingSchema = registrationBody.extend({ signature: signature2 }).str
 var deviceBindingOfferSchema = external_exports.object({ schema: external_exports.literal("harmony-device-binding-offer/1"), registration: registrationBody, challengeId: identifier4, nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), expiresAt: natural2, signature: signature2 }).strict();
 var deviceBindingReplySchema = external_exports.object({ schema: external_exports.literal("harmony-device-binding-reply/1"), offer: deviceBindingOfferSchema, signature: signature2 }).strict();
 var deviceRouteContextSchema = external_exports.object({ routeId: identifier4, routeEpoch: external_exports.literal(1), expiresAt: natural2 }).strict();
+function deviceRelayPairId(binding) {
+  return id("paired-" + binding.credentialId);
+}
 var connectionBody = external_exports.object({
   schema: external_exports.literal("harmony-device-connection-challenge/1"),
   bindingId: identifier4,
@@ -19087,7 +19854,7 @@ var DeviceBoundMobileProduct = class {
       throw new Error("device mobile selection cleanup failed");
     }
   }
-  /** @param authority - native disconnect/expiry owner. @param cause - unexpected closure or expiry; omission means an explicit local stop. @returns after pending native acquisition, Session/rich and channel cleanup; cleanup failure blocks reconnect. Persistent binding remains, and no ticket is reused. */
+  /** @param authority - native disconnect/expiry owner. @param cause - unexpected closure or expiry; omission means an explicit local stop. @returns after pending native acquisition, Session/rich and channel cleanup; established Session consumers retire before their channel. Pending selection retains its bounded RPC wait. Cleanup failure blocks reconnect. Persistent binding remains, and no ticket is reused. */
   disconnect(authority, cause) {
     if (authority !== this.authority) return Promise.reject(new Error("device mobile disconnect denied"));
     if (this.disconnecting !== void 0) return this.disconnecting;
@@ -19106,7 +19873,9 @@ var DeviceBoundMobileProduct = class {
     attempt?.lifetime.abort();
     this.selectionLifetime?.abort();
     const operation = (async () => {
-      const results = await Promise.allSettled([this.tail.then(() => this.retireSelection()), attempt === void 0 ? connection?.close() : attempt.close(), attempt?.settled]);
+      const selectionClosed = this.tail.then(() => this.retireSelection()), release = () => connection?.close();
+      const channelClosed = attempt === void 0 ? selectionClosed.then(release, release) : attempt.close();
+      const results = await Promise.allSettled([selectionClosed, channelClosed, attempt?.settled]);
       const failure = cause === void 0 ? void 0 : connection?.failure?.(cause) ?? cause, cleanupFailed = attempt?.cleanupFailed === true || results.some((result) => result.status === "rejected");
       if (cleanupFailed) failure?.cleanupFailed();
       if (generation === this.generation) {
@@ -19930,13 +20699,13 @@ var NativeDeviceCore = class {
   async initialize() {
     if (this.closed || this.endpoint !== void 0) throw new Error("native device already initialized");
     const value = await this.client.load(this.authority);
-    const route2 = await verifyDeviceRoute(this.route, this.ports.primitives, value, this.ports.clock());
-    const context = { routeId: route2.offer.routeId, routeEpoch: route2.offer.routeEpoch, expiresAt: route2.offer.expiresAt };
-    if (route2.offer.expiresAt !== this.routingExpiresAt) throw new Error("native routing deadline mismatch");
+    const route2 = this.route === void 0 ? void 0 : await verifyDeviceRoute(this.route, this.ports.primitives, value, this.ports.clock());
+    const context = route2 === void 0 ? void 0 : { routeId: route2.offer.routeId, routeEpoch: route2.offer.routeEpoch, expiresAt: route2.offer.expiresAt };
+    if (route2 !== void 0 && route2.offer.expiresAt !== this.routingExpiresAt) throw new Error("native routing deadline mismatch");
     if (this.closed) throw new Error("native device closed");
     this.stopHandshake = this.ports.scheduler.after(this.policy.handshakeMs, () => this.fail("timeout"));
     this.phase = "control-handshake";
-    this.endpoint = new PairedRelayEndpoint({ pairId: id(route2.offer.routeId), epoch: route2.offer.routeEpoch, role: "phone", audience: value.audience, credentialId: id(value.credentialId), expiresAt: this.routingExpiresAt }, this.policy, { ...this.ports, data: async (lease) => {
+    this.endpoint = new PairedRelayEndpoint({ pairId: route2 === void 0 ? deviceRelayPairId(value) : id(route2.offer.routeId), epoch: route2?.offer.routeEpoch ?? value.epoch, role: "phone", audience: value.audience, credentialId: id(value.credentialId), expiresAt: this.routingExpiresAt }, this.policy, { ...this.ports, data: async (lease) => {
       try {
         return await this.ports.data(lease);
       } catch (error51) {
@@ -20288,7 +21057,7 @@ var ProductRouteStorage = class {
 // src/native-device-product.ts
 var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   /** @param authority - exact native UI owner. @param policyJson - existing default-disabled product/domain limits. @param identityAlias - original selected HUKS alias. @param host - approved existing relay host. @param routingExpiresAt - independent public relay directory deadline. @param relay - existing control/E2E capacities. @param publicStorage - separate app-private device public file. @param crypto - original native signer and maintained backend. @param scheduler - native timers. @param clock - trusted native clock. @param acquire - original native WSS acquisition, called only on connect. @param publish - sanitized original page DTO sink. */
-  constructor(authority, policyJson, identityAlias, host, routingExpiresAt, relay, publicStorage, crypto, scheduler, clock, acquire, publish, catalogRefreshMs, routeStorage) {
+  constructor(authority, policyJson, identityAlias, host, routingExpiresAt, relay, publicStorage, crypto, scheduler, clock, acquire, publish, catalogRefreshMs, routeStorage, pairedConnection = false) {
     this.authority = authority;
     this.identityAlias = identityAlias;
     this.host = host;
@@ -20301,7 +21070,10 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
     this.acquire = acquire;
     this.publish = publish;
     this.catalogRefreshMs = catalogRefreshMs;
+    this.pairedConnection = pairedConnection;
     this.policy = parseProductPolicy(policyJson);
+    this.routingLeaseMs = routingExpiresAt - clock();
+    if (pairedConnection && (!Number.isSafeInteger(this.routingLeaseMs) || this.routingLeaseMs <= relay.maxRoomTtlMs || this.routingLeaseMs > 2147483647)) throw new Error("invalid paired connection lease");
     if (!Number.isSafeInteger(catalogRefreshMs) || catalogRefreshMs <= 0 || catalogRefreshMs > 2147483647) throw new Error("native device catalogue interval denied");
     this.storage = { read: () => this.readPublic(), compareAndSet: (previous, next) => {
       const operation = this.writeTail.then(async () => {
@@ -20339,6 +21111,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   acquire;
   publish;
   catalogRefreshMs;
+  pairedConnection;
   policy;
   storage;
   client;
@@ -20362,6 +21135,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   recoveryVerified = false;
   hasRoute = false;
   routeDeadline = 0;
+  routingLeaseMs;
   readPublic() {
     if (this.closed || this.ioBlocked) return Promise.reject(new Error("native device public state unavailable"));
     if (this.loaded) return Promise.resolve(this.cached);
@@ -20382,8 +21156,8 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   }
   /** Used only after the facade verifies both signatures before native socket acquisition. */
   static routingInput(raw) {
-    const route2 = deviceRouteSchema.parse(JSON.parse(raw)), value = route2.offer.binding;
-    return JSON.stringify({ identityAlias: value.identityAlias, audience: value.audience, bindingId: value.bindingId, desktopPublicSpki: value.desktopPublicSpki, routeId: route2.offer.routeId });
+    const candidate = JSON.parse(raw), route2 = deviceRouteSchema.safeParse(candidate), value = route2.success ? route2.data.offer.binding : deviceBindingSchema.parse(candidate);
+    return JSON.stringify({ identityAlias: value.identityAlias, audience: value.audience, bindingId: value.bindingId, desktopPublicSpki: value.desktopPublicSpki, routeId: route2.success ? route2.data.offer.routeId : deviceRelayPairId(value) });
   }
   local(authority) {
     if (this.closed || this.startupFailure !== void 0 || !this.policy.enabled || authority !== this.authority) throw new Error("native device product disabled");
@@ -20401,7 +21175,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
     this.publish(JSON.stringify({ ...session, pairing: "paired", connectionDiagnostic: deviceConnectionDiagnosticText(view.diagnostic), connection: view.state === "connected" ? "connected" : view.state, error: view.error || this.catalogError || session.error || "", projects: [], sessions: view.sessions.map((row) => ({ sessionId: row.sessionId, projectId: row.projectId, title: row.title })), selected: view.selected?.sessionId ?? "", task: session.task ?? "idle", readOnly: session.readOnly ?? true, messages: session.messages ?? [], liveText: session.liveText ?? "", richJson: session.richJson ?? "" }));
   }
   sessionView(view) {
-    return JSON.stringify({ task: view.transcript?.task ?? "idle", readOnly: view.transcript?.readOnly ?? true, error: view.error, messages: view.transcript?.messages.map((message) => ({ id: message.id, role: message.role, text: message.parts.flatMap((part) => part.kind === "text" || part.kind === "reasoning" ? [part.text] : []).join("\n") })) ?? [], liveText: view.transcript?.liveText ?? "", richJson: view.rich === null ? "" : JSON.stringify(view.rich) });
+    return JSON.stringify({ task: view.transcript?.task ?? "idle", readOnly: view.transcript?.readOnly ?? true, error: view.error, messages: view.transcript?.messages.filter((message) => message.role === "user" || message.role === "assistant").map((message) => ({ id: message.id, role: message.role, text: message.parts.flatMap((part) => part.kind === "text" || part.kind === "reasoning" ? [part.text] : []).join("\n") })) ?? [], liveText: view.transcript?.liveText ?? "", richJson: view.rich === null ? "" : JSON.stringify(view.rich) });
   }
   install(_record2, client) {
     if (this.device !== void 0) throw new Error("native device product already installed");
@@ -20454,7 +21228,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
       verified = true;
       const device = this.install(checked, client);
       stage = "route-history-restore";
-      const route2 = await this.routes?.current(this.authority);
+      const route2 = this.pairedConnection ? null : await this.routes?.current(this.authority);
       this.local(this.authority);
       this.hasRoute = route2 != null;
       this.routeDeadline = route2?.offer.expiresAt ?? 0;
@@ -20470,7 +21244,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   }
   async connection(registration, proof, lifetime) {
     this.local(this.authority);
-    if (!this.connectionApproved || this.routingExpiresAt <= this.clock()) throw new Error("native device network approval or directory lease missing");
+    if (!this.connectionApproved || !this.pairedConnection && this.routingExpiresAt <= this.clock()) throw new Error("native device network approval or directory lease missing");
     let stage = "route-verify", cleanupFailed = false;
     let acquisition, core, rpc;
     let closing;
@@ -20492,23 +21266,24 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
     };
     try {
       lifetime.throwIfAborted();
-      const route2 = await this.routes?.current(this.authority);
+      const route2 = this.pairedConnection ? void 0 : await this.routes?.current(this.authority);
       lifetime.throwIfAborted();
-      if (route2 == null) {
+      if (!this.pairedConnection && route2 == null) {
         this.hasRoute = false;
         throw new Error("native signed route window required");
       }
-      const context = { routeId: route2.offer.routeId, routeEpoch: route2.offer.routeEpoch, expiresAt: route2.offer.expiresAt };
+      const context = route2 == null ? void 0 : { routeId: route2.offer.routeId, routeEpoch: route2.offer.routeEpoch, expiresAt: route2.offer.expiresAt };
+      const expiresAt = route2?.offer.expiresAt ?? this.clock() + this.routingLeaseMs;
       stage = "native-channel";
-      acquisition = await this.acquire(JSON.stringify(route2), (fact) => {
+      acquisition = await this.acquire(JSON.stringify(route2 ?? registration), (fact) => {
         if (fact === "identity-read" || fact === "native-channel") stage = fact;
         if (fact === "cleanup-failed") cleanupFailed = true;
       });
       lifetime.throwIfAborted();
       const acquired = acquisition;
-      core = new NativeDeviceCore(JSON.stringify(registration), route2.offer.expiresAt, this.relay, acquisition.ports, (state) => {
+      core = new NativeDeviceCore(JSON.stringify(registration), expiresAt, this.relay, acquisition.ports, (state) => {
         if (state === "identity-authenticated") acquired.authenticated();
-      }, (packet) => rpc?.receive(packet), route2);
+      }, (packet) => rpc?.receive(packet), route2 ?? void 0);
       rpc = new DeviceProductRpc(core, this.scheduler, this.policy.transport.timeoutMs, this.policy.transport.maxPending, this.policy.commandPrefix);
       lifetime.addEventListener("abort", abort, { once: true });
       stage = "identity-read";
@@ -20522,7 +21297,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
       lifetime.throwIfAborted();
       this.local(this.authority);
       const network = core, calls = rpc;
-      return { authentication: "native", route: context, binding: network.binding, failure: (fallback) => network.connectionFailure(fallback, "active-channel"), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => {
+      return { authentication: "native", ...context === void 0 ? {} : { route: context }, binding: network.binding, failure: (fallback) => network.connectionFailure(fallback, "active-channel"), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => {
         const value = fields(await calls.call({ method: "metadata", argument: null }), ["desktopId", "profileId", "sessions"]);
         if (value.desktopId !== registration.desktopId || value.profileId !== "desktop") throw new Error("native device catalogue identity denied");
         return external_exports.array(external_exports.object({ profileId: external_exports.literal("desktop"), sessionId: external_exports.string(), title: external_exports.string(), projectId: external_exports.string().nullable() }).strict()).parse(value.sessions);
@@ -20590,7 +21365,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   }
   /** No network is acquired; cold restore still requires fresh foreground host consent. */
   routeReady() {
-    return this.startupFailure === void 0 && this.hasRoute && this.routeDeadline > this.clock();
+    return this.startupFailure === void 0 && (this.pairedConnection ? this.bound() : this.hasRoute && this.routeDeadline > this.clock());
   }
   async previewRoute(raw) {
     this.local(this.authority);
@@ -20609,7 +21384,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   async stopRoute() {
     this.local(this.authority);
     this.hasRoute = false;
-    const results = await Promise.allSettled([this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]);
+    const results = await Promise.allSettled([this.pairedConnection ? void 0 : this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]);
     if (results.some((value) => value.status === "rejected")) throw new Error("native route cleanup outcome unknown");
   }
   /** @param raw - strict public device receipt. @returns pure public preview; activation still verifies the original identity and signature. */
@@ -20732,6 +21507,71 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   }
 };
 
+// src/automatic-connection.ts
+var AutomaticConnection = class {
+  constructor(port, scheduler, retryDelayMs) {
+    this.port = port;
+    this.scheduler = scheduler;
+    this.retryDelayMs = retryDelayMs;
+    if (!Number.isSafeInteger(retryDelayMs) || retryDelayMs <= 0 || retryDelayMs > 2147483647) throw new Error("invalid reconnect interval");
+  }
+  port;
+  scheduler;
+  retryDelayMs;
+  wanted = false;
+  pending;
+  stopTimer = () => {
+  };
+  stopping;
+  generation = 0;
+  schedule() {
+    this.stopTimer();
+    if (this.wanted) this.stopTimer = this.scheduler.after(this.retryDelayMs, () => {
+      void this.attempt().catch((error51) => {
+        void error51;
+        this.port.failed();
+      });
+    });
+  }
+  attempt() {
+    if (this.pending !== void 0) return this.pending;
+    if (!this.wanted || !this.port.available() || this.port.connected()) {
+      this.schedule();
+      return Promise.resolve();
+    }
+    const operation = Promise.resolve().then(async () => {
+      if (this.wanted) await this.port.connect();
+    }).finally(() => {
+      if (this.pending === operation) this.pending = void 0;
+      this.schedule();
+    });
+    this.pending = operation;
+    return operation;
+  }
+  /** @returns after the immediate saved-device attempt; transient failures still retain the retry timer. */
+  start() {
+    const generation = ++this.generation;
+    this.wanted = true;
+    return this.stopping === void 0 ? this.attempt() : this.stopping.then(() => generation === this.generation && this.wanted ? this.attempt() : void 0);
+  }
+  /** @returns after cancellation and release; a manual stop never schedules another attempt. */
+  stop() {
+    if (this.stopping !== void 0) return this.stopping;
+    this.generation++;
+    this.wanted = false;
+    this.stopTimer();
+    const pending = this.pending;
+    this.stopping = (async () => {
+      const results = await Promise.allSettled([Promise.resolve().then(() => this.port.disconnect()), pending]);
+      if (pending !== void 0) await this.port.disconnect();
+      if (results[0]?.status === "rejected") throw results[0].reason;
+    })().finally(() => {
+      this.stopping = void 0;
+    });
+    return this.stopping;
+  }
+};
+
 // src/native-product-facade.ts
 var positive = external_exports.number().int().positive().max(2147483647);
 var recovery = external_exports.object({ maxAttempts: positive, retryDelayMs: positive }).strict();
@@ -20846,6 +21686,7 @@ var NativeProductFacade = class {
   }
 };
 export {
+  AutomaticConnection,
   NativeDeviceProductFacade,
   NativeProductFacade,
   parseProductPolicy

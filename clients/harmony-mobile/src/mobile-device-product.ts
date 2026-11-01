@@ -25,7 +25,7 @@ export interface DeviceProductSessionConnection {
   close(): Promise<void>
 }
 /** A caller-owned proof is used by isolated/native adapters; native-proof connections have already verified the same signed ticket in their crypto owner. */
-export type DeviceProductConnection = DeviceProductSessionConnection & ({ readonly authentication: 'caller'; challenge(): Promise<string>; authenticate(proof: { readonly challengeId: string; readonly signature: string }): Promise<unknown> } | { readonly authentication: 'native'; readonly route: DeviceRouteContext; readyTicket(): Promise<unknown> })
+export type DeviceProductConnection = DeviceProductSessionConnection & ({ readonly authentication: 'caller'; challenge(): Promise<string>; authenticate(proof: { readonly challengeId: string; readonly signature: string }): Promise<unknown> } | { readonly authentication: 'native'; readyTicket(): Promise<unknown> })
 /** The native app alone opens the existing authenticated encrypted transport. */
 export interface DeviceProductPorts {
   /** @param registration - verified original public binding. @param lifetime - current native attempt; cancellation retires acquisition and handshakes. @returns after acquisition; rejection follows cleanup and retains cleanupFailed on release failure. */

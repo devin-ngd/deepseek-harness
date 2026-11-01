@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { deviceGrantOperations } from './device-operations.ts'
 import { transcriptBytes } from './signing-bytes.ts'
+import { id } from './protocol.ts'
 
 /** Fixed protocol ceiling for enrollment offers; independent from per-connection challenge budgets. */
 export const MAX_DEVICE_ENROLLMENT_TTL_MS = 600000
@@ -25,6 +26,8 @@ export const deviceBindingOfferSchema = z.object({ schema: z.literal('harmony-de
 export const deviceBindingReplySchema = z.object({ schema: z.literal('harmony-device-binding-reply/1'), offer: deviceBindingOfferSchema, signature }).strict()
 export const deviceRouteContextSchema = z.object({ routeId: identifier, routeEpoch: z.literal(1), expiresAt: natural }).strict()
 export type DeviceRouteContext = z.infer<typeof deviceRouteContextSchema>
+/** @param binding - saved original device registration. @returns stable relay address distinct from legacy Session grants and temporary routes. */
+export function deviceRelayPairId(binding: Pick<z.infer<typeof deviceBindingSchema>, 'credentialId'>) { return id<'harmony-relay-pair'>('paired-' + binding.credentialId) }
 const connectionBody = z.object({ schema: z.literal('harmony-device-connection-challenge/1'), bindingId: identifier, desktopId: identifier, profileId: z.literal('desktop'), deviceId: identifier,
   credentialId: fingerprint, epoch: natural.refine(value => value > 0), challengeId: identifier, nonce: z.string().regex(/^[A-Za-z0-9_-]{43}$/), channelBindingId: identifier, expiresAt: natural, route: deviceRouteContextSchema.optional() }).strict()
 /** Fresh proof request sent only within the existing authenticated encrypted channel. */

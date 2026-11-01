@@ -7,6 +7,8 @@ description: 原生鸿蒙客户端开发、离线检查与当前验收资格。
 
 [English](README.md) | 中文
 
+[rc2.30 固定设备候选](docs/paired-connection-rc2.30.md)已接入已配对自动连接，保留深色界面。原手机、桌面插件及常驻中继已更新，原机自动连接及真实会话列表通过，本轮零自动消息；先前清理失败后的恢复和长期续接尚未验收。下列 MVP 记录为历史验收。
+
 已安装的桌面 rc2.23 与手机 rc2.27 [通过原机 MVP 验收](docs/mvp-rc227-a2-20261101.md)：手机选择真实会话、收到新回复、停止下一次运行中的生成，并完成 181.8 秒连续连接观察。严格仅发送两条手机消息，未重装或清除配对／数据。双端已停止，临时路由已撤销，中继／代理原字节及原屏幕超时均已恢复。回复和取消确认仍有明显等待；这次有限实测不能替代长期稳定性验收，临时连接现已关闭。
 
 下方基线描述 2026-10-18，当时现场部署与激活已停止。[开发者交接](docs/HANDOFF-2026-10-18.md)记录手机和桌面包已安装、未激活、原身份保留、授权窗口未开始及剩余工作。当时安装的原证书HAP为历史默认禁用构建，不是该轮候选。独立的[离线连接候选](docs/connection-candidate.md)已完成一次官方API26 unsigned编译：[候选证据](evidence/connection-candidate/2026-10-18T08-25-35-312Z-facc28ee.json)记录exit0、70个输入文件、5,219,694字节unsigned HAP（SHA-256 `8671f7fdfcba320739e15d2e0fc0309faa176137f5d2a2dbbaddf3bc1c7ded02`）；[构建报告](evidence/native-build/2026-10-18T08-25-38-344Z.json)与[日志](evidence/native-build/2026-10-18T08-25-38-344Z.log)保留。该候选未签名、未安装、未配对、未经真机API确认；只读复核命令为`node scripts/check-connection-candidate.mjs --audit=evidence/connection-candidate/2026-10-18T08-25-35-312Z-facc28ee.json`。其原生界面与HUKS证据不能证明真实链路通过。

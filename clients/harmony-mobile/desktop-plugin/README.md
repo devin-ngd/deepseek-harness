@@ -8,6 +8,8 @@ Current alpha.4 status: [phase66](../docs/phase66-progress.md). Detached runtime
 
 English | [中文](README.zh.md)
 
+The rc2.30 `/device` component defaults to `connectionMode: paired`: it waits for the saved phone automatically and retries after disconnects. Set `connectionMode: window` for the explicit temporary-window workflow. See [paired-device startup](../docs/paired-connection-rc2.30.md) for the one-time endpoint and relay update; the original endpoints and persistent relay are updated, and phone automatic connection with the real Session list is verified. The following version-specific records are historical.
+
 The last verified running desktop is rc2.12. The rc2.16 control panel is an offline candidate; construction and qualification are described in the [control panel reference](../docs/control-panel-rc2.16.md). Installation and physical testing remain separate operations. The [handoff](../docs/HANDOFF-2026-10-28.md) retains the original pairing and closed-window evidence.
 
 This package is a default-disabled experimental profile bundle. Installation and activation are separate. Use the managed desktop Plugin Manager with installation option `enabled: false`; its bundle remains unselected. Its own row also has `disabled: true` and `config.enabled: false`. Importing or loading the disabled plugin opens no journal, creates no service/descriptor/peer, and starts no transport.

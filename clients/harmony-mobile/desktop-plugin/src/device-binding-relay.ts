@@ -9,7 +9,7 @@ import type { LinkConfig } from '../../src/link-protocol.ts'
 import { fields } from '../../src/link-protocol.ts'
 import { jsonPayload } from '../../src/wire.ts'
 import { carrierRequest } from '../../src/device-carrier-protocol.ts'
-import { deviceConnectionTicketSchema } from '../../src/device-binding-protocol.ts'
+import { deviceConnectionTicketSchema, deviceRelayPairId, type DeviceBinding } from '../../src/device-binding-protocol.ts'
 import { profileRpcCodec } from '../../src/profile-rpc-codec.ts'
 import { DeviceBoundProfileChannel, type DeviceBindingProfileProvider } from './device-binding-profile.ts'
 import type { DeviceBindingOwner } from './device-binding.ts'
@@ -20,7 +20,7 @@ import { nodeE2EPrimitives } from '../../integration/p256-channel.ts'
 import { deviceCommandStep } from './device-command-step.ts'
 
 /** Explicit local routing lease and original crypto ports; a relay directory lease never substitutes for a device ticket. */
-export interface DeviceBindingRelayPlan { readonly desktopId: string; readonly route: DeviceRoute; isRouteCurrent(): Promise<boolean>; readonly trust: EndpointRelayTrust; readonly policy: PairedRelayPolicy; readonly limits: LinkConfig; openPorts(): PairedRelayPorts }
+export type DeviceBindingRelayPlan = { readonly desktopId: string; isRouteCurrent(): Promise<boolean>; readonly trust: EndpointRelayTrust; readonly policy: PairedRelayPolicy; readonly limits: LinkConfig; openPorts(): PairedRelayPorts } & ({ readonly route: DeviceRoute; readonly paired?: never } | { readonly paired: DeviceBinding; readonly route?: never })
 const routeSchema = z.object({ desktopId: z.string().min(1).max(256), profileId: z.literal('desktop'), sessionId: z.string().min(1).max(256) }).strict()
 /** Versioned device carrier installs only in an already enabled desktop profile. */
 export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
@@ -33,11 +33,14 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
   async mount(ctx: Context): Promise<() => Promise<void>> {
     if (ctx.get('profileContext')?.name !== 'desktop' || this.plan.trust.role !== 'desktop') throw new Error('device relay profile denied')
     validatePairedRelayPolicy(this.plan.policy)
-    const route = await verifyDeviceRoute(this.plan.route, nodeE2EPrimitives, undefined, Date.now())
-    if (this.plan.desktopId !== route.offer.binding.desktopId || this.plan.trust.pairId !== route.offer.routeId || this.plan.trust.epoch !== route.offer.routeEpoch || this.plan.trust.expiresAt !== route.offer.expiresAt || this.plan.trust.audience !== route.offer.binding.audience || this.plan.trust.credentialId !== route.offer.binding.desktopCredentialId || !await this.plan.isRouteCurrent()) throw new Error('device relay signed route denied')
+    const route = this.plan.route === undefined ? undefined : await verifyDeviceRoute(this.plan.route, nodeE2EPrimitives, undefined, Date.now())
+    const registration = this.plan.route === undefined ? this.plan.paired : this.plan.route.offer.binding
+    const expiresAt = this.plan.trust.expiresAt
+    const context = route === undefined ? undefined : { routeId: route.offer.routeId, routeEpoch: route.offer.routeEpoch, expiresAt: route.offer.expiresAt }
+    if (registration.revoked || this.plan.desktopId !== registration.desktopId || this.plan.trust.pairId !== (route === undefined ? deviceRelayPairId(registration) : route.offer.routeId) || this.plan.trust.epoch !== (route?.offer.routeEpoch ?? registration.epoch) || route !== undefined && expiresAt !== route.offer.expiresAt || this.plan.trust.audience !== registration.audience || this.plan.trust.credentialId !== registration.desktopCredentialId || !await this.plan.isRouteCurrent()) throw new Error('device relay saved pairing denied')
     const ports = this.plan.openPorts(), lifetime = new AbortController(), work = new Map<string, { controller: AbortController; done: Promise<void> }>(), pending = new Set<Promise<void>>()
     let endpoint: PairedRelayEndpoint | undefined, connection: EncryptedRelayConnection | undefined, binding: DeviceTransportBinding | undefined, channel: DeviceBoundProfileChannel | undefined, proofPending = false, closing: Promise<void> | undefined, failed = false, stopRoute = () => {}
-    const assertRoute = async () => { if (lifetime.signal.aborted || route.offer.expiresAt <= Date.now() || !await this.plan.isRouteCurrent()) throw new Error('device route retired') }
+    const assertRoute = async () => { if (lifetime.signal.aborted || expiresAt <= Date.now() || !await this.plan.isRouteCurrent()) throw new Error('device route retired') }
     const track = (task: Promise<void>) => { pending.add(task); void task.catch(error => { void error; failed = true; endpoint?.close() }).finally(() => pending.delete(task)) }
     const close = () => {
       if (closing !== undefined) return closing
@@ -46,7 +49,7 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
       closing = (async () => { const results = await Promise.allSettled([...pending, ...[...work.values()].map(item => item.done), Promise.resolve().then(() => channel?.close()), Promise.resolve().then(() => endpoint?.settled())]); if (failed || results.some(result => result.status === 'rejected')) throw new Error('device relay cleanup failed') })()
       return closing
     }
-    const routeTimer = setTimeout(() => { void close().catch(error => { void error; failed = true }) }, route.offer.expiresAt - Date.now()); stopRoute = () => clearTimeout(routeTimer)
+    const routeTimer = setTimeout(() => { void close().catch(error => { void error; failed = true }) }, expiresAt - Date.now()); stopRoute = () => clearTimeout(routeTimer)
     const argument = (value: unknown) => profileRpcCodec(this.plan.limits.maxPacketBytes).schema.parse(value)
     const request = async (candidate: unknown, signal: AbortSignal) => {
       const data = candidate !== null && typeof candidate === 'object' && 'method' in candidate ? candidate : null
@@ -66,7 +69,7 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
         const outgoing = connection, requestBinding = binding
         if (channel === undefined) {
           const packet = fields(value, ['kind', 'value']); if (packet.kind !== 'device-binding-proof' || !proofPending) throw new Error('device binding proof required')
-          proofPending = false; const original = binding, ticket = deviceConnectionTicketSchema.parse(await this.owner.authenticate(original, packet.value, route.offer.expiresAt)); if (ticket.desktopId !== this.plan.desktopId || ticket.bindingId !== route.offer.binding.bindingId || ticket.epoch !== route.offer.binding.epoch) throw new Error('device relay registration mismatch')
+          proofPending = false; const original = binding, ticket = deviceConnectionTicketSchema.parse(await this.owner.authenticate(original, packet.value, expiresAt)); if (ticket.desktopId !== this.plan.desktopId || ticket.bindingId !== registration.bindingId || ticket.epoch !== registration.epoch) throw new Error('device relay registration mismatch')
           if (binding !== original || original.signal.aborted || lifetime.signal.aborted) return
           channel = new DeviceBoundProfileChannel(ctx, this.owner, this.provider, original, ticket, this.plan.limits)
           const ticketLifetime = await this.owner.connectionLifetime(original, ticket)
@@ -91,7 +94,7 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
         work.set(packet.id, item); track(item.done)
       }, (next, encrypted) => {
         binding = next; connection = encrypted; proofPending = true
-        track((async () => { await assertRoute(); const challenge = await this.owner.challenge(next, { routeId: route.offer.routeId, routeEpoch: route.offer.routeEpoch, expiresAt: route.offer.expiresAt }); if (!next.signal.aborted && binding === next) await encrypted.send(jsonPayload({ kind: 'device-binding-challenge', value: challenge })) })())
+        track((async () => { await assertRoute(); const challenge = await this.owner.challenge(next, context); if (!next.signal.aborted && binding === next) await encrypted.send(jsonPayload({ kind: 'device-binding-challenge', value: challenge })) })())
         next.signal.addEventListener('abort', () => { for (const item of work.values()) item.controller.abort(); track(Promise.resolve().then(() => channel?.close())); channel = undefined; binding = undefined; connection = undefined; proofPending = false }, { once: true })
       }, state => { if (this.ended !== 'failed') this.ended = state; binding = undefined; connection = undefined; proofPending = false }, lifetime.signal)
       return close
