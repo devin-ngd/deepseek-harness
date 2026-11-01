@@ -104,6 +104,11 @@ test('a viewport showing a newly disabled send waits without swiping despite the
   await failure(f, 'control-disabled'); assert.equal(f.sends(), 0); assert.equal(f.calls.some(c => c[0] === 'scroll'), false)
 })
 
+test('a session row is selected only when its own bounds contain the reviewed title', async () => {
+  const f = mvpFixture({ view(v) { for (const face of [v.complete, v.viewport]) { const title = face.nodes.find(n => n.text === f.target.title); if (title) title.bounds = '[70,320][900,360]' } } })
+  await failure(f, 'wrong-session-title'); assert.equal(f.calls.some(c => c[0] === 'click'), false)
+})
+
 test('a changed control type cannot be clicked using its old identifier', async () => {
   const f = mvpFixture({ view(v, s) { if (s.draft) v.complete.nodes.find(n => n.id === 'product-send').type = 'Text' } })
   await failure(f, 'wrong-control-type'); assert.equal(f.sends(), 0)
@@ -145,7 +150,7 @@ test('failed issuing journal prevents click; failed acknowledgment journal prese
 })
 
 test('user text or an unmatched assistant answer cannot satisfy the phone reply receipt', async () => {
-  const f = mvpFixture({ view(v, s) { if (s.sent === 1) { v.complete.nodes.find(n => n.text === '助手').text = '用户'; v.complete.nodes.push({ type: 'Text', text: f.plan.reply }) } } })
+  const f = mvpFixture({ view(v, s) { if (s.sent === 1) { v.complete.nodes.find(n => n.text === f.labels.assistant).text = '用户'; v.complete.nodes.push({ type: 'Text', text: f.plan.reply }) } } })
   await failure(f, 'phone-reply-not-observed'); assert.equal(f.sends(), 1)
 })
 

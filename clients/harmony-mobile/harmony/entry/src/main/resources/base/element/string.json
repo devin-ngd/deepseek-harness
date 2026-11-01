@@ -146,7 +146,7 @@
     },
     {
       "name": "role_assistant",
-      "value": "电脑回复"
+      "value": "DSH"
     },
     {
       "name": "image_reference",
@@ -462,35 +462,35 @@
     },
     {
       "name": "product_device_identity",
-      "value": "Read the original phone identity. Device binding never creates or replaces a key."
+      "value": "读取本机原有的设备身份。设备绑定不会创建或替换密钥。"
     },
     {
       "name": "product_device_scope",
-      "value": "All current and future visible desktop sessions. Other profiles denied. Binding lasts until revoked; each connection uses a short-lived ticket."
+      "value": "电脑上当前及以后可见的全部会话；其他配置拒绝访问。绑定在撤销前一直有效，每次连接使用短期票据。"
     },
     {
       "name": "product_route_notice",
-      "value": "A connection window is separate from device binding. Use desktop route-start, verify and sign here, then return the public reply to route-confirm. Relay registration remains a separate step. Signing does not connect."
+      "value": "连接窗口与设备绑定相互独立。先在电脑上执行 route-start，在这里核验并签名，再把公开回复交给 route-confirm。中继注册是单独的步骤；签名本身不会连接。"
     },
     {
       "name": "product_route_offer",
-      "value": "Paste the desktop signed route offer"
+      "value": "粘贴电脑签名的连接窗口邀请"
     },
     {
       "name": "product_route_preview",
-      "value": "Verify connection window"
+      "value": "核验连接窗口"
     },
     {
       "name": "product_route_approve",
-      "value": "I approve this exact host, original device binding and expiry"
+      "value": "我确认这个主机、原设备绑定和到期时间"
     },
     {
       "name": "product_route_sign",
-      "value": "Sign this connection window with existing identity"
+      "value": "用现有身份签署这个连接窗口"
     },
     {
       "name": "product_route_stop",
-      "value": "Close local window; retain device binding"
+      "value": "关闭连接窗口"
     },
     {
       "name": "product_log_selfcheck",
@@ -547,6 +547,98 @@
     {
       "name": "mvp_read_only",
       "value": "当前会话仅可查看，暂不能发送消息或停止任务。"
+    },
+    {
+      "name": "nav_settings",
+      "value": "设置"
+    },
+    {
+      "name": "status_stopped",
+      "value": "连接已停止"
+    },
+    {
+      "name": "home_offline_title",
+      "value": "电脑未连接"
+    },
+    {
+      "name": "product_connect_host",
+      "value": "连接 %s"
+    },
+    {
+      "name": "home_open_settings",
+      "value": "前往连接设置"
+    },
+    {
+      "name": "settings_host",
+      "value": "电脑地址"
+    },
+    {
+      "name": "filter_all",
+      "value": "全部"
+    },
+    {
+      "name": "session_current",
+      "value": "当前会话"
+    },
+    {
+      "name": "conversation_empty",
+      "value": "还没有消息。在下方输入内容开始对话。"
+    },
+    {
+      "name": "composer_read_only",
+      "value": "此会话只读"
+    },
+    {
+      "name": "composer_offline",
+      "value": "连接电脑后可发送消息"
+    },
+    {
+      "name": "copy_code",
+      "value": "复制代码"
+    },
+    {
+      "name": "copied",
+      "value": "已复制"
+    },
+    {
+      "name": "error_code",
+      "value": "错误代码：%s"
+    },
+    {
+      "name": "error_connection_unavailable",
+      "value": "暂时连不上电脑。请确认电脑上的 DSH 正在运行且手机连接已开启，然后重新连接。"
+    },
+    {
+      "name": "error_connection_expiry",
+      "value": "本次连接窗口已到期。请在电脑上重新开启手机连接后再连接。"
+    },
+    {
+      "name": "error_connection_stopped",
+      "value": "多次重连失败，已停止自动重连。请检查网络和电脑状态后手动连接。"
+    },
+    {
+      "name": "error_cleanup_failed",
+      "value": "上一次连接没有完全关闭。请退出应用后重新打开。"
+    },
+    {
+      "name": "error_catalog_unavailable",
+      "value": "无法读取电脑上的会话列表。请重新连接后再试。"
+    },
+    {
+      "name": "error_binding_unavailable",
+      "value": "本机与电脑的绑定不可用。请在设置中检查连接配置。"
+    },
+    {
+      "name": "error_route_history",
+      "value": "无法读取连接记录，已有记录未改动。请在设置中检查连接状态。"
+    },
+    {
+      "name": "error_rich_unavailable",
+      "value": "交互内容暂时无法显示；文字消息不受影响。"
+    },
+    {
+      "name": "error_generic",
+      "value": "操作没有完成。可在设置的高级与诊断中查看详情。"
     }
   ]
 }

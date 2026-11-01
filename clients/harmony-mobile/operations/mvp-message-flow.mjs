@@ -86,7 +86,7 @@ export function createMvpMessageFlow({ ui, journal, target, labels, marker, sign
   const visible = (v, id) => {
     const all = one(v, id)
     if (!all) return { reason: 'missing' }
-    const type = id === 'product-composer' ? 'TextInput' : 'Button'
+    const type = id === 'product-composer' ? 'TextArea' : 'Button'
     if (all.type !== type) fail('wrong-control-type')
     if (all.enabled !== 'true') return { reason: 'disabled' }
     const footer = ['product-composer', 'product-send', 'product-cancel'].includes(id) ? one(v, 'product-conversation-controls') : undefined
@@ -153,8 +153,8 @@ export function createMvpMessageFlow({ ui, journal, target, labels, marker, sign
     open(); await record('begin', { marker, sessionId: target.sessionId, messageLimit: 2 }); open()
     await waitState('connected-phone', v => texts(v).includes(labels.connected), true)
     phase = 'reply'
-    const row = await waitControl('product-session-' + target.sessionId, 'select')
-    if (row.node.text !== target.title) fail('wrong-session-title')
+    const row = await waitControl('product-session-' + target.sessionId, 'select'), area = rect(row.node.bounds)
+    if (!row.v.viewport.nodes.some(n => n.type === 'Text' && n.text === target.title && contains(area, rect(n.bounds)))) fail('wrong-session-title')
     fresh(row.v); await ui.click(controlPoint(row.node.bounds), signal); open()
     // Selection completes asynchronously; the catalogue must not be mistaken for a conversation.
     await waitState('conversation', v => texts(v).includes(target.title) && v.complete.nodes.some(n => n.id === 'product-chat-back'))

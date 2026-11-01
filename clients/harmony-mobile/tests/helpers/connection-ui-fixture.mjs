@@ -14,8 +14,8 @@ export class Clock {
 export function uiFixture(t) {
   const clock = new Clock(), calls = [], lifetime = new AbortController(), releases = []
   const desktop = { phase: 'confirmation', held: null, onSubmit: () => {}, wrongWindow: false, stopFails: false }
-  const phone = { phase: 'disconnected', enabled: true, consent: true, paired: true, pid: '123', window: '12', overlay: false, held: null, data: 'retained-synthetic-history' }
-  const labels = { paired: '已配对', disconnected: '未连接', connecting: '连接中', connected: '已连接', failed: '操作失败' }
+  const phone = { phase: 'disconnected', enabled: true, host: 'relay.invalid', paired: true, pid: '123', window: '12', overlay: false, held: null, data: 'retained-synthetic-history' }
+  const labels = { paired: '已配对', disconnected: '未连接', connecting: '连接中', connected: '已连接', failed: '操作失败', connectHost: '连接 %s' }
   const sky = {
     async activate_window() { calls.push(['desktop-activate']) },
     async get_window_state(_input) {
@@ -38,8 +38,7 @@ export function uiFixture(t) {
   }
   const layout = () => ({ attributes: { type: 'root', bundleName: 'synthetic.mobile', visible: 'true', hostWindowId: phone.window, pagePath: 'pages/Index', abilityName: 'EntryAbility' }, children: [
     { text: labels.paired }, { text: labels[phone.phase] }, { text: 'relay.invalid' },
-    { type: 'Checkbox', checked: String(phone.consent), enabled: 'true' },
-    { type: 'Button', id: 'product-connect', enabled: String(phone.enabled), bounds: '[10,10][30,30]' },
+    { type: 'Button', id: 'product-connect', text: '连接 ' + phone.host, enabled: String(phone.enabled), bounds: '[10,10][30,30]' },
     { type: 'Button', id: 'product-route-stop', enabled: 'true', bounds: '[40,40][60,60]' },
     ...(phone.overlay ? [{ bundleName: 'foreign.overlay' }] : []),
   ].map(attributes => ({ attributes: { visible: 'true', ...attributes } })) })

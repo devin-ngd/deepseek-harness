@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
-import { productLayoutParser, productButtonActions } from '../scripts/product-layout-audit.mjs'
+import { productLayoutParser, productButtonActions, productParseOptions } from '../scripts/product-layout-audit.mjs'
 
 const root = JSON.parse(await readFile('source.json', 'utf8')).dshRoot, require = createRequire(join(root, 'package.json')), ts = require('typescript')
 const native = await readFile('harmony/entry/src/main/ets/native/NativeDiagnostics.ets', 'utf8')
@@ -28,7 +28,7 @@ test('an unavailable fallback cannot turn a failed INFO call into success', () =
   assert.equal(d.localSelfCheck(), false); assert.equal(d.failures, 1)
 })
 const ets = await productLayoutParser(), source = await readFile('harmony/entry/src/main/ets/pages/Index.ets', 'utf8')
-const file = ets.createSourceFile('Index.ets', source, ets.ScriptTarget.Latest, true, ets.ScriptKind.ETS, { ets: { components: ['Scroll', 'Column', 'Row', 'Flex', 'Text', 'TextInput', 'TextArea', 'Checkbox', 'Button', 'ForEach', 'ProductRichSurface', 'TaskState'] } })
+const file = ets.createSourceFile('Index.ets', source, ets.ScriptTarget.Latest, true, ets.ScriptKind.ETS, productParseOptions)
 assert.equal(file.parseDiagnostics.length, 0)
 const page = file.statements.find(node => ets.isStructDeclaration(node) && node.name.text === 'Index'), method = page.members.find(node => node.name?.getText(file) === 'logSelfCheck')
 assert.ok(method)

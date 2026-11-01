@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { uiFixture, deferred } from './helpers/connection-ui-fixture.mjs'
 import { createDesktopUiAdapter, createPhoneUiAdapter } from '../operations/connection-ui-adapters.mjs'
 
-test('UI construction is inert and preparation never submits or accepts consent', async t => {
+test('UI construction is inert and preparation never taps a phone control', async t => {
   const f = uiFixture(t); assert.deepEqual(f.calls, [])
-  await f.prepare(); assert.equal(f.connects(), 0); assert.ok(f.d.ready() && f.p.ready()); assert.equal(f.phone.consent, true)
+  await f.prepare(); assert.equal(f.connects(), 0); assert.ok(f.d.ready() && f.p.ready()); assert.equal(f.calls.some(row => row[0] === 'hdc' && row.includes('click')), false)
 })
 
 test('both actual UI drivers submit before the first desktop acknowledgment', async t => {
@@ -72,10 +72,12 @@ test('desktop window mismatch and missing normal Allow confirmation fail closed'
   await adapter.close()
 })
 
-test('phone consent is never checked automatically and foreign overlays prohibit input', async t => {
-  const f = uiFixture(t); f.phone.consent = false
-  await assert.rejects(f.p.prepare(), /consent not prepared/); assert.equal(f.connects(), 0)
-  f.phone.consent = true; f.phone.overlay = true
+test('phone connect must name exactly the reviewed host and foreign overlays prohibit input', async t => {
+  const f = uiFixture(t)
+  for (const host of ['other.invalid', 'relay.invalid.other']) { f.phone.host = host; await assert.rejects(createPhoneUiAdapter(f.phoneOptions).prepare(), /consent not prepared/) }
+  assert.equal(f.connects(), 0)
+  assert.throws(() => createPhoneUiAdapter({ ...f.phoneOptions, labels: { ...f.phoneOptions.labels, connectHost: '连接' } }), /host action label invalid/)
+  f.phone.host = 'relay.invalid'; f.phone.overlay = true
   const adapter = createPhoneUiAdapter(f.phoneOptions)
   await assert.rejects(adapter.prepare(), /foreign overlay/); await assert.rejects(adapter.close(), /foreign overlay/)
 })

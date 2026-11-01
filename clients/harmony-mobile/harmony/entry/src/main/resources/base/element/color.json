@@ -1,5 +1,24 @@
 {
   "color": [
-    { "name": "start_window_background", "value": "#101216" }
+    { "name": "start_window_background", "value": "#0D0F13" },
+    { "name": "page_background", "value": "#0D0F13" },
+    { "name": "surface", "value": "#161A21" },
+    { "name": "surface_high", "value": "#1F242D" },
+    { "name": "border", "value": "#2A303B" },
+    { "name": "text_primary", "value": "#E8EAF0" },
+    { "name": "text_secondary", "value": "#A0A8B8" },
+    { "name": "text_tertiary", "value": "#6E7687" },
+    { "name": "text_on_accent", "value": "#FFFFFF" },
+    { "name": "accent", "value": "#4D6BFE" },
+    { "name": "accent_soft", "value": "#1E2A52" },
+    { "name": "user_bubble", "value": "#243259" },
+    { "name": "success", "value": "#3FB97A" },
+    { "name": "warning", "value": "#E3A43B" },
+    { "name": "warning_soft", "value": "#2B2416" },
+    { "name": "danger", "value": "#F0605A" },
+    { "name": "danger_soft", "value": "#3A1C1F" },
+    { "name": "code_background", "value": "#0A0C10" },
+    { "name": "code_text", "value": "#D6DAE3" },
+    { "name": "inline_code", "value": "#F2B880" }
   ]
 }

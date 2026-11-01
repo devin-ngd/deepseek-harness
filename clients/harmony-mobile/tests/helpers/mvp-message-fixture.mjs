@@ -5,7 +5,7 @@ import { createMvpMessageFlow, mvpMessagePlan } from '../../operations/mvp-messa
 export function mvpFixture(overrides = {}) {
   const marker = 'synthetic_run_001', plan = mvpMessagePlan(marker), controller = new AbortController(), calls = [], records = []
   const target = { pid: '123', window: '12', bundle: 'synthetic.mobile', sessionId: 'synthetic-session', title: 'MVP体验' }
-  const labels = { connected: '已连接', connecting: '连接中', readOnly: '只读会话', assistant: '助手', running: '运行中', completed: '已完成', cancelled: '已取消' }
+  const labels = { connected: '已连接', connecting: '连接中', readOnly: '只读会话', assistant: 'DSH', running: '运行中', completed: '已完成', cancelled: '已取消' }
   const s = { now: 1000, sequence: 0, page: 'catalogue', draft: '', sent: 0, task: '', live: '', reply: '', send: 'ready', owner: true, selectDelay: 0, inputDelay: 0, pauses: 0 }
   const hooks = { observe() {}, input() {}, click() {}, pause() {}, journal() {}, ...overrides }
   const node = (id, type, bounds, text = '', enabled = 'true') => ({ id, type, bounds, text, enabled, visible: 'true' })
@@ -15,10 +15,10 @@ export function mvpFixture(overrides = {}) {
       node('product-page-scroll', 'Scroll', '[0,0][1320,1800]'),
       node('', 'Text', '[54,50][300,100]', labels.connected),
     ]
-    if (s.page === 'catalogue') nodes.push(node('product-session-' + target.sessionId, 'Button', '[54,200][1266,300]', target.title))
+    if (s.page === 'catalogue') nodes.push(node('product-session-' + target.sessionId, 'Button', '[54,200][1266,300]'), node('', 'Text', '[70,215][900,260]', target.title))
     else nodes.push(
       node('product-chat-back', 'Button', '[54,100][300,200]'), node('', 'Text', '[54,220][1266,280]', target.title),
-      node('product-composer', 'TextInput', '[54,1300][1266,1450]', s.draft),
+      node('product-composer', 'TextArea', '[54,1300][1266,1450]', s.draft),
       node('product-send', 'Button', s.send === 'clipped' ? '[54,1750][378,1850]' : '[54,1500][378,1640]', '', s.send === 'disabled' || s.draft === '' ? 'false' : 'true'),
       node('product-cancel', 'Button', '[400,1500][750,1640]'),
       node('dsh-task-state', 'Text', '[54,800][1200,900]', s.task),

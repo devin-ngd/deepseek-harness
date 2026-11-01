@@ -185,7 +185,7 @@ test('preparation and dispatch in one call use fresh deadlines without widening 
 test('failed preparation never creates a connection or starts messages and retains pending review for caller cleanup', async t => {
   const f = uiFixture(t), entered = deferred(), release = deferred()
   const desktop = createDesktopUiAdapter({ ...f.desktopOptions, review: async (state, purpose) => { if (purpose === 'connect') { entered.resolve(); await release.promise }; return f.review(state, purpose) } })
-  f.releases.push(release.resolve); f.phone.consent = false; let created = 0
+  f.releases.push(release.resolve); f.phone.host = 'other.invalid'; let created = 0
   const pending = prepareAndStartVerifiedMvpMessages(desktop, f.p, () => { created++; return f.owner }, { async run() { assert.fail('messages must remain uncalled') } })
   await entered.promise; await assert.rejects(pending, /consent not prepared/)
   assert.equal(created, 0); assert.equal(f.connects(), 0)

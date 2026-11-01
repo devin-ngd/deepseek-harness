@@ -152,13 +152,15 @@ export function createDesktopUiAdapter({ sky, submitAndObserve, window, review, 
  * @param {string} options.windowId - Prepared original native window.
  * @param {string} options.layoutPath - Caller-allocated unique temporary dump path under /data/local/tmp/.
  * @param {string} options.audience - Current reviewed host, visible on the prepared page.
- * @param {{paired: string, disconnected: string, connecting: string, connected: string, failed: string}} options.labels - Original localized strings.
+ * @param {{paired: string, disconnected: string, connecting: string, connected: string, failed: string, connectHost: string}} options.labels - Original localized strings; `connectHost` is the connect-control template with one `%s` host slot.
  * @param {() => number} options.clock - Monotonic clock.
  * @param {number} options.readyTtlMs - Reviewed observation lifetime.
- * @returns {ReturnType<typeof ownedAdapter>} Phone UI adapter; consent must already be checked, and stop never clears pairing or user data.
+ * @returns {ReturnType<typeof ownedAdapter>} Phone UI adapter; the connect control must name exactly the reviewed host, because tapping it is the phone's host approval. Stop never clears pairing or user data.
  */
 export function createPhoneUiAdapter({ hdc, target, targetRef, bundle, pid, windowId, layoutPath, audience, labels, clock, readyTtlMs }) {
   if (!/^[A-Za-z0-9_.:-]+$/.test(target) || !/^[A-Za-z0-9_.]+$/.test(bundle) || !/^[1-9][0-9]*$/.test(pid) || !/^[0-9]+$/.test(windowId) || targetReference(target) !== targetRef || !/^\/data\/local\/tmp\/[A-Za-z0-9_-]+\.json$/.test(layoutPath)) throw Error('phone target or temporary layout path invalid')
+  if (typeof labels.connectHost !== 'string' || labels.connectHost.split('%s').length !== 2 || typeof audience !== 'string' || audience.length === 0) throw Error('phone host action label invalid')
+  const hostAction = labels.connectHost.replace('%s', () => audience)
   /** @param {string[]} args @param {AbortSignal} [signal] */
   const own = (args, signal) => hdc.run(['-t', target, 'shell', ...args], signal)
   /** @param {AbortSignal} [signal] */
@@ -189,9 +191,8 @@ export function createPhoneUiAdapter({ hdc, target, targetRef, bundle, pid, wind
   return ownedAdapter({ clock, readyTtlMs,
     prepare: async signal => {
       const { nodes, observedAt } = await observe(signal); signal.throwIfAborted()
-      const index = nodes.findIndex(node => node.id === 'product-connect')
-      const consent = nodes.slice(0, index).findLast(node => node.type === 'Checkbox')
-      if (!inactive(nodes) || nodes.some(node => node.text === labels.failed) || !nodes.some(node => node.text === audience) || consent?.checked !== 'true' || consent.enabled !== 'true') throw Error('phone host consent not prepared')
+      const connect = nodes.filter(node => node.id === 'product-connect')
+      if (!inactive(nodes) || nodes.some(node => node.text === labels.failed) || !nodes.some(node => node.text === audience) || connect.length !== 1 || connect[0].text !== hostAction) throw Error('phone host consent not prepared')
       const point = control(nodes, 'product-connect')
       return { observedAt, async submit() { signal.throwIfAborted(); await own(['uitest', 'uiInput', 'click', ...point], signal) } }
     },
