@@ -12,7 +12,10 @@ export function prepareFirstUseRelayConfig(configuration: unknown, pair: unknown
   const config = resolveRelayConfig({ ...configuration, broker: { ...broker, pairs: [pair] }, publicTrust: { ...trust, path: trustPath } })
   if (!config.enabled || !config.broker.enabled || config.broker.maxPairs !== 1 || config.broker.pairs[0]!.revoked || config.broker.pairs[0]!.expiresAt <= Date.now() || config.publicTrust === undefined) throw new Error('one unexpired public relay pair required')
   assertRelayTimersCompatible(config, parseRelayEndpointTimers(endpointTimers))
-  return config
+  // Legacy relays enforce browser Origin refusal without this optional field. Preserve
+  // that deployment contract; explicit native support still requires a compatible relay.
+  const { nativeOrigin, ...compatible } = config
+  return nativeOrigin === 'deny' ? compatible : config
 }
 function admittedFirstUseRelay(configuration: unknown, pair: unknown, endpointTimers: unknown) {
   const config = resolveRelayConfig(configuration)

@@ -56,7 +56,7 @@ export class RoomBroker {
     if (pair.lease !== undefined) throw new Error('room denied')
     if (this.clock() - pair.windowStart >= this.policy.issueWindowMs) { pair.windowStart = this.clock(); pair.issues = 0 }
     if (++pair.issues > this.policy.maxRoomIssuesPerWindow) { this.remove(pair.desktop); this.remove(pair.phone); return }
-    pair.lifetime = new AbortController(); pair.lease = this.rooms.open(this.authority, { room: id<'harmony-relay-room'>(this.source.id()), desktopToken: this.source.token(), phoneToken: this.source.token() }, Math.min(this.policy.roomTtlMs, pair.trust.expiresAt - this.clock()), pair.lifetime.signal)
+    pair.lifetime = new AbortController(); pair.lease = this.rooms.open(this.authority, { room: id<'harmony-relay-room'>(this.source.id()), desktopToken: this.source.token(), phoneToken: this.source.token() }, Math.min(this.policy.roomTtlMs, pair.trust.expiresAt - this.clock()), pair.lifetime.signal, pair.trust.expiresAt)
     const lease = pair.lease, base: Omit<RelayRoomReceipt, 'role' | 'token'> = { protocol: RELAY_CONTROL_PROTOCOL, kind: 'room', pairId: pair.trust.pairId, round: pair.round, epoch: pair.trust.epoch, room: lease.room, expiresAt: lease.expiresAt }
     this.send(pair.desktop, { ...base, role: 'desktop', token: lease.desktopToken() }); if (pair.lease !== lease || pair.phone === undefined) return
     this.send(pair.phone, { ...base, role: 'phone', token: lease.phoneToken() })

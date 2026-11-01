@@ -8,8 +8,8 @@ var __export = (target, all) => {
 import util from "@ohos.util";
 var TextEncoder = class {
   /** @param {string} [text] Text to encode, empty by default. @returns {Uint8Array} Protocol UTF-8 bytes. */
-  encode(text3 = "") {
-    return text3.length === 0 ? new Uint8Array() : new util.TextEncoder("utf-8").encodeInto(text3);
+  encode(text4 = "") {
+    return text4.length === 0 ? new Uint8Array() : new util.TextEncoder("utf-8").encodeInto(text4);
   }
 };
 var TextDecoder = class {
@@ -1699,13 +1699,13 @@ function time(args) {
   return new RegExp(`^${timeSource(args)}$`);
 }
 function datetime(args) {
-  const time3 = timeSource({ precision: args.precision });
+  const time4 = timeSource({ precision: args.precision });
   const opts = ["Z"];
   if (args.local)
     opts.push("");
   if (args.offset)
     opts.push(`([+-](?:[01]\\d|2[0-3]):[0-5]\\d)`);
-  const timeRegex = `${time3}(?:${opts.join("|")})`;
+  const timeRegex = `${time4}(?:${opts.join("|")})`;
   return new RegExp(`^${dateSource}T(?:${timeRegex})$`);
 }
 var string = (params) => {
@@ -7700,8 +7700,8 @@ function ko_default() {
 }
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/lt.js
-var capitalizeFirstCharacter = (text3) => {
-  return text3.charAt(0).toUpperCase() + text3.slice(1);
+var capitalizeFirstCharacter = (text4) => {
+  return text4.charAt(0).toUpperCase() + text4.slice(1);
 };
 function getUnitTypeFromNumber(number4) {
   const abs = Math.abs(number4);
@@ -14615,7 +14615,7 @@ function canonical(value) {
   return encoded;
 }
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/validate.ts
+// ../../packages/experimental/rich-inline/src/shared/validate.ts
 var RICH_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 function isRichJson(value, depth = 0) {
   if (depth > 16) return false;
@@ -14670,9 +14670,9 @@ function typedRichValuesValid(values2) {
   };
   return Object.values(values2).every(check2);
 }
-function richMarkerIds(text3) {
+function richMarkerIds(text4) {
   const ids = [];
-  for (const match of text3.matchAll(/```rich-inline\s*\n([^`]+)\n```/g)) {
+  for (const match of text4.matchAll(/```rich-inline\s*\n([^`]+)\n```/g)) {
     let parsed;
     if (match[1] === void 0) continue;
     try {
@@ -14783,18 +14783,29 @@ var WireCursor = class _WireCursor {
       return true;
     }
     if (this.current.instance === null || this.current.instance !== item.instance) throw new TransportError("reset-required");
-    const fingerprint = canonical(item), old = this.remembered.get(item.relayCursor);
+    const fingerprint2 = canonical(item), old = this.remembered.get(item.relayCursor);
     if (old !== void 0) {
-      if (old !== fingerprint) throw new TransportError("cursor-conflict");
+      if (old !== fingerprint2) throw new TransportError("cursor-conflict");
       return false;
     }
     if (item.relayCursor <= this.baseline) return false;
     if (item.relayCursor !== this.current.relayCursor + 1) throw new TransportError("cursor-gap");
-    this.remembered.set(item.relayCursor, fingerprint);
+    this.remembered.set(item.relayCursor, fingerprint2);
     if (this.remembered.size > this.maxRemembered) this.remembered.delete(this.remembered.keys().next().value);
     this.current = { instance: item.instance, relayCursor: item.relayCursor };
     return true;
   }
+};
+
+// src/e2e-error.ts
+var E2EError = class extends Error {
+  /** @param code - failure category; no keys, proof, identity or plaintext is included. */
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "E2EError";
+  }
+  code;
 };
 
 // src/signing-bytes.ts
@@ -14807,6 +14818,235 @@ var E2E_PROTOCOL = "dsh-mobile-e2e/1";
 var helloSchema = external_exports.object({ protocol: external_exports.literal(E2E_PROTOCOL), role: external_exports.enum(["phone", "desktop"]), ephemeralSpki: external_exports.string(), nonce: external_exports.string() }).strict();
 var frameSchema = external_exports.object({ protocol: external_exports.literal(E2E_PROTOCOL), bindingId: external_exports.string().transform((value) => id(value)), role: external_exports.enum(["phone", "desktop"]), sequence: external_exports.number().int().nonnegative(), kind: external_exports.enum(["finished", "data"]), ciphertext: external_exports.string() }).strict();
 var encoder = new TextEncoder();
+function opposite(role) {
+  return role === "phone" ? "desktop" : "phone";
+}
+var P256SecureChannel = class {
+  /** @param role - signed role. @param room - temporary room id. @param agreement - unique connection key. @param nonce - fresh approved entropy, deterministic in tests. @param remoteIdentity - preconfirmed identity pin. @param limits - explicit budgets. @param primitives - maintained platform implementation. */
+  constructor(role, room, agreement, nonce, remoteIdentity, limits, primitives) {
+    this.role = role;
+    this.room = room;
+    this.agreement = agreement;
+    this.remoteIdentity = remoteIdentity;
+    this.limits = limits;
+    this.primitives = primitives;
+    for (const value of Object.values(limits)) if (!Number.isSafeInteger(value) || value <= 0) throw new E2EError("invalid");
+    if (limits.maxFrames > 4294967295 || nonce.length !== 32 || room.length < 1 || room.length > 256) throw new E2EError("invalid");
+    this.localHello = { protocol: E2E_PROTOCOL, role, ephemeralSpki: agreement.publicSpki, nonce: primitives.encode(nonce) };
+  }
+  role;
+  room;
+  agreement;
+  remoteIdentity;
+  limits;
+  primitives;
+  localHello;
+  bindingValue;
+  sendKey;
+  receiveKey;
+  sendPrefix;
+  receivePrefix;
+  sendSequence = 0;
+  receiveSequence = 0;
+  localFinished = false;
+  remoteFinished = false;
+  helloClaimed = false;
+  finishing = false;
+  closed = false;
+  controller = new AbortController();
+  sendTail = Promise.resolve();
+  receiveTail = Promise.resolve();
+  available() {
+    if (this.closed) throw new E2EError("closed");
+  }
+  ready() {
+    this.available();
+    if (!this.localFinished || !this.remoteFinished) throw new E2EError("not-ready");
+  }
+  bytes(value, limit) {
+    if (value.length > Math.ceil(limit * 4 / 3) || !/^[A-Za-z0-9_-]+$/.test(value)) throw new E2EError("invalid");
+    const bytes = this.primitives.decode(value);
+    if (bytes.length > limit || this.primitives.encode(bytes) !== value) throw new E2EError("invalid");
+    return bytes;
+  }
+  /** @returns ephemeral hello without long-term identity or Session data. */
+  hello() {
+    this.available();
+    return { ...this.localHello };
+  }
+  /** @param candidate - opposite hello. @returns after key/binding derivation; failure closes this channel. */
+  async receiveHello(candidate) {
+    this.available();
+    if (this.helloClaimed) throw new E2EError("invalid");
+    this.helloClaimed = true;
+    let secret;
+    let send;
+    let receive;
+    try {
+      const parsed = helloSchema.safeParse(candidate);
+      if (!parsed.success || parsed.data.role === this.role || this.bytes(parsed.data.nonce, 32).length !== 32) throw new E2EError("invalid");
+      await this.primitives.publicKey(this.remoteIdentity);
+      await this.primitives.publicKey(this.agreement.publicSpki);
+      await this.primitives.publicKey(parsed.data.ephemeralSpki);
+      const remote = parsed.data, phone = this.role === "phone" ? this.localHello : remote, desktop = this.role === "desktop" ? this.localHello : remote;
+      const digest2 = await this.primitives.hash(transcriptBytes([E2E_PROTOCOL, this.room, phone.role, phone.ephemeralSpki, phone.nonce, desktop.role, desktop.ephemeralSpki, desktop.nonce]));
+      secret = await this.agreement.derive(remote.ephemeralSpki);
+      send = await this.primitives.hkdf(secret, digest2, transcriptBytes([E2E_PROTOCOL, "traffic-key", this.role]), 36);
+      receive = await this.primitives.hkdf(secret, digest2, transcriptBytes([E2E_PROTOCOL, "traffic-key", opposite(this.role)]), 36);
+      const remoteCredentialId = await this.primitives.credentialId(this.remoteIdentity);
+      this.available();
+      this.sendKey = send.slice(0, 32);
+      this.sendPrefix = send.slice(32);
+      this.receiveKey = receive.slice(0, 32);
+      this.receivePrefix = receive.slice(32);
+      this.bindingValue = { id: id(this.primitives.encode(digest2)), remoteCredentialId, signal: this.controller.signal };
+    } catch (error51) {
+      this.close();
+      if (error51 instanceof E2EError) throw error51;
+      throw new E2EError("key-invalid");
+    } finally {
+      secret?.fill(0);
+      send?.fill(0);
+      receive?.fill(0);
+      this.agreement.close();
+    }
+  }
+  nonce(prefix, sequence) {
+    const nonce = new Uint8Array(12);
+    nonce.set(prefix);
+    new DataView(nonce.buffer).setUint32(8, sequence, false);
+    return nonce;
+  }
+  aad(frame) {
+    return transcriptBytes([frame.protocol, frame.bindingId, frame.role, frame.sequence, frame.kind]);
+  }
+  serial(direction, operation) {
+    const next = (direction === "send" ? this.sendTail : this.receiveTail).then(operation), settled = next.then(() => {
+    }, () => {
+    });
+    if (direction === "send") this.sendTail = settled;
+    else this.receiveTail = settled;
+    return next;
+  }
+  async encrypt(kind, value) {
+    this.available();
+    if (this.bindingValue === void 0 || this.sendKey === void 0 || this.sendPrefix === void 0) throw new E2EError("not-ready");
+    const plaintext = encoder.encode(JSON.stringify(value));
+    if (plaintext.length > this.limits.maxPlaintextBytes) throw new E2EError("capacity");
+    if (this.sendSequence >= this.limits.maxFrames) {
+      this.close();
+      throw new E2EError("capacity");
+    }
+    const head = { protocol: E2E_PROTOCOL, bindingId: this.bindingValue.id, role: this.role, sequence: this.sendSequence++, kind };
+    try {
+      const sealed = await this.primitives.encrypt(this.sendKey, this.nonce(this.sendPrefix, head.sequence), this.aad(head), plaintext);
+      this.available();
+      const frame = { ...head, ciphertext: this.primitives.encode(sealed) };
+      if (encoder.encode(JSON.stringify(frame)).length > this.limits.maxFrameBytes) throw new E2EError("capacity");
+      return frame;
+    } catch (error51) {
+      this.close();
+      if (error51 instanceof E2EError) throw error51;
+      throw new E2EError("closed");
+    } finally {
+      plaintext.fill(0);
+    }
+  }
+  async decrypt(candidate, kind) {
+    this.available();
+    let plaintext;
+    try {
+      if (typeof candidate !== "string" || encoder.encode(candidate).length > this.limits.maxFrameBytes) throw new E2EError("invalid");
+      const raw = JSON.parse(candidate), parsed = frameSchema.safeParse(raw);
+      if (!parsed.success || this.bindingValue === void 0 || this.receiveKey === void 0 || this.receivePrefix === void 0) throw new E2EError("invalid");
+      const frame = parsed.data;
+      if (frame.bindingId !== this.bindingValue.id || frame.role !== opposite(this.role) || frame.kind !== kind || frame.sequence !== this.receiveSequence || frame.sequence >= this.limits.maxFrames) throw new E2EError("sequence");
+      const ciphertext = this.bytes(frame.ciphertext, this.limits.maxPlaintextBytes + 16);
+      if (ciphertext.length < 16) throw new E2EError("invalid");
+      plaintext = await this.primitives.decrypt(this.receiveKey, this.nonce(this.receivePrefix, frame.sequence), this.aad(frame), ciphertext);
+      this.available();
+      const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(plaintext));
+      const result = jsonPayload(value);
+      this.receiveSequence++;
+      return result;
+    } catch (error51) {
+      this.close();
+      if (error51 instanceof E2EError) throw error51;
+      throw new E2EError("decrypt-failed");
+    } finally {
+      plaintext?.fill(0);
+    }
+  }
+  /** @param signer - trusted local key handle. @returns encrypted role/transcript identity proof. */
+  async finish(signer) {
+    this.available();
+    if (this.bindingValue === void 0 || this.localFinished || this.finishing) throw new E2EError("not-ready");
+    this.finishing = true;
+    try {
+      const credentialId = await this.primitives.credentialId(signer.publicSpki), signature4 = this.primitives.encode(await signer.sign(transcriptBytes([E2E_PROTOCOL, "finished", this.role, this.bindingValue.id, credentialId])));
+      const frame = await this.serial("send", () => this.encrypt("finished", { credentialId, signature: signature4 }));
+      this.available();
+      this.localFinished = true;
+      return frame;
+    } catch (error51) {
+      this.close();
+      if (error51 instanceof E2EError) throw error51;
+      throw new E2EError("signature-denied");
+    }
+  }
+  /** @param raw - encrypted proof. @returns after checking a separately pinned identity, never a public key provided in this frame. */
+  async acceptFinished(raw) {
+    return this.serial("receive", async () => {
+      if (this.remoteFinished) {
+        this.close();
+        throw new E2EError("sequence");
+      }
+      try {
+        const decoded = await this.decrypt(raw, "finished"), proof = external_exports.object({ credentialId: external_exports.string(), signature: external_exports.string() }).strict().safeParse(decoded), credentialId = await this.primitives.credentialId(this.remoteIdentity);
+        if (!proof.success || proof.data.credentialId !== credentialId || this.bindingValue === void 0 || !await this.primitives.verify(this.remoteIdentity, transcriptBytes([E2E_PROTOCOL, "finished", opposite(this.role), this.bindingValue.id, credentialId]), this.bytes(proof.data.signature, 80))) throw new E2EError("signature-denied");
+        this.available();
+        this.remoteFinished = true;
+      } catch (error51) {
+        this.close();
+        if (error51 instanceof E2EError) throw error51;
+        throw new E2EError("signature-denied");
+      }
+    });
+  }
+  /** @returns host-only verified connection object; its visible id cannot substitute for object identity. */
+  binding() {
+    this.ready();
+    if (this.bindingValue === void 0) throw new E2EError("not-ready");
+    return this.bindingValue;
+  }
+  /** @param value - application JSON. @returns serialized encrypted frame after mutual proof verification. */
+  seal(value) {
+    return this.serial("send", async () => {
+      this.ready();
+      return this.encrypt("data", value);
+    });
+  }
+  /** @param raw - complete bounded encrypted frame. @returns authenticated application JSON in exact order. */
+  open(raw) {
+    return this.serial("receive", async () => {
+      this.ready();
+      return this.decrypt(raw, "data");
+    });
+  }
+  /** Abort identity, clear owned derived-key buffers and release agreement; no garbage-collected erasure guarantee. */
+  close() {
+    this.closed = true;
+    this.controller.abort();
+    this.sendKey?.fill(0);
+    this.receiveKey?.fill(0);
+    this.sendPrefix?.fill(0);
+    this.receivePrefix?.fill(0);
+    this.agreement.close();
+  }
+};
+
+// src/device-operations.ts
+var deviceGrantOperations = ["task.submit", "task.receipt", "session.cancel", "session.sync", "rich.mount", "rich.snapshot", "rich.saveDraft", "rich.invoke", "rich.status", "rich.dispose"];
 
 // src/pairing-protocol.ts
 var identifier = external_exports.string().min(1).max(256);
@@ -14815,7 +15055,6 @@ function enrollmentProofBytes(challenge) {
   return transcriptBytes([challenge.protocol, challenge.challengeId, challenge.desktopId, challenge.profileId, challenge.deviceId, challenge.credentialId, challenge.publicSpki, challenge.nonce, challenge.expiresAt]);
 }
 var deviceChallengeSchema = external_exports.object({ protocol: external_exports.literal("dsh-mobile-device-auth/1"), challengeId: identifier.transform((value) => id(value)), desktopId: identifier.transform((value) => id(value)), profileId: identifier.transform((value) => id(value)), deviceId: identifier.transform((value) => id(value)), credentialId: identifier.transform((value) => id(value)), epoch: external_exports.number().int().positive(), expiresAt: external_exports.number().int().nonnegative(), channelBindingId: identifier.transform((value) => id(value)) }).strict();
-var deviceGrantOperations = ["task.submit", "task.receipt", "session.cancel", "session.sync", "rich.mount", "rich.snapshot", "rich.saveDraft", "rich.invoke", "rich.status", "rich.dispose"];
 var pairedGrantSchema = external_exports.object({ protocol: external_exports.literal("dsh-mobile-device-auth/1"), desktopId: identifier.transform((value) => id(value)), profileId: identifier.transform((value) => id(value)), deviceId: identifier.transform((value) => id(value)), credentialId: identifier.transform((value) => id(value)), epoch: external_exports.number().int().positive().max(Number.MAX_SAFE_INTEGER - 1), sessions: external_exports.array(identifier.transform((value) => id(value))).min(1).max(16).refine((value) => !value.some((session) => session === "*") && new Set(value).size === value.length), operations: external_exports.array(external_exports.enum(deviceGrantOperations)).min(1).max(deviceGrantOperations.length).refine((value) => new Set(value).size === value.length), expiresAt: external_exports.number().int().nonnegative(), revoked: external_exports.literal(false) }).strict();
 var readOnlyGrantSchema = pairedGrantSchema.extend({ operations: external_exports.array(external_exports.enum(["session.sync", "task.receipt"])).min(1).max(2) });
 
@@ -14892,15 +15131,15 @@ function generations(value) {
   }
   result.push(value);
   for (const [index3, current] of result.entries()) {
-    const record2 = publicTrustRecord(current);
-    if (record2.revoked) throw new PublicTrustHistoryError("revoked");
-    if (pairs2.has(record2.paired.pairId)) throw new PublicTrustHistoryError("pair-reused");
-    pairs2.add(record2.paired.pairId);
+    const record3 = publicTrustRecord(current);
+    if (record3.revoked) throw new PublicTrustHistoryError("revoked");
+    if (pairs2.has(record3.paired.pairId)) throw new PublicTrustHistoryError("pair-reused");
+    pairs2.add(record3.paired.pairId);
     if (index3 === 0) continue;
     const previous = result[index3 - 1], old = publicTrustRecord(previous);
     if (current.schema !== "harmony-product-public-trust/2" || JSON.stringify(current.history) !== JSON.stringify(successorHistory(previous))) throw new PublicTrustHistoryError("history");
-    if (!sameIdentity(old, record2)) throw new PublicTrustHistoryError("identity");
-    if (current.revokedEpoch !== old.paired.grant.epoch + 1 || record2.paired.grant.epoch !== current.revokedEpoch + 1) throw new PublicTrustHistoryError("epoch");
+    if (!sameIdentity(old, record3)) throw new PublicTrustHistoryError("identity");
+    if (current.revokedEpoch !== old.paired.grant.epoch + 1 || record3.paired.grant.epoch !== current.revokedEpoch + 1) throw new PublicTrustHistoryError("epoch");
   }
   return result;
 }
@@ -14921,7 +15160,7 @@ function assertPublicTrustSuccessor(previous, next, now) {
   const chain = generations(next);
   assertAnchor(chain, previous);
   for (const [index3, value] of chain.entries()) {
-    const record2 = publicTrustRecord(value), expired = Math.min(record2.paired.expiresAt, record2.paired.grant.expiresAt) <= now;
+    const record3 = publicTrustRecord(value), expired = Math.min(record3.paired.expiresAt, record3.paired.grant.expiresAt) <= now;
     if (index3 === chain.length - 1 ? expired : !expired) throw new PublicTrustHistoryError("expiry");
   }
 }
@@ -14955,12 +15194,12 @@ var ProductTrustOwner = class {
   pendingDocument = null;
   tail = Promise.resolve();
   parse(raw) {
-    const value = parsePublicTrustDocument(raw, this.maxBytes), record2 = publicTrustRecord(value);
-    if (record2.paired.credentialId !== record2.paired.grant.credentialId) throw new Error("public trust credential denied");
+    const value = parsePublicTrustDocument(raw, this.maxBytes), record3 = publicTrustRecord(value);
+    if (record3.paired.credentialId !== record3.paired.grant.credentialId) throw new Error("public trust credential denied");
     return value;
   }
-  fresh(record2) {
-    if (Math.min(record2.paired.expiresAt, record2.paired.grant.expiresAt) <= this.clock()) throw new PublicTrustExpiredError();
+  fresh(record3) {
+    if (Math.min(record3.paired.expiresAt, record3.paired.grant.expiresAt) <= this.clock()) throw new PublicTrustExpiredError();
   }
   /** @returns the retained public generation for verification; no IO or authority change occurs. */
   savedDocument() {
@@ -14986,9 +15225,9 @@ var ProductTrustOwner = class {
   /** @param authority - native decision identity. @param raw - locally selected public offer. @param compared - explicit native fingerprint comparison decision. @returns confirmed record only after its atomic storage acknowledgment; this does not enroll on desktop. */
   async confirm(authority, raw, compared) {
     if (authority !== this.authority || !compared || this.blocked || this.closed || this.current !== null || this.candidate !== null) throw new Error("public trust confirmation denied");
-    const document2 = this.parse(raw), record2 = publicTrustRecord(document2);
-    this.fresh(record2);
-    if (record2.revoked || document2.schema !== "harmony-product-public-trust/1") throw new Error("public trust initial confirmation denied");
+    const document2 = this.parse(raw), record3 = publicTrustRecord(document2);
+    this.fresh(record3);
+    if (record3.revoked || document2.schema !== "harmony-product-public-trust/1") throw new Error("public trust initial confirmation denied");
     return this.commit(document2);
   }
   /** @param authority - explicit native successor decision. @param raw - signature and predecessor digest already verified by the owning native port. @param compared - renewed local fingerprint/scope decision. @returns after atomic signed generation storage; corrupt/unknown state and local revocation never permit replacement. */
@@ -15000,8 +15239,8 @@ var ProductTrustOwner = class {
     return this.commit(next);
   }
   commit(document2) {
-    const record2 = publicTrustRecord(document2);
-    this.candidate = record2;
+    const record3 = publicTrustRecord(document2);
+    this.candidate = record3;
     this.pendingDocument = document2;
     const version2 = ++this.version;
     const result = this.tail.then(async () => {
@@ -15016,10 +15255,10 @@ var ProductTrustOwner = class {
       ;
       if (version2 !== this.version || this.closed) throw new Error("public trust confirmation retired");
       this.document = document2;
-      this.current = record2;
+      this.current = record3;
       this.candidate = null;
       this.pendingDocument = null;
-      return record2;
+      return record3;
     });
     this.tail = result.then(() => {
     }, () => {
@@ -15973,12 +16212,6 @@ var SurfaceManager = class {
     if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta();
     return this._state.nodes;
   }
-  /** Messages replaced by committed projections, keyed by original event seq. */
-  get projectedMessages() {
-    this._assertProjections();
-    if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta();
-    return this._state.projectedMessages;
-  }
   /** Fold events appended since the previous access. */
   _processDelta() {
     const tailSeq = this.baseSeq + this.log.length - 1;
@@ -16038,62 +16271,6 @@ function assertSessionWireEvent(value) {
   validateSessionEventData(current, subject);
 }
 
-// ../../packages/experimental/rich-inline/src/shared/validate.ts
-var RICH_ID2 = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
-function isRichJson2(value, depth = 0) {
-  if (depth > 16) return false;
-  if (value === null || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value) && !Object.is(value, -0);
-  if (typeof value === "string") return value.length <= 131072;
-  if (Array.isArray(value)) return value.length <= 2e3 && value.every((item) => isRichJson2(item, depth + 1));
-  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return false;
-  const entries = Object.entries(value);
-  return entries.length <= 500 && entries.every(([key, item]) => key !== "__proto__" && key !== "constructor" && key !== "prototype" && key.length <= 128 && isRichJson2(item, depth + 1));
-}
-function isRichValues2(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value) && isRichJson2(value);
-}
-function typedRichValuesValid2(values2) {
-  const check2 = (value) => {
-    if (Array.isArray(value)) return value.every(check2);
-    if (value === null || typeof value !== "object") return true;
-    const kind = value.type;
-    if (kind === "number" && (typeof value.value !== "number" || !Number.isFinite(value.value))) return false;
-    if (kind === "decimal" && (typeof value.value !== "string" || !/^-?(0|[1-9]\d*)(\.\d+)?$/.test(value.value))) return false;
-    if (kind === "text" && typeof value.value !== "string" || kind === "boolean" && typeof value.value !== "boolean" || kind === "null" && value.value !== null) return false;
-    if (kind === "date") {
-      if (typeof value.value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.value)) return false;
-      const date5 = /* @__PURE__ */ new Date(`${value.value}T00:00:00.000Z`);
-      if (!Number.isFinite(date5.getTime()) || date5.toISOString().slice(0, 10) !== value.value) return false;
-    }
-    if (kind === "option" && (typeof value.id !== "string" || !RICH_ID2.test(value.id))) return false;
-    if (kind === "selection" && (!Array.isArray(value.ids) || !value.ids.every((id2) => typeof id2 === "string" && RICH_ID2.test(id2)) || new Set(value.ids).size !== value.ids.length)) return false;
-    if (kind === "object" && !isRichValues2(value.value)) return false;
-    if (kind === "list" && !Array.isArray(value.value)) return false;
-    if (kind === "asset" || kind === "media") {
-      const ref = value.ref;
-      if (ref === null || typeof ref !== "object" || Array.isArray(ref) || typeof ref.grantId !== "string" || !RICH_ID2.test(ref.grantId) || typeof ref.assetId !== "string" || typeof ref.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(ref.sha256) || typeof ref.sizeBytes !== "number" || !Number.isSafeInteger(ref.sizeBytes) || ref.sizeBytes < 0 || ref.purpose !== "agent-input") return false;
-      if (kind === "media" && (typeof value.kind !== "string" || !["image", "audio", "video", "document"].includes(value.kind) || value.startMs !== void 0 && (typeof value.startMs !== "number" || value.startMs < 0) || value.endMs !== void 0 && (typeof value.endMs !== "number" || value.endMs < 0) || typeof value.startMs === "number" && typeof value.endMs === "number" && value.endMs < value.startMs)) return false;
-    }
-    if (kind === "table") {
-      if (!Array.isArray(value.columns) || value.columns.length > 100 || !Array.isArray(value.rows) || value.rows.length > 2e3) return false;
-      const columns = /* @__PURE__ */ new Map();
-      for (const col of value.columns) {
-        if (col === null || typeof col !== "object" || Array.isArray(col) || typeof col.id !== "string" || !RICH_ID2.test(col.id) || typeof col.label !== "string" || typeof col.valueType !== "string" || !["null", "text", "number", "decimal", "boolean", "date", "option", "selection", "object", "list", "asset", "media", "table"].includes(col.valueType) || columns.has(col.id)) return false;
-        columns.set(col.id, col.valueType);
-      }
-      const rows = /* @__PURE__ */ new Set();
-      for (const row of value.rows) {
-        if (row === null || typeof row !== "object" || Array.isArray(row) || typeof row.rowId !== "string" || !RICH_ID2.test(row.rowId) || rows.has(row.rowId) || !isRichValues2(row.cells)) return false;
-        rows.add(row.rowId);
-        if (Object.keys(row.cells).length !== columns.size || Object.entries(row.cells).some(([key, cell]) => cell === null || typeof cell !== "object" || Array.isArray(cell) || cell.type !== columns.get(key) || !check2(cell))) return false;
-      }
-    }
-    return Object.values(value).every(check2);
-  };
-  return Object.values(values2).every(check2);
-}
-
 // ../../packages/experimental/rich-inline/src/shared/limits.ts
 var RICH_MAX_CONTENT_BYTES = 2097152;
 
@@ -16108,14 +16285,14 @@ function authoredContent(source) {
   }
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value;
-  if (Object.keys(value).some((key) => !["key", "html", "css", "js", "fallbackText", "stateSchemaVersion", "values"].includes(key)) || typeof item.key !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/u.test(item.key) || typeof item.html !== "string" || typeof item.css !== "string" || typeof item.js !== "string" || typeof item.fallbackText !== "string" || item.fallbackText.trim() === "" || !Number.isSafeInteger(item.stateSchemaVersion) || Number(item.stateSchemaVersion) < 1 || item.values !== void 0 && (!isRichValues2(item.values) || !typedRichValuesValid2(item.values))) return null;
+  if (Object.keys(value).some((key) => !["key", "html", "css", "js", "fallbackText", "stateSchemaVersion", "values"].includes(key)) || typeof item.key !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/u.test(item.key) || typeof item.html !== "string" || typeof item.css !== "string" || typeof item.js !== "string" || typeof item.fallbackText !== "string" || item.fallbackText.trim() === "" || !Number.isSafeInteger(item.stateSchemaVersion) || Number(item.stateSchemaVersion) < 1 || item.values !== void 0 && (!isRichValues(item.values) || !typedRichValuesValid(item.values))) return null;
   return item;
 }
 function authoredBlockId(messageId, key) {
   return `inline-${messageId}-${key}`;
 }
-function authoredFences(text3) {
-  return [...text3.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
+function authoredFences(text4) {
+  return [...text4.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
 }
 
 // ../../packages/experimental/rich-inline/src/shared/theme.ts
@@ -16269,17 +16446,18 @@ var baseSheet = (palette, accent, accent2) => String.raw`
   --rich-mono: ${MONO};
   --dsw-alias-label-primary: var(--rich-text); --dsw-alias-label-secondary: var(--rich-muted);
   --dsw-alias-interactive-bg-hover: var(--rich-surface-raised); --dsw-radius-sm: var(--rich-radius);
+  background-color: var(--rich-bg);
   scrollbar-color: var(--rich-border-strong) transparent; scrollbar-width: thin;
 }
 :where(*, *::before, *::after) { box-sizing: border-box; }
 body {
   margin: 0; color: var(--rich-text); color-scheme: dark;
-  background: radial-gradient(720px 220px at 0 0, color-mix(in srgb, var(--rich-accent) 6%, transparent), transparent 72%) no-repeat, var(--rich-bg);
+  background: radial-gradient(720px 220px at 0 0, color-mix(in srgb, var(--rich-accent) 6%, transparent), transparent 72%) 0 0 / 100% 300px no-repeat, var(--rich-bg);
   font: 14px/1.65 var(--rich-font); letter-spacing: .005em;
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-wrap: anywhere;
 }
 ::selection { background: color-mix(in srgb, var(--rich-accent) 34%, transparent); color: var(--rich-text-strong); }
-[data-rich-content-root] { padding: clamp(16px, 3vw, 22px); min-width: 0; display: flow-root; }
+[data-rich-content-root] { padding: clamp(16px, 3vw, 22px); min-width: 0; display: flow-root; contain: layout style; }
 [hidden] { display: none !important; }
 :where(h1, h2, h3, h4, h5, h6) { margin: 0 0 10px; color: var(--rich-text-strong); font-weight: 600; line-height: 1.35; letter-spacing: -.01em; text-wrap: balance; }
 :where(h1) { font-size: 22px; line-height: 1.3; letter-spacing: -.02em; }
@@ -16531,11 +16709,10 @@ body {
   background:
     ${BRACKET} right 10px top 10px / 14px 2px no-repeat, ${BRACKET} right 10px top 10px / 2px 14px no-repeat,
     ${BRACKET} right 10px bottom 10px / 14px 2px no-repeat, ${BRACKET} right 10px bottom 10px / 2px 14px no-repeat,
-    radial-gradient(760px 260px at 0 0, ${tint("accent", 16)}, transparent 72%) no-repeat,
-    radial-gradient(600px 240px at 100% 0, ${tint("accent-2", 13)}, transparent 72%) no-repeat,
-    linear-gradient(transparent, var(--rich-bg) 560px) no-repeat,
-    linear-gradient(${tint("accent", 9)} 1px, transparent 1px) 0 0 / 24px 24px,
-    linear-gradient(90deg, ${tint("accent", 9)} 1px, transparent 1px) 0 0 / 24px 24px,
+    radial-gradient(760px 260px at 0 0, ${tint("accent", 16)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    radial-gradient(600px 240px at 100% 0, ${tint("accent-2", 13)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    linear-gradient(transparent, var(--rich-bg) 560px) 0 0 / 100% 560px no-repeat,
+    linear-gradient(90deg, ${tint("accent", 9)} 1px, transparent 1px) 0 0 / 24px 560px repeat-x,
     var(--rich-bg);
 }
 ` + GRADIENT_TITLE;
@@ -16543,9 +16720,9 @@ var AURORA_OVERLAY = GLOW_OVERLAY + String.raw`
 :root { --rich-radius: 14px; --rich-radius-sm: 9px; }
 body {
   background:
-    radial-gradient(900px 300px at 12% -60px, ${tint("accent", 18)}, transparent 70%) no-repeat,
-    radial-gradient(700px 280px at 88% -40px, ${tint("accent-2", 16)}, transparent 72%) no-repeat,
-    radial-gradient(520px 220px at 50% -90px, ${tint("chart-2", 10)}, transparent 70%) no-repeat,
+    radial-gradient(900px 300px at 12% -60px, ${tint("accent", 18)}, transparent 70%) 0 0 / 100% 340px no-repeat,
+    radial-gradient(700px 280px at 88% -40px, ${tint("accent-2", 16)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    radial-gradient(520px 220px at 50% -90px, ${tint("chart-2", 10)}, transparent 70%) 0 0 / 100% 260px no-repeat,
     var(--rich-bg);
 }
 .rich-card, .rich-list, .rich-table-wrap { background-color: color-mix(in srgb, var(--rich-surface) 84%, transparent); }
@@ -16557,10 +16734,10 @@ var NEON_OVERLAY = GLOW_OVERLAY + CONSOLE_LABELS + String.raw`
 :root { --rich-radius: 8px; --rich-radius-sm: 5px; }
 body {
   background:
-    radial-gradient(900px 260px at 50% -120px, ${tint("accent", 22)}, transparent 70%) no-repeat,
-    radial-gradient(600px 240px at 100% 0, ${tint("accent-2", 14)}, transparent 72%) no-repeat,
-    linear-gradient(transparent, var(--rich-bg) 480px) no-repeat,
-    linear-gradient(90deg, ${tint("accent-2", 8)} 1px, transparent 1px) 0 0 / 40px 40px,
+    radial-gradient(900px 260px at 50% -120px, ${tint("accent", 22)}, transparent 70%) 0 0 / 100% 320px no-repeat,
+    radial-gradient(600px 240px at 100% 0, ${tint("accent-2", 14)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    linear-gradient(transparent, var(--rich-bg) 480px) 0 0 / 100% 480px no-repeat,
+    linear-gradient(90deg, ${tint("accent-2", 8)} 1px, transparent 1px) 0 0 / 40px 480px repeat-x,
     var(--rich-bg);
 }
 :where(h1) { color: var(--rich-text-strong); text-shadow: 0 0 2px ${tint("accent", 80)}, 0 0 18px ${tint("accent", 55)}; }
@@ -16575,8 +16752,9 @@ var TERMINAL_OVERLAY = GLOW_OVERLAY + CONSOLE_LABELS + String.raw`
 :root { --rich-radius: 4px; --rich-radius-sm: 3px; --rich-font: var(--rich-mono); }
 body {
   background:
-    repeating-linear-gradient(180deg, transparent 0 2px, ${tint("accent", 4)} 2px 3px),
-    radial-gradient(900px 320px at 0 0, ${tint("accent", 10)}, transparent 70%) no-repeat,
+    linear-gradient(transparent, var(--rich-bg) 320px) 0 0 / 100% 320px no-repeat,
+    repeating-linear-gradient(180deg, transparent 0 2px, ${tint("accent", 4)} 2px 3px) 0 0 / 100% 320px no-repeat,
+    radial-gradient(900px 320px at 0 0, ${tint("accent", 10)}, transparent 70%) 0 0 / 100% 320px no-repeat,
     var(--rich-bg);
 }
 :where(h1, h2, h3) { color: color-mix(in srgb, var(--rich-accent) 72%, var(--rich-text-strong)); letter-spacing: 0; }
@@ -16625,10 +16803,66 @@ var SHEETS = {
   }
 };
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/limits.ts
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/validate.ts
+var RICH_ID2 = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+function isRichJson2(value, depth = 0) {
+  if (depth > 16) return false;
+  if (value === null || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value) && !Object.is(value, -0);
+  if (typeof value === "string") return value.length <= 131072;
+  if (Array.isArray(value)) return value.length <= 2e3 && value.every((item) => isRichJson2(item, depth + 1));
+  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return false;
+  const entries = Object.entries(value);
+  return entries.length <= 500 && entries.every(([key, item]) => key !== "__proto__" && key !== "constructor" && key !== "prototype" && key.length <= 128 && isRichJson2(item, depth + 1));
+}
+function isRichValues2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && isRichJson2(value);
+}
+function typedRichValuesValid2(values2) {
+  const check2 = (value) => {
+    if (Array.isArray(value)) return value.every(check2);
+    if (value === null || typeof value !== "object") return true;
+    const kind = value.type;
+    if (kind === "number" && (typeof value.value !== "number" || !Number.isFinite(value.value))) return false;
+    if (kind === "decimal" && (typeof value.value !== "string" || !/^-?(0|[1-9]\d*)(\.\d+)?$/.test(value.value))) return false;
+    if (kind === "text" && typeof value.value !== "string" || kind === "boolean" && typeof value.value !== "boolean" || kind === "null" && value.value !== null) return false;
+    if (kind === "date") {
+      if (typeof value.value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.value)) return false;
+      const date5 = /* @__PURE__ */ new Date(`${value.value}T00:00:00.000Z`);
+      if (!Number.isFinite(date5.getTime()) || date5.toISOString().slice(0, 10) !== value.value) return false;
+    }
+    if (kind === "option" && (typeof value.id !== "string" || !RICH_ID2.test(value.id))) return false;
+    if (kind === "selection" && (!Array.isArray(value.ids) || !value.ids.every((id2) => typeof id2 === "string" && RICH_ID2.test(id2)) || new Set(value.ids).size !== value.ids.length)) return false;
+    if (kind === "object" && !isRichValues2(value.value)) return false;
+    if (kind === "list" && !Array.isArray(value.value)) return false;
+    if (kind === "asset" || kind === "media") {
+      const ref = value.ref;
+      if (ref === null || typeof ref !== "object" || Array.isArray(ref) || typeof ref.grantId !== "string" || !RICH_ID2.test(ref.grantId) || typeof ref.assetId !== "string" || typeof ref.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(ref.sha256) || typeof ref.sizeBytes !== "number" || !Number.isSafeInteger(ref.sizeBytes) || ref.sizeBytes < 0 || ref.purpose !== "agent-input") return false;
+      if (kind === "media" && (typeof value.kind !== "string" || !["image", "audio", "video", "document"].includes(value.kind) || value.startMs !== void 0 && (typeof value.startMs !== "number" || value.startMs < 0) || value.endMs !== void 0 && (typeof value.endMs !== "number" || value.endMs < 0) || typeof value.startMs === "number" && typeof value.endMs === "number" && value.endMs < value.startMs)) return false;
+    }
+    if (kind === "table") {
+      if (!Array.isArray(value.columns) || value.columns.length > 100 || !Array.isArray(value.rows) || value.rows.length > 2e3) return false;
+      const columns = /* @__PURE__ */ new Map();
+      for (const col of value.columns) {
+        if (col === null || typeof col !== "object" || Array.isArray(col) || typeof col.id !== "string" || !RICH_ID2.test(col.id) || typeof col.label !== "string" || typeof col.valueType !== "string" || !["null", "text", "number", "decimal", "boolean", "date", "option", "selection", "object", "list", "asset", "media", "table"].includes(col.valueType) || columns.has(col.id)) return false;
+        columns.set(col.id, col.valueType);
+      }
+      const rows = /* @__PURE__ */ new Set();
+      for (const row of value.rows) {
+        if (row === null || typeof row !== "object" || Array.isArray(row) || typeof row.rowId !== "string" || !RICH_ID2.test(row.rowId) || rows.has(row.rowId) || !isRichValues2(row.cells)) return false;
+        rows.add(row.rowId);
+        if (Object.keys(row.cells).length !== columns.size || Object.entries(row.cells).some(([key, cell]) => cell === null || typeof cell !== "object" || Array.isArray(cell) || cell.type !== columns.get(key) || !check2(cell))) return false;
+      }
+    }
+    return Object.values(value).every(check2);
+  };
+  return Object.values(values2).every(check2);
+}
+
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/limits.ts
 var RICH_MAX_CONTENT_BYTES2 = 2097152;
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/authored.ts
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/authored.ts
 function authoredContent2(source) {
   if (new TextEncoder().encode(source).byteLength > RICH_MAX_CONTENT_BYTES2) return null;
   let value;
@@ -16639,17 +16873,17 @@ function authoredContent2(source) {
   }
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value;
-  if (Object.keys(value).some((key) => !["key", "html", "css", "js", "fallbackText", "stateSchemaVersion", "values"].includes(key)) || typeof item.key !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/u.test(item.key) || typeof item.html !== "string" || typeof item.css !== "string" || typeof item.js !== "string" || typeof item.fallbackText !== "string" || item.fallbackText.trim() === "" || !Number.isSafeInteger(item.stateSchemaVersion) || Number(item.stateSchemaVersion) < 1 || item.values !== void 0 && (!isRichValues(item.values) || !typedRichValuesValid(item.values))) return null;
+  if (Object.keys(value).some((key) => !["key", "html", "css", "js", "fallbackText", "stateSchemaVersion", "values"].includes(key)) || typeof item.key !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/u.test(item.key) || typeof item.html !== "string" || typeof item.css !== "string" || typeof item.js !== "string" || typeof item.fallbackText !== "string" || item.fallbackText.trim() === "" || !Number.isSafeInteger(item.stateSchemaVersion) || Number(item.stateSchemaVersion) < 1 || item.values !== void 0 && (!isRichValues2(item.values) || !typedRichValuesValid2(item.values))) return null;
   return item;
 }
 function authoredBlockId2(messageId, key) {
   return `inline-${messageId}-${key}`;
 }
-function authoredFences2(text3) {
-  return [...text3.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
+function authoredFences2(text4) {
+  return [...text4.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
 }
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/source-projection.ts
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/source-projection.ts
 var index = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 var targetSchema = external_exports.object({
   seq: index.transform(SessionSeq),
@@ -16700,15 +16934,15 @@ function createRichSourceProjection(hash2) {
         if (message.role !== "assistant" || part?.type !== "text" || originalPart?.type !== "text" || part.text.slice(target.start, target.end) !== originalPart.text.slice(target.start, target.end)) {
           throw new Error("rich-inline/source-offload: another projection changed the selected occurrence");
         }
-        const text3 = `${part.text.slice(0, target.start)}[Rich artifact ${target.blockId}; render revision 1; data revision 1; sourceRef ${target.sourceRef}. Read source or values with rich_inline_read.]${part.text.slice(target.end)}`;
-        changed.set(target.seq, { ...message, content: message.content.map((item, position) => position === target.partIndex ? { type: "text", text: text3 } : item) });
+        const text4 = `${part.text.slice(0, target.start)}[Rich artifact ${target.blockId}; render revision 1; data revision 1; sourceRef ${target.sourceRef}. Read source or values with rich_inline_read.]${part.text.slice(target.end)}`;
+        changed.set(target.seq, { ...message, content: message.content.map((item, position) => position === target.partIndex ? { type: "text", text: text4 } : item) });
       }
       return changed;
     }
   };
 }
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/tool-source-projection.ts
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/tool-source-projection.ts
 var index2 = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 var revision = index2.min(1);
 var blockId = external_exports.string().min(1).transform((value) => brandString(value));
@@ -16795,7 +17029,7 @@ function createRichToolSourceProjection(hash2) {
   };
 }
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/message-projections.ts
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/message-projections.ts
 function richProjectionHistoryStart(events) {
   let first = null;
   for (const event of events) {
@@ -17338,8 +17572,8 @@ function decodeDomain(value, owner, limits) {
   if (integer2(projections.asOfSeq, -1) !== cursor) throw new TransportError("domain-invalid");
   object2(projections.values);
   if (!Array.isArray(frame.records) || frame.records.length > limits.maxEvents) throw new TransportError("domain-too-large");
-  const events = version2 === SESSION_FORMAT_VERSION ? frame.records.map((record2) => {
-    const entry = object2(record2);
+  const events = version2 === SESSION_FORMAT_VERSION ? frame.records.map((record3) => {
+    const entry = object2(record3);
     if (entry.type !== "event") throw new TransportError("domain-invalid");
     return decodeEvent(entry.event, limits);
   }) : [];
@@ -17584,10 +17818,10 @@ var PhoneCore = class {
     throw new TransportError("native-method-required");
   }
   /** @param requestId - stable native intent identity. @param text - user task. @returns one accepted receipt or visible uncertainty; repeated IDs never redispatch. */
-  submit(requestId, text3) {
+  submit(requestId, text4) {
     if (this.model.view.readOnly) return Promise.reject(new TransportError("read-only"));
-    const payload = { sessionId: this.model.owner.sessionId, requestId: id(requestId), text: text3 }, fingerprint = canonical(payload), old = this.tasks.get(requestId);
-    if (old !== void 0) return old.fingerprint === fingerprint ? old.result : Promise.reject(new TransportError("id-conflict"));
+    const payload = { sessionId: this.model.owner.sessionId, requestId: id(requestId), text: text4 }, fingerprint2 = canonical(payload), old = this.tasks.get(requestId);
+    if (old !== void 0) return old.fingerprint === fingerprint2 ? old.result : Promise.reject(new TransportError("id-conflict"));
     if (this.tasks.size >= this.config.maxIntents) return Promise.reject(new TransportError("queue-full"));
     const cut = this.model.view.cursor;
     const result = this.provider.request(this.command("task.submit", payload)).then((value) => {
@@ -17599,7 +17833,7 @@ var PhoneCore = class {
       this.model.admissionState("outcome_unknown", error51 instanceof TransportError ? error51.code : "transport-lost", cut);
       throw error51;
     });
-    this.tasks.set(requestId, { fingerprint, cut, result });
+    this.tasks.set(requestId, { fingerprint: fingerprint2, cut, result });
     return result;
   }
   admission(value, requestId) {
@@ -17646,15 +17880,15 @@ var PhoneCore = class {
 };
 
 // src/semantic-phone.ts
-var richProjections = [createRichSourceProjection((text3) => bytesToHex(sha256(new TextEncoder().encode(text3)))), createRichToolSourceProjection((text3) => bytesToHex(sha256(new TextEncoder().encode(text3))))];
+var richProjections = [createRichSourceProjection((text4) => bytesToHex(sha256(new TextEncoder().encode(text4)))), createRichToolSourceProjection((text4) => bytesToHex(sha256(new TextEncoder().encode(text4))))];
 var richProjectionTypes = new Set(richProjections.map((projection) => projection.type));
 var emptyLive = { revision: -1, attemptId: null, nextIndex: 0, chunks: [], committedSeq: null };
 function richDispatch(data, content, messages) {
-  const source = object2(data.source), text3 = content.length === 1 && content[0]?.kind === "text" ? content[0].text : null;
-  if (typeof source.rpcId !== "string" || !source.rpcId.startsWith("rich-") || text3 === null || !text3.startsWith("Interactive input ")) return false;
+  const source = object2(data.source), text4 = content.length === 1 && content[0]?.kind === "text" ? content[0].text : null;
+  if (typeof source.rpcId !== "string" || !source.rpcId.startsWith("rich-") || text4 === null || !text4.startsWith("Interactive input ")) return false;
   let input;
   try {
-    input = object2(jsonPayload(JSON.parse(text3.slice("Interactive input ".length))));
+    input = object2(jsonPayload(JSON.parse(text4.slice("Interactive input ".length))));
   } catch (error51) {
     if (error51 instanceof SyntaxError || error51 instanceof TransportError) return false;
     throw error51;
@@ -17745,8 +17979,8 @@ var SemanticPhone = class _SemanticPhone {
     if (page.protocol !== "dsh-mobile-read/1" || this.journal.version !== SESSION_FORMAT_VERSION) throw new TransportError("read-version-unsupported");
     if (page.sessionId !== this.owner.sessionId || integer2(page.throughSeq, -1) > this.journal.cursor) throw new TransportError("scope-denied");
     if (!Array.isArray(page.records) || page.records.length > this.limits.maxEvents) throw new TransportError("domain-too-large");
-    const events = page.records.map((record2) => {
-      const row = object2(record2);
+    const events = page.records.map((record3) => {
+      const row = object2(record3);
       if (row.type !== "event") throw new TransportError("domain-invalid");
       return decodeEvent(row.event, this.limits);
     });
@@ -18021,11 +18255,11 @@ var MobileProduct = class {
     }
     ;
     try {
-      const record2 = await this.trust.load(), document2 = this.trust.savedDocument();
+      const record3 = await this.trust.load(), document2 = this.trust.savedDocument();
       if (this.closed || version2 !== this.version) return;
-      if (record2 !== null && document2 !== null && !record2.revoked) await this.ports.verifyTrust(record2, document2);
+      if (record3 !== null && document2 !== null && !record3.revoked) await this.ports.verifyTrust(record3, document2);
       if (this.closed || version2 !== this.version) return;
-      this.record = record2;
+      this.record = record3;
       this.pairing = this.record === null ? "unpaired" : this.record.revoked ? "revoked" : "paired";
       this.connection = "disconnected";
     } catch (error51) {
@@ -18041,9 +18275,9 @@ var MobileProduct = class {
     this.allowed(authority);
     const version2 = this.version;
     try {
-      const document2 = parsePublicTrustDocument(raw, this.policy.trustMaxBytes), record2 = publicTrustRecord(document2);
+      const document2 = parsePublicTrustDocument(raw, this.policy.trustMaxBytes), record3 = publicTrustRecord(document2);
       if (!compared) throw new Error("fingerprint comparison required");
-      await this.ports.verifyTrust(record2, document2);
+      await this.ports.verifyTrust(record3, document2);
       this.allowed(authority);
       if (version2 !== this.version) throw new Error("pairing retired");
       const confirmed = await this.trust.confirm(authority, raw, compared);
@@ -18067,11 +18301,11 @@ var MobileProduct = class {
   /** @param authority - native local decision. @param raw - explicitly selected public grant. @param compared - current comparison. @returns after initial confirmation, exact saved resume or explicit signed expiry continuation; local revocation, invalid history and retired state refuse. */
   async pairOrResume(authority, raw, compared) {
     this.allowed(authority);
-    const previous = this.trust.savedDocument(), document2 = parsePublicTrustDocument(raw, this.policy.trustMaxBytes), record2 = publicTrustRecord(document2), version2 = this.version;
+    const previous = this.trust.savedDocument(), document2 = parsePublicTrustDocument(raw, this.policy.trustMaxBytes), record3 = publicTrustRecord(document2), version2 = this.version;
     if (this.pairing === "blocked" && this.error === "public-trust-expired" && previous !== null) {
       if (!compared || this.transport !== void 0 || document2.schema !== "harmony-product-public-trust/2") throw new Error("explicit signed successor required");
       assertPublicTrustSuccessor(previous, document2, this.ports.clock());
-      await this.ports.verifyTrust(record2, document2, previous);
+      await this.ports.verifyTrust(record3, document2, previous);
       this.allowed(authority);
       if (version2 !== this.version) throw new Error("successor retired");
       this.record = await this.trust.confirmSuccessor(authority, raw, compared);
@@ -18084,8 +18318,8 @@ var MobileProduct = class {
       return;
     }
     if (this.record === null && previous === null) return this.pair(authority, raw, compared);
-    if (!compared || previous === null || record2.revoked || this.record?.revoked || this.pairing !== "paired" || canonicalPublicTrust(document2) !== canonicalPublicTrust(previous)) throw new Error("saved pairing comparison denied");
-    await this.ports.verifyTrust(record2, document2);
+    if (!compared || previous === null || record3.revoked || this.record?.revoked || this.pairing !== "paired" || canonicalPublicTrust(document2) !== canonicalPublicTrust(previous)) throw new Error("saved pairing comparison denied");
+    await this.ports.verifyTrust(record3, document2);
     this.allowed(authority);
     if (version2 !== this.version) throw new Error("saved pairing retired");
   }
@@ -18094,8 +18328,8 @@ var MobileProduct = class {
     this.allowed(authority);
     if (this.connecting || this.transport !== void 0 || this.record === null || this.record.revoked || this.pairing !== "paired") throw new Error("product connect denied");
     this.connecting = true;
-    const record2 = this.record;
-    const transport = new PairedProductTransport(this.policy.transport, Math.min(record2.paired.expiresAt, record2.paired.grant.expiresAt), this.ports.clock, this.ports.scheduler, (status, received) => this.ports.connect(record2, status, received), (state) => {
+    const record3 = this.record;
+    const transport = new PairedProductTransport(this.policy.transport, Math.min(record3.paired.expiresAt, record3.paired.grant.expiresAt), this.ports.clock, this.ports.scheduler, (status, received) => this.ports.connect(record3, status, received), (state) => {
       if (this.closed || this.transport !== transport) return;
       if (this.connection === "blocked" && state === "closed") return;
       this.connection = state;
@@ -18126,14 +18360,19 @@ var MobileProduct = class {
       this.connecting = false;
     }
   }
+  /** @param authority - existing native catalogue owner. @returns after current metadata is admitted; no Agent or model is started. */
+  async refresh(authority) {
+    this.allowed(authority);
+    await this.refreshCatalog();
+  }
   async refreshCatalog() {
-    const transport = this.transport, record2 = this.record;
-    if (transport === void 0 || record2 === null) return;
+    const transport = this.transport, record3 = this.record;
+    if (transport === void 0 || record3 === null) return;
     const metadata = object2(await transport.metadata()), catalog2 = object2(metadata.catalog);
-    if (metadata.desktopId !== record2.paired.grant.desktopId || metadata.profileId !== record2.paired.grant.profileId || !Array.isArray(catalog2.projects) || !Array.isArray(catalog2.sessions) || catalog2.projects.length > record2.paired.grant.sessions.length || catalog2.sessions.length > record2.paired.grant.sessions.length) throw new TransportError("scope-denied");
+    if (metadata.desktopId !== record3.paired.grant.desktopId || metadata.profileId !== record3.paired.grant.profileId || !Array.isArray(catalog2.projects) || !Array.isArray(catalog2.sessions) || catalog2.projects.length > record3.paired.grant.sessions.length || catalog2.sessions.length > record3.paired.grant.sessions.length) throw new TransportError("scope-denied");
     const sessions = catalog2.sessions.map((candidate) => {
       const row = object2(candidate), sessionId = string4(row.sessionId, 256);
-      if (!record2.paired.grant.sessions.includes(id(sessionId))) throw new TransportError("scope-denied");
+      if (!record3.paired.grant.sessions.includes(id(sessionId))) throw new TransportError("scope-denied");
       return { sessionId, projectId: row.projectId === null ? null : string4(row.projectId, 256), title: string4(row.title, this.policy.domain.maxText) };
     }), projects = catalog2.projects.map((candidate) => {
       const row = object2(candidate);
@@ -18185,10 +18424,10 @@ var MobileProduct = class {
     return this.core;
   }
   /** @param authority - native user intent. @param requestId - stable intent identity. @param text - composer text. @returns original canonical receipt; uncertainty is displayed without automatic re-dispatch. */
-  async submit(authority, requestId, text3) {
+  async submit(authority, requestId, text4) {
     this.allowed(authority);
     try {
-      return await this.requireCore().submit(requestId, text3);
+      return await this.requireCore().submit(requestId, text4);
     } finally {
       this.emit();
     }
@@ -18354,6 +18593,2145 @@ function addTrustScope(raw, document2, maxBytes) {
   return result;
 }
 
+// src/device-startup-diagnostic.ts
+var stages = ["binding-read", "identity-init", "route-history-restore"];
+var DeviceStartupFailure = class extends Error {
+  constructor(stage, category, bindingVerified, cause) {
+    super("device startup failed", { cause });
+    this.stage = stage;
+    this.category = category;
+    this.bindingVerified = bindingVerified;
+    this.name = "DeviceStartupFailure";
+  }
+  stage;
+  category;
+  bindingVerified;
+};
+function deviceStartupFailure(error51, stage, verified = false) {
+  return error51 instanceof DeviceStartupFailure ? error51 : new DeviceStartupFailure(stage, error51 instanceof SyntaxError ? "invalid" : "unavailable", verified, error51);
+}
+function deviceStartupDiagnosticText(error51, fallback) {
+  const stage = error51 instanceof DeviceStartupFailure ? error51.stage : fallback, category = error51 instanceof DeviceStartupFailure ? error51.category : error51 instanceof SyntaxError ? "invalid" : "unavailable";
+  return (stages.includes(stage) ? stage : "binding-read") + "/" + (category === "invalid" ? "invalid" : "unavailable");
+}
+
+// src/device-connection-diagnostic.ts
+var stages2 = ["identity-read", "route-verify", "native-channel", "control-handshake", "encrypted-handshake", "ticket", "first-catalog", "active-channel", "connection-expiry", "local-stop"];
+var categories = ["unavailable", "refused", "timeout", "closed", "invalid"];
+var DeviceConnectionFailure = class extends Error {
+  cleanup = false;
+  stage;
+  category;
+  constructor(stage, category, cause) {
+    super("device connection failed", { cause });
+    this.name = "DeviceConnectionFailure";
+    this.stage = stages2.includes(stage) ? stage : "native-channel";
+    this.category = categories.includes(category) ? category : "unavailable";
+  }
+  cleanupFailed() {
+    this.cleanup = true;
+  }
+  get diagnostic() {
+    return { stage: this.stage, category: this.category, cleanupFailed: this.cleanup };
+  }
+};
+function deviceConnectionFailure(error51, stage, category = "unavailable") {
+  if (error51 instanceof DeviceConnectionFailure) return error51;
+  const safe = error51 instanceof TransportError ? error51.code === "timeout" ? "timeout" : error51.code === "closed" ? "closed" : error51.code === "scope-denied" ? "refused" : category : error51 instanceof SyntaxError ? "invalid" : category;
+  return new DeviceConnectionFailure(stage, safe, error51);
+}
+function deviceConnectionDiagnosticText(value) {
+  return value === void 0 || !stages2.includes(value.stage) || !categories.includes(value.category) ? "" : value.stage + "/" + value.category + (value.cleanupFailed === true ? " / cleanup-failed" : "");
+}
+
+// src/device-binding-protocol.ts
+var MAX_DEVICE_ENROLLMENT_TTL_MS = 6e5;
+var identifier4 = external_exports.string().min(1).max(256).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
+var fingerprint = external_exports.string().regex(/^p256-sha256-[a-f0-9]{64}$/);
+var publicSpki2 = external_exports.string().regex(/^[A-Za-z0-9_-]{1,342}$/);
+var signature2 = external_exports.string().regex(/^[A-Za-z0-9_-]{1,192}$/);
+var natural2 = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1);
+var operations = external_exports.array(external_exports.enum(deviceGrantOperations)).min(1).max(deviceGrantOperations.length).refine((values2) => new Set(values2).size === values2.length);
+var deviceSessionScopeSchema = external_exports.object({ kind: external_exports.literal("all-visible-sessions"), profileId: external_exports.literal("desktop") }).strict();
+var registrationBody = external_exports.object({
+  schema: external_exports.literal("harmony-device-binding/1"),
+  bindingId: identifier4,
+  desktopId: identifier4,
+  profileId: external_exports.literal("desktop"),
+  deviceId: identifier4,
+  identityAlias: external_exports.string().regex(/^[a-z][a-z0-9-]{0,126}$/),
+  desktopPublicSpki: publicSpki2,
+  phonePublicSpki: publicSpki2,
+  desktopCredentialId: fingerprint,
+  credentialId: fingerprint,
+  audience: external_exports.string().max(253).regex(/^[a-z0-9.-]+$/).refine((value) => !value.endsWith(".invalid")),
+  scope: deviceSessionScopeSchema,
+  operations,
+  epoch: natural2.refine((value) => value > 0),
+  createdAt: natural2,
+  revoked: external_exports.boolean()
+}).strict();
+var deviceBindingSchema = registrationBody.extend({ signature: signature2 }).strict();
+var deviceBindingOfferSchema = external_exports.object({ schema: external_exports.literal("harmony-device-binding-offer/1"), registration: registrationBody, challengeId: identifier4, nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), expiresAt: natural2, signature: signature2 }).strict();
+var deviceBindingReplySchema = external_exports.object({ schema: external_exports.literal("harmony-device-binding-reply/1"), offer: deviceBindingOfferSchema, signature: signature2 }).strict();
+var deviceRouteContextSchema = external_exports.object({ routeId: identifier4, routeEpoch: external_exports.literal(1), expiresAt: natural2 }).strict();
+var connectionBody = external_exports.object({
+  schema: external_exports.literal("harmony-device-connection-challenge/1"),
+  bindingId: identifier4,
+  desktopId: identifier4,
+  profileId: external_exports.literal("desktop"),
+  deviceId: identifier4,
+  credentialId: fingerprint,
+  epoch: natural2.refine((value) => value > 0),
+  challengeId: identifier4,
+  nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  channelBindingId: identifier4,
+  expiresAt: natural2,
+  route: deviceRouteContextSchema.optional()
+}).strict();
+var deviceConnectionChallengeSchema = connectionBody.extend({ signature: signature2 }).strict();
+var ticketBody = external_exports.object({
+  schema: external_exports.literal("harmony-device-ticket/1"),
+  ticketId: identifier4,
+  bindingId: identifier4,
+  desktopId: identifier4,
+  profileId: external_exports.literal("desktop"),
+  deviceId: identifier4,
+  credentialId: fingerprint,
+  epoch: natural2.refine((value) => value > 0),
+  channelBindingId: identifier4,
+  scope: deviceSessionScopeSchema,
+  operations,
+  issuedAt: natural2,
+  expiresAt: natural2,
+  route: deviceRouteContextSchema.optional()
+}).strict();
+var deviceConnectionTicketSchema = ticketBody.extend({ signature: signature2 }).strict().refine((value) => value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 18e5);
+function deviceBindingBytes(value) {
+  return transcriptBytes(["harmony-device-binding/1", JSON.stringify(registrationBody.parse(value))]);
+}
+function deviceBindingOfferBytes(value) {
+  const { registration, challengeId, nonce, expiresAt } = deviceBindingOfferSchema.omit({ signature: true }).parse(value);
+  return transcriptBytes(["harmony-device-binding-offer/1", JSON.stringify(registration), challengeId, nonce, expiresAt]);
+}
+function deviceBindingReplyBytes(offer) {
+  return transcriptBytes(["harmony-device-binding-reply/1", JSON.stringify(deviceBindingOfferSchema.parse(offer))]);
+}
+function deviceConnectionChallengeBytes(value) {
+  return transcriptBytes(["harmony-device-connection-challenge/1", JSON.stringify(connectionBody.parse(value))]);
+}
+function deviceConnectionProofBytes(challenge) {
+  return transcriptBytes(["harmony-device-connection-proof/1", JSON.stringify(deviceConnectionChallengeSchema.parse(challenge))]);
+}
+function deviceConnectionTicketBytes(value) {
+  return transcriptBytes(["harmony-device-ticket/1", JSON.stringify(ticketBody.parse(value))]);
+}
+
+// src/device-binding-client.ts
+var DeviceBindingClient = class {
+  /** @param authority - exact native UI capability. @param policy - original compared desktop and phone selection. @param storage - dedicated public registration namespace, retaining prior records. @param signer - original HUKS signer, never initialized here. @param primitives - existing maintained native/Node crypto backend. @param clock - trusted native expiry clock. */
+  constructor(authority, policy, storage, signer, primitives, clock) {
+    this.authority = authority;
+    this.policy = policy;
+    this.storage = storage;
+    this.signer = signer;
+    this.primitives = primitives;
+    this.clock = clock;
+    if (policy.profileId !== "desktop" || ![policy.maxPublicBytes, policy.maxProofs, policy.maxChallengeTtlMs].every((value) => Number.isSafeInteger(value) && value > 0)) throw new Error("native device binding policy denied");
+  }
+  authority;
+  policy;
+  storage;
+  signer;
+  primitives;
+  clock;
+  closed = false;
+  blocked = false;
+  used = /* @__PURE__ */ new Set();
+  local(authority) {
+    if (this.closed || this.blocked || authority !== this.authority) throw new Error("native device binding denied");
+  }
+  raw(value) {
+    if (new TextEncoder().encode(value).length > this.policy.maxPublicBytes) throw new Error("native device binding capacity");
+  }
+  once(id2) {
+    if (this.used.has(id2) || this.used.size >= this.policy.maxProofs) throw new Error("native device proof replay or capacity");
+    this.used.add(id2);
+  }
+  async identity(value) {
+    if (value.revoked || value.desktopId !== this.policy.desktopId || value.profileId !== "desktop" || value.deviceId !== this.policy.deviceId || value.identityAlias !== this.policy.identityAlias || value.audience !== this.policy.audience || value.phonePublicSpki !== this.signer.publicSpki || value.desktopCredentialId !== this.policy.desktopCredentialId || await this.primitives.credentialId(value.desktopPublicSpki) !== value.desktopCredentialId || await this.primitives.credentialId(this.signer.publicSpki) !== value.credentialId) throw new Error("native original device identity denied");
+  }
+  /** @param authority - native fingerprint decision owner. @param raw - strict public device offer. @param compared - explicit original-device fingerprint decision. @returns fixed-domain signed reply only; no public record or ticket is stored. */
+  async inspectOffer(authority, raw) {
+    this.local(authority);
+    this.raw(raw);
+    const offer = deviceBindingOfferSchema.parse(JSON.parse(raw)), { signature: signature4, ...unsigned } = offer;
+    await this.identity(offer.registration);
+    if (offer.expiresAt <= this.clock() || offer.expiresAt - this.clock() > MAX_DEVICE_ENROLLMENT_TTL_MS || !await this.primitives.verify(offer.registration.desktopPublicSpki, deviceBindingOfferBytes(unsigned), this.primitives.decode(signature4))) throw new Error("native device offer denied");
+    this.local(authority);
+    return offer;
+  }
+  /** @param authority - native comparison owner. @param raw - strict device offer. @param compared - explicit fingerprint decision. @returns original-phone proof without creating or replacing any identity. */
+  async signOffer(authority, raw, compared) {
+    this.local(authority);
+    if (!compared) throw new Error("native device comparison required");
+    const offer = await this.inspectOffer(authority, raw);
+    this.local(authority);
+    this.once(offer.challengeId);
+    const proof = await this.signer.sign(deviceBindingReplyBytes(offer));
+    this.local(authority);
+    if (offer.expiresAt <= this.clock()) throw new Error("native device offer expired");
+    return JSON.stringify({ schema: "harmony-device-binding-reply/1", offer, signature: this.primitives.encode(proof) });
+  }
+  async parse(raw) {
+    this.raw(raw);
+    const value = deviceBindingSchema.parse(JSON.parse(raw)), { signature: signature4, ...unsigned } = value;
+    await this.identity(value);
+    if (!await this.primitives.verify(value.desktopPublicSpki, deviceBindingBytes(unsigned), this.primitives.decode(signature4))) throw new Error("native device receipt signature denied");
+    return value;
+  }
+  /** @param authority - native comparison owner. @param raw - signed confirmed device receipt. @param compared - local fingerprint/scope confirmation. @returns after atomic public-only storage; existing different/legacy/revoked records are never replaced. */
+  async accept(authority, raw, compared) {
+    this.local(authority);
+    if (!compared) throw new Error("native device comparison required");
+    const value = await this.parse(raw), previous = await this.storage.read();
+    this.local(authority);
+    if (previous !== null) {
+      const old = await this.parse(previous);
+      if (JSON.stringify(old) !== JSON.stringify(value)) throw new Error("native device registration replacement denied");
+      return;
+    }
+    try {
+      await this.storage.compareAndSet(null, JSON.stringify(value));
+    } catch (error51) {
+      void error51;
+      this.blocked = true;
+      throw new Error("native device storage outcome unknown");
+    }
+    this.local(authority);
+  }
+  /** @param authority - native product owner. @returns original persistent registration; reading it does not authorize a connection or restore an old ticket. */
+  async load(authority) {
+    this.local(authority);
+    const raw = await this.storage.read();
+    this.local(authority);
+    if (raw === null) throw new Error("native device not bound");
+    const value = await this.parse(raw);
+    this.local(authority);
+    return value;
+  }
+  /** @param authority - trusted native connection owner. @param transport - exact fresh mutually authenticated encrypted channel. @param raw - desktop's signed challenge. @returns original-phone channel proof; replay/foreign profile/changed identity/expired challenge refuse. */
+  async connectionProof(authority, transport, raw, route2) {
+    this.local(authority);
+    this.raw(raw);
+    const registration = await this.load(authority), challenge = deviceConnectionChallengeSchema.parse(JSON.parse(raw)), { signature: signature4, ...unsigned } = challenge;
+    if (JSON.stringify(challenge.route) !== JSON.stringify(route2)) throw new Error("native device route challenge mismatch");
+    const current = () => {
+      this.local(authority);
+      transport.signal.throwIfAborted();
+      if (transport.remoteCredentialId !== registration.desktopCredentialId || challenge.channelBindingId !== transport.id || challenge.bindingId !== registration.bindingId || challenge.desktopId !== registration.desktopId || challenge.profileId !== registration.profileId || challenge.deviceId !== registration.deviceId || challenge.credentialId !== registration.credentialId || challenge.epoch !== registration.epoch || challenge.expiresAt <= this.clock() || challenge.expiresAt - this.clock() > this.policy.maxChallengeTtlMs) throw new Error("native device channel denied");
+    };
+    current();
+    if (!await this.primitives.verify(registration.desktopPublicSpki, deviceConnectionChallengeBytes(unsigned), this.primitives.decode(signature4))) throw new Error("native device challenge signature denied");
+    current();
+    this.once(challenge.challengeId);
+    const proof = await this.signer.sign(deviceConnectionProofBytes(challenge));
+    current();
+    return { challengeId: challenge.challengeId, signature: this.primitives.encode(proof) };
+  }
+  /** @param authority - native connection owner. @param transport - exact authenticated channel. @param candidate - signed short-lived receipt from that channel; issuedAt bounds its signed duration, not local activation time. @returns detached receipt without persisting it; local expiry and route expiry still apply, and the server enforces its own deadline on every request. */
+  async ticket(authority, transport, candidate, route2) {
+    const registration = await this.load(authority), value = deviceConnectionTicketSchema.parse(candidate), { signature: signature4, ...unsigned } = value;
+    if (JSON.stringify(value.route) !== JSON.stringify(route2) || route2 !== void 0 && value.expiresAt > route2.expiresAt) throw new Error("native device route ticket mismatch");
+    if (value.bindingId !== registration.bindingId || value.desktopId !== registration.desktopId || value.profileId !== registration.profileId || value.deviceId !== registration.deviceId || value.credentialId !== registration.credentialId || value.epoch !== registration.epoch || value.channelBindingId !== transport.id || transport.remoteCredentialId !== registration.desktopCredentialId || value.expiresAt <= this.clock() || value.operations.some((operation) => !registration.operations.includes(operation)) || !await this.primitives.verify(registration.desktopPublicSpki, deviceConnectionTicketBytes(unsigned), this.primitives.decode(signature4))) throw new Error("native device ticket denied");
+    this.local(authority);
+    transport.signal.throwIfAborted();
+    if (value.expiresAt <= this.clock()) throw new Error("native device ticket expired");
+    return value;
+  }
+  /** @param authority - explicit native local revoke decision. @returns after sticky public denial; desktop durable revocation is a separate required acknowledgement. */
+  async revokeLocal(authority) {
+    this.local(authority);
+    this.blocked = true;
+    const raw = await this.storage.read();
+    if (raw === null) throw new Error("native device not bound");
+    await this.storage.compareAndSet(raw, JSON.stringify({ schema: "harmony-device-local-revocation/1", registration: deviceBindingSchema.parse(JSON.parse(raw)) }));
+  }
+  /** Stop native signing; neither an identity nor a registration is deleted. */
+  close() {
+    this.closed = true;
+    this.used.clear();
+  }
+};
+
+// src/mobile-device-product.ts
+var DeviceBoundMobileProduct = class {
+  /** @param authority - native UI capability, never exported to a rich guest. @param proof - original HUKS proof client. @param ports - existing native encrypted transport adapter. @param clock - native expiry clock. @param scheduler - explicit native cleanup timer owner. @param publish - safe view callback. */
+  constructor(authority, proof, ports, clock, scheduler, publish) {
+    this.authority = authority;
+    this.proof = proof;
+    this.ports = ports;
+    this.clock = clock;
+    this.scheduler = scheduler;
+    this.publish = publish;
+  }
+  authority;
+  proof;
+  ports;
+  clock;
+  scheduler;
+  publish;
+  connection;
+  ticket;
+  selection;
+  selectionLifetime;
+  stopTicket = () => {
+  };
+  stopTransport = () => {
+  };
+  generation = 0;
+  selecting = 0;
+  tail = Promise.resolve();
+  closed = false;
+  failed = false;
+  disconnecting;
+  connecting;
+  state = { state: "disconnected", sessions: [], selected: null, content: "", error: "" };
+  local(authority) {
+    if (authority !== this.authority || this.closed || this.failed) throw new Error("device mobile operation denied");
+  }
+  emit() {
+    try {
+      this.publish(structuredClone(this.state));
+    } catch (error51) {
+      void error51;
+      this.failed = true;
+      throw new Error("device mobile view failed");
+    }
+  }
+  current(connection, ticket) {
+    this.local(this.authority);
+    connection.binding.signal.throwIfAborted();
+    if (this.connection !== connection || this.ticket !== ticket || ticket.expiresAt <= this.clock()) throw new Error("device mobile connection retired");
+  }
+  /** @returns a detached native view without ticket material. */
+  get view() {
+    return structuredClone(this.state);
+  }
+  /** @param authority - native connect intent. @returns after a fresh channel proof and current catalogue; existing registration needs no pairing prompt. A local stop during identity loading prevents this attempt from opening a channel. */
+  async connect(authority) {
+    this.local(authority);
+    await this.disconnecting;
+    this.local(authority);
+    if (this.connection !== void 0 || this.state.state === "connecting") throw new Error("device mobile connection already exists");
+    const generation = ++this.generation;
+    this.state = { ...this.state, state: "connecting", error: "", diagnostic: void 0 };
+    this.emit();
+    let acquired, attempt, stage = "identity-read", closing;
+    let finish = () => {
+    };
+    const close = () => {
+      const value = acquired;
+      return value === void 0 ? Promise.resolve() : closing ??= (async () => {
+        await value.close();
+      })();
+    };
+    try {
+      const registration = await this.proof.load(authority);
+      this.local(authority);
+      if (generation !== this.generation) throw new Error("device mobile connect retired");
+      attempt = { lifetime: new AbortController(), settled: new Promise((resolve) => {
+        finish = resolve;
+      }), close, cleanupFailed: false };
+      this.connecting = attempt;
+      stage = "native-channel";
+      acquired = await this.ports.connect(registration, attempt.lifetime.signal);
+      this.local(authority);
+      if (generation !== this.generation) throw new Error("device mobile connect retired");
+      stage = "ticket";
+      const candidate = acquired.authentication === "native" ? await acquired.readyTicket() : await acquired.authenticate(await this.proof.connectionProof(authority, acquired.binding, await acquired.challenge(), acquired.route)), ticket = await this.proof.ticket(authority, acquired.binding, candidate, acquired.route);
+      this.local(authority);
+      if (generation !== this.generation) throw new Error("device mobile connect retired");
+      this.connection = acquired;
+      this.ticket = ticket;
+      const retire = () => {
+        void this.disconnect(authority, new DeviceConnectionFailure("active-channel", "closed")).catch((error51) => {
+          void error51;
+          this.failed = true;
+          this.state = { ...this.state, state: "blocked", error: "connection-cleanup-failed" };
+          this.emit();
+        });
+      };
+      acquired.binding.signal.addEventListener("abort", retire, { once: true });
+      const transport = acquired;
+      this.stopTransport = () => transport.binding.signal.removeEventListener("abort", retire);
+      this.stopTicket = this.scheduler.after(ticket.expiresAt - this.clock(), () => {
+        void this.disconnect(authority, new DeviceConnectionFailure("connection-expiry", "timeout")).catch((error51) => {
+          void error51;
+          this.failed = true;
+        });
+      });
+      this.current(acquired, ticket);
+      this.state = { ...this.state, state: "connected" };
+      stage = "first-catalog";
+      await this.refresh(authority);
+    } catch (error51) {
+      const failure = deviceConnectionFailure(error51, stage);
+      if (generation === this.generation) {
+        this.connection = void 0;
+        this.ticket = void 0;
+        for (const stop of [this.stopTicket, this.stopTransport]) {
+          try {
+            stop();
+          } catch (cleanup) {
+            void cleanup;
+            failure.cleanupFailed();
+          }
+        }
+      }
+      try {
+        await close();
+      } catch (cleanup) {
+        void cleanup;
+        failure.cleanupFailed();
+      }
+      if (failure.diagnostic.cleanupFailed) {
+        this.failed = true;
+        if (attempt !== void 0) attempt.cleanupFailed = true;
+      }
+      if (generation !== this.generation) throw failure;
+      this.state = { ...this.state, state: "blocked", error: failure.diagnostic.cleanupFailed ? "connection-cleanup-failed" : "connection-unavailable", diagnostic: failure.diagnostic };
+      try {
+        this.emit();
+      } catch (cleanup) {
+        void cleanup;
+        failure.cleanupFailed();
+      }
+      throw failure;
+    } finally {
+      if (this.connecting === attempt) this.connecting = void 0;
+      finish();
+    }
+  }
+  /** @param authority - native catalogue refresh intent. @returns current visible rows, including new desktop Sessions; does not change the selected route. */
+  async refresh(authority) {
+    this.local(authority);
+    const connection = this.connection, ticket = this.ticket;
+    if (connection === void 0 || ticket === void 0) throw new Error("device mobile connection required");
+    this.current(connection, ticket);
+    const schema = external_exports.array(external_exports.object({ profileId: external_exports.literal("desktop"), sessionId: external_exports.string().min(1).max(256), title: external_exports.string(), projectId: external_exports.string().nullable() }).strict()), rows = schema.parse(await connection.catalog(ticket));
+    this.current(connection, ticket);
+    if (new Set(rows.map((row) => row.sessionId)).size !== rows.length) throw new Error("device mobile duplicate catalogue row");
+    this.state = { ...this.state, sessions: rows };
+    this.emit();
+  }
+  /** @param authority - native row selection. @param sessionId - current admitted row. @returns only after previous follow/rich owner retires; late old callbacks cannot update this view. */
+  select(authority, sessionId) {
+    this.local(authority);
+    const selecting = ++this.selecting, generation = this.generation;
+    const result = this.tail.then(async () => {
+      this.local(authority);
+      const connection = this.connection, ticket = this.ticket;
+      if (connection === void 0 || ticket === void 0) throw new Error("device mobile connection required");
+      this.current(connection, ticket);
+      await this.refresh(authority);
+      if (!this.state.sessions.some((row) => row.sessionId === sessionId)) throw new Error("device mobile Session not visible");
+      await this.retireSelection();
+      this.current(connection, ticket);
+      if (selecting !== this.selecting || generation !== this.generation) throw new Error("device mobile selection retired");
+      const route2 = { desktopId: ticket.desktopId, profileId: "desktop", sessionId }, controller = new AbortController();
+      this.selectionLifetime = controller;
+      this.state = { ...this.state, selected: route2, content: "" };
+      this.emit();
+      const value = await connection.select(route2, ticket, (content) => {
+        if (this.closed || controller.signal.aborted || selecting !== this.selecting || generation !== this.generation || this.state.selected?.sessionId !== route2.sessionId || this.connection !== connection || this.ticket !== ticket || ticket.expiresAt <= this.clock()) return;
+        this.state = { ...this.state, content };
+        this.emit();
+      }, controller.signal);
+      if (this.closed || controller.signal.aborted || selecting !== this.selecting || generation !== this.generation || this.connection !== connection || this.ticket !== ticket) {
+        await value.close();
+        throw new Error("device mobile selection retired");
+      }
+      this.selection = value;
+    });
+    this.tail = result.then(() => {
+    }, () => {
+    });
+    return result;
+  }
+  /** @param raw - existing rich bridge request from this view's renderer. @returns only its selected Session's result; switching retires late results and never forwards into the new Session. */
+  async richRequest(raw) {
+    this.local(this.authority);
+    const selection = this.selection, selecting = this.selecting, generation = this.generation, connection = this.connection, ticket = this.ticket;
+    if (selection === void 0 || connection === void 0 || ticket === void 0) throw new Error("device mobile selection required");
+    this.current(connection, ticket);
+    const value = await selection.richRequest(raw);
+    this.current(connection, ticket);
+    if (this.selection !== selection || selecting !== this.selecting || generation !== this.generation) throw new Error("device mobile rich owner retired");
+    return value;
+  }
+  async retireSelection() {
+    const selection = this.selection;
+    this.selection = void 0;
+    this.selectionLifetime?.abort();
+    this.selectionLifetime = void 0;
+    this.state = { ...this.state, selected: null, content: "" };
+    this.emit();
+    try {
+      await selection?.close();
+    } catch (error51) {
+      void error51;
+      this.failed = true;
+      this.state = { ...this.state, state: "blocked", error: "selection-cleanup-failed" };
+      this.emit();
+      throw new Error("device mobile selection cleanup failed");
+    }
+  }
+  /** @param authority - native disconnect/expiry owner. @param cause - unexpected closure or expiry; omission means an explicit local stop. @returns after pending native acquisition, Session/rich and channel cleanup; cleanup failure blocks reconnect. Persistent binding remains, and no ticket is reused. */
+  disconnect(authority, cause) {
+    if (authority !== this.authority) return Promise.reject(new Error("device mobile disconnect denied"));
+    if (this.disconnecting !== void 0) return this.disconnecting;
+    this.generation++;
+    this.selecting++;
+    const generation = this.generation, connection = this.connection;
+    this.connection = void 0;
+    this.ticket = void 0;
+    this.stopTicket();
+    this.stopTransport();
+    this.stopTicket = () => {
+    };
+    this.stopTransport = () => {
+    };
+    const attempt = this.connecting;
+    attempt?.lifetime.abort();
+    this.selectionLifetime?.abort();
+    const operation = (async () => {
+      const results = await Promise.allSettled([this.tail.then(() => this.retireSelection()), attempt === void 0 ? connection?.close() : attempt.close(), attempt?.settled]);
+      const failure = cause === void 0 ? void 0 : connection?.failure?.(cause) ?? cause, cleanupFailed = attempt?.cleanupFailed === true || results.some((result) => result.status === "rejected");
+      if (cleanupFailed) failure?.cleanupFailed();
+      if (generation === this.generation) {
+        this.state = { state: this.closed ? "closed" : cleanupFailed ? "blocked" : "disconnected", sessions: [], selected: null, content: "", error: cleanupFailed ? "connection-cleanup-failed" : failure === void 0 ? "" : "connection-unavailable", diagnostic: failure?.diagnostic ?? { stage: "local-stop", category: "closed", cleanupFailed } };
+        this.emit();
+      }
+      if (cleanupFailed) {
+        this.failed = true;
+        throw new Error("device mobile disconnect cleanup failed");
+      }
+    })();
+    this.disconnecting = operation;
+    void operation.then(() => {
+      if (this.disconnecting === operation) this.disconnecting = void 0;
+    }, () => {
+      if (this.disconnecting === operation) this.disconnecting = void 0;
+    });
+    return operation;
+  }
+  /** Terminally close this view; its original identity and binding are retained for a future view. */
+  async close() {
+    if (this.closed) return;
+    this.closed = true;
+    await this.disconnect(this.authority);
+  }
+};
+
+// src/device-phone-session.ts
+var DevicePhoneSession = class {
+  /** @param route - exact device/profile/Session selection. @param registration - confirmed new device format, never a legacy record. @param ticket - verified original-channel receipt. @param cryptoBinding - exact native crypto object. @param proof - original HUKS verifier. @param nativeAuthority - exact proof client owner. @param policy - existing product/domain/rich limits. @param rpc - fixed encrypted carrier multiplexer. @param scheduler - existing native timers. @param clock - native expiry clock. @param publish - sanitized existing MobileProduct view callback. */
+  constructor(route2, registration, ticket, cryptoBinding, proof, nativeAuthority, policy, rpc, scheduler, clock, publish, expectedRoute) {
+    this.route = route2;
+    if (route2.desktopId !== registration.desktopId || route2.profileId !== "desktop" || ticket.bindingId !== registration.bindingId || ticket.profileId !== route2.profileId) throw new Error("device phone Session route denied");
+    const record3 = {
+      schema: "harmony-product-public-trust/1",
+      revoked: false,
+      identityAlias: registration.identityAlias,
+      desktopPublicSpki: registration.desktopPublicSpki,
+      paired: {
+        pairId: registration.bindingId,
+        epoch: ticket.epoch,
+        audience: registration.audience,
+        credentialId: registration.credentialId,
+        desktopCredentialId: registration.desktopCredentialId,
+        expiresAt: ticket.expiresAt,
+        grant: { protocol: "dsh-mobile-device-auth/1", desktopId: ticket.desktopId, profileId: "desktop", deviceId: ticket.deviceId, credentialId: ticket.credentialId, epoch: ticket.epoch, sessions: [route2.sessionId], operations: [...ticket.operations], expiresAt: ticket.expiresAt, revoked: false }
+      }
+    };
+    const raw = canonicalPublicTrust(productTrustSchema.parse(record3));
+    this.inner = new MobileProduct(this.authority, policy, {
+      storage: { read: async () => raw, write: async () => {
+        throw new Error("device Session projection cannot be persisted");
+      }, close: async () => {
+      } },
+      scheduler,
+      clock,
+      verifyTrust: async (_record2, document2, previous) => {
+        if (previous !== void 0 || canonicalPublicTrust(document2) !== raw) throw new Error("device Session projection changed");
+        await proof.ticket(nativeAuthority, cryptoBinding, ticket, expectedRoute);
+      },
+      connect: async (_record2, status, received) => {
+        await proof.ticket(nativeAuthority, cryptoBinding, ticket, expectedRoute);
+        const view = rpc.view(route2, received);
+        status("authorized");
+        return view;
+      }
+    }, publish);
+  }
+  route;
+  authority = {};
+  inner;
+  closed = false;
+  /** Start only the original selected Session stream; no prompt/model operation is submitted. */
+  async start() {
+    if (this.closed) throw new Error("device Session closed");
+    await this.inner.boot();
+    await this.inner.connect(this.authority);
+    await this.inner.refresh(this.authority);
+    await this.inner.select(this.authority, this.route.sessionId);
+  }
+  /** @param requestId - original native intent id. @param text - user-authored task. @returns the existing canonical receipt; no synthetic response or retry is introduced. */
+  submit(requestId, text4) {
+    return this.inner.submit(this.authority, requestId, text4);
+  }
+  /** @param requestId - original intent id. @returns read-only canonical reconciliation. */
+  receipt(requestId) {
+    return this.inner.receipt(this.authority, requestId);
+  }
+  /** Explicit native task cancellation retains the existing canonical semantics. */
+  cancel() {
+    return this.inner.cancel(this.authority);
+  }
+  /** @param raw - original scoped rich guest request. @returns result from the unchanged rich-inline owner and validators. */
+  richRequest(raw) {
+    return this.inner.richRequest(raw);
+  }
+  /** Dispose original follow/rich lifetimes and the borrowed connection; accepted work and shared binding remain. */
+  async close() {
+    if (this.closed) return;
+    this.closed = true;
+    await this.inner.close();
+  }
+};
+
+// src/device-product-rpc.ts
+var DeviceProductRpc = class {
+  /** @param network - verified native device carrier. @param scheduler - explicit native request timers. @param timeoutMs - finite wait budget. @param maxPending - local concurrent request cap. @param prefix - fresh native application/view identity, never an authorization field. */
+  constructor(network, scheduler, timeoutMs, maxPending, prefix) {
+    this.network = network;
+    this.scheduler = scheduler;
+    this.timeoutMs = timeoutMs;
+    this.maxPending = maxPending;
+    this.prefix = prefix;
+    if (![timeoutMs, maxPending].every((value) => Number.isSafeInteger(value) && value > 0) || !/^[A-Za-z0-9_.:-]{1,128}$/.test(prefix)) throw new Error("device RPC configuration denied");
+  }
+  network;
+  scheduler;
+  timeoutMs;
+  maxPending;
+  prefix;
+  pending = /* @__PURE__ */ new Map();
+  views = /* @__PURE__ */ new Map();
+  counter = 0;
+  closed = false;
+  /** @param raw - bounded decrypted result/frame from the verified native carrier. No caller may select a different view by desktop foreground state. */
+  receive(raw) {
+    if (this.closed) return;
+    const value = jsonPayload(JSON.parse(raw)), data = object2(value), kind = data.kind;
+    const packet = fields(data, kind === "result" || kind === "frame" ? ["kind", "id", "value"] : kind === "error" ? ["kind", "id", "code"] : ["kind", "id"]);
+    if (!["result", "frame", "end", "error"].includes(String(kind)) || typeof packet.id !== "string") throw new Error("device RPC response denied");
+    const pending = this.pending.get(packet.id);
+    if (pending !== void 0) {
+      if (kind !== "result" && kind !== "error") throw new Error("device RPC unary response denied");
+      this.pending.delete(packet.id);
+      pending.stop();
+      if (kind === "error") pending.reject(new TransportError("unknown-outcome"));
+      else pending.resolve(packet.value);
+      return;
+    }
+    for (const [prefix, receive] of this.views) if (packet.id.startsWith(prefix)) {
+      receive(raw);
+      return;
+    }
+  }
+  /** @param value - fixed metadata/select request only, constructed by native code. @returns acknowledged public result; timeout never retries the operation. */
+  call(value) {
+    if (this.closed || this.pending.size >= this.maxPending) return Promise.reject(new TransportError("queue-full"));
+    const id2 = this.prefix + "-rpc-" + ++this.counter;
+    return new Promise((resolve, reject) => {
+      const stop = this.scheduler.after(this.timeoutMs, () => {
+        this.pending.delete(id2);
+        reject(new TransportError("timeout"));
+        void this.network.stop(id2).catch((error51) => {
+          void error51;
+        });
+      });
+      this.pending.set(id2, { resolve, reject, stop });
+      void this.network.request(id2, JSON.stringify(value)).catch((error51) => {
+        const pending = this.pending.get(id2);
+        if (pending === void 0) return;
+        this.pending.delete(id2);
+        pending.stop();
+        reject(error51);
+      });
+    });
+  }
+  /** @param route - explicit immutable selected owner. @param received - original PhoneCore transport response sink. @returns a borrowed native connection whose close affects only its requests/followers, never another Session or the shared channel. */
+  view(route2, received) {
+    if (this.closed) throw new TransportError("closed");
+    const prefix = this.prefix + "-view-" + ++this.counter + ":", ids = /* @__PURE__ */ new Map();
+    let closed = false;
+    this.views.set(prefix, (raw) => {
+      if (closed) return;
+      const data = object2(JSON.parse(raw)), id2 = typeof data.id === "string" ? data.id : "", selected = ids.get(id2);
+      if (selected === void 0) return;
+      let value = data.value;
+      if (selected.metadata && data.kind === "result") {
+        const catalog2 = fields(value, ["desktopId", "profileId", "sessions"]);
+        if (catalog2.desktopId !== route2.desktopId || catalog2.profileId !== route2.profileId || !Array.isArray(catalog2.sessions)) throw new Error("device catalogue identity denied");
+        const sessions = catalog2.sessions.map(object2).filter((row) => row.sessionId === route2.sessionId).map((row) => ({ sessionId: string4(row.sessionId, 256), title: string4(row.title, 65536), projectId: row.projectId === null ? null : string4(row.projectId, 256) }));
+        if (sessions.length !== 1) throw new Error("selected device Session no longer visible");
+        value = { desktopId: route2.desktopId, profileId: route2.profileId, catalog: { projects: [], sessions } };
+      }
+      if (data.kind === "result" || data.kind === "end" || data.kind === "error") ids.delete(id2);
+      received(JSON.stringify({ ...data, id: selected.original, ...data.kind === "result" || data.kind === "frame" ? { value } : {} }));
+    });
+    return {
+      request: async (id2, raw) => {
+        if (closed || this.closed) throw new TransportError("closed");
+        const value = fields(JSON.parse(raw), ["method", "argument"]);
+        if (value.method !== "metadata" && value.method !== "request") throw new TransportError("scope-denied");
+        const key = prefix + id2;
+        if (ids.has(key)) throw new TransportError("invalid-packet");
+        ids.set(key, { original: id2, metadata: value.method === "metadata" });
+        try {
+          await this.network.request(key, JSON.stringify(value.method === "metadata" ? value : { ...value, route: route2 }));
+        } catch (error51) {
+          ids.delete(key);
+          throw error51;
+        }
+      },
+      follow: async (id2, raw) => {
+        if (closed || this.closed) throw new TransportError("closed");
+        const value = fields(JSON.parse(raw), ["argument", "resume"]), key = prefix + id2;
+        if (ids.has(key)) throw new TransportError("invalid-packet");
+        ids.set(key, { original: id2, metadata: false });
+        try {
+          await this.network.follow(key, JSON.stringify({ ...value, route: route2 }));
+        } catch (error51) {
+          ids.delete(key);
+          throw error51;
+        }
+      },
+      stop: async (id2) => {
+        const key = prefix + id2;
+        if (ids.delete(key)) await this.network.stop(key);
+      },
+      close: async () => {
+        if (closed) return;
+        closed = true;
+        this.views.delete(prefix);
+        const keys2 = [...ids.keys()];
+        ids.clear();
+        const results = await Promise.allSettled(keys2.map((id2) => this.network.stop(id2)));
+        if (results.some((result) => result.status === "rejected")) throw new Error("device view wait cleanup failed");
+      }
+    };
+  }
+  /** Reject pending waits and detach every view. Shared network lifetime remains with its native owner. */
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    for (const wait of this.pending.values()) {
+      wait.stop();
+      wait.reject(new TransportError("closed"));
+    }
+    ;
+    this.pending.clear();
+    this.views.clear();
+  }
+};
+
+// src/relay-control-protocol.ts
+var RELAY_CONTROL_PROTOCOL = "harmony-relay-control/1";
+function record2(candidate, keys2) {
+  if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate) || Object.keys(candidate).length !== keys2.length || !keys2.every((key) => Object.hasOwn(candidate, key))) throw new Error("invalid relay control");
+  return candidate;
+}
+function text3(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 256) throw new Error("invalid relay control");
+  return value;
+}
+function natural3(value, min = 1) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < min) throw new Error("invalid relay control");
+  return value;
+}
+function common(value) {
+  if (value.protocol !== RELAY_CONTROL_PROTOCOL || value.role !== "phone" && value.role !== "desktop") throw new Error("invalid relay control");
+  return { protocol: RELAY_CONTROL_PROTOCOL, pairId: id(text3(value.pairId)), round: id(text3(value.round)), role: value.role, epoch: natural3(value.epoch) };
+}
+function relayChallenge(candidate) {
+  const value = record2(candidate, ["protocol", "kind", "pairId", "round", "role", "epoch", "credentialId", "audience", "challengeId", "nonce", "expiresAt"]), base = common(value), credentialId = text3(value.credentialId), nonce = text3(value.nonce);
+  if (value.kind !== "challenge" || !/^p256-sha256-[a-f0-9]{64}$/.test(credentialId) || !/^[A-Za-z0-9_-]{43}$/.test(nonce)) throw new Error("invalid relay control");
+  return { ...base, kind: "challenge", credentialId: id(credentialId), audience: text3(value.audience), challengeId: id(text3(value.challengeId)), nonce, expiresAt: natural3(value.expiresAt) };
+}
+function relayReceipt(candidate) {
+  const value = record2(candidate, ["protocol", "kind", "pairId", "round", "role", "epoch", "room", "token", "expiresAt"]), base = common(value), room = text3(value.room), token = text3(value.token);
+  if (value.kind !== "room" || !/^[A-Za-z0-9_-]{16,128}$/.test(room) || !/^[a-f0-9]{64}$/.test(token)) throw new Error("invalid relay control");
+  return { ...base, kind: "room", room: id(room), token, expiresAt: natural3(value.expiresAt) };
+}
+function relayProofBytes(challenge) {
+  return transcriptBytes([RELAY_CONTROL_PROTOCOL, "request-room", challenge.pairId, challenge.round, challenge.role, challenge.epoch, challenge.credentialId, challenge.audience, challenge.challengeId, challenge.nonce, challenge.expiresAt]);
+}
+
+// src/relay-control-client.ts
+var RelayControlClient = class {
+  /** @param socket - explicitly approved control transport. @param trust - local paired identity/audience. @param signer - existing Node/native key port. @param primitives - existing codec/crypto backend. @param clock - local expiry clock. @param maxProofs - single-control-connection signing bound. @param maxQueuedBytes - total async frame cap. @param maxChallengeTtlMs - local signing freshness cap. @param maxRoomTtlMs - local room expiry cap. @param scheduler - owner-controlled expiry callbacks. @param room - native/host data connector callback. @param lifetime - local pairing policy lifetime including revocation. @param diagnostic - optional fixed phase facts; omission emits nothing, and observer failure emits only a fixed fallback. A queued proof is not a network-send or relay-verification acknowledgment. */
+  constructor(socket, trust, signer, primitives, clock, maxProofs, maxQueuedBytes, maxChallengeTtlMs, maxRoomTtlMs, scheduler, room, lifetime, diagnostic) {
+    this.socket = socket;
+    this.trust = trust;
+    this.signer = signer;
+    this.primitives = primitives;
+    this.clock = clock;
+    this.maxProofs = maxProofs;
+    this.maxChallengeTtlMs = maxChallengeTtlMs;
+    this.maxRoomTtlMs = maxRoomTtlMs;
+    this.room = room;
+    this.diagnostic = diagnostic;
+    if (![maxProofs, maxQueuedBytes, maxChallengeTtlMs, maxRoomTtlMs].every((value) => Number.isSafeInteger(value) && value > 0)) throw new Error("invalid endpoint room policy");
+    this.scheduler = scheduler;
+    try {
+      let pending = 0;
+      this.stops.push(socket.onEnd(() => this.close()));
+      this.stops.push(socket.onFrame((bytes, binary) => {
+        if (this.closed) return;
+        this.observe("frame-received");
+        if (binary || bytes.byteLength === 0 || pending + bytes.byteLength > maxQueuedBytes) {
+          this.observe("failure-wire:refused");
+          this.close();
+          return;
+        }
+        ;
+        const copy = Uint8Array.from(bytes);
+        pending += copy.byteLength;
+        this.tail = this.tail.then(async () => {
+          this.phase = "decode";
+          const candidate = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(copy));
+          this.observe("frame-decoded");
+          await this.receive(candidate);
+        }).catch((error51) => {
+          this.observe(`failure-${this.phase}:${error51 instanceof SyntaxError ? "format" : "refused"}`);
+          this.close();
+        }).finally(() => {
+          pending -= copy.byteLength;
+          copy.fill(0);
+        });
+      }));
+      this.stops.push(scheduler.after(Math.max(0, trust.expiresAt - clock()), () => {
+        this.observe("trust-deadline");
+        this.close();
+      }));
+      const stop = () => this.close();
+      lifetime.addEventListener("abort", stop, { once: true });
+      this.stops.push(() => lifetime.removeEventListener("abort", stop));
+      if (lifetime.aborted || trust.expiresAt <= clock()) this.close();
+    } catch (error51) {
+      void error51;
+      this.close();
+      throw new Error("endpoint control acquisition failed");
+    }
+  }
+  socket;
+  trust;
+  signer;
+  primitives;
+  clock;
+  maxProofs;
+  maxChallengeTtlMs;
+  maxRoomTtlMs;
+  room;
+  diagnostic;
+  stops = [];
+  used = /* @__PURE__ */ new Set();
+  tail = Promise.resolve();
+  challenge;
+  lease;
+  closed = false;
+  failed = false;
+  phase = "decode";
+  stopLease = () => {
+  };
+  stopChallenge = () => {
+  };
+  scheduler;
+  observe(stage) {
+    if (this.diagnostic === void 0) return;
+    try {
+      this.diagnostic(stage);
+    } catch (error51) {
+      void error51;
+      console.warn("DSH_CONTROL_DIAGNOSTIC_FAILURE");
+    }
+  }
+  current() {
+    if (this.closed || this.trust.expiresAt <= this.clock()) throw new Error("endpoint room expired");
+  }
+  async receive(candidate) {
+    this.current();
+    if (candidate !== null && typeof candidate === "object" && "kind" in candidate && candidate.kind === "challenge") {
+      this.phase = "challenge";
+      const challenge2 = relayChallenge(candidate);
+      if (challenge2.pairId !== this.trust.pairId || challenge2.role !== this.trust.role || challenge2.epoch !== this.trust.epoch || challenge2.audience !== this.trust.audience || challenge2.credentialId !== this.trust.credentialId || challenge2.expiresAt <= this.clock() || challenge2.expiresAt > Math.min(this.clock() + this.maxChallengeTtlMs, this.trust.expiresAt) || this.used.has(challenge2.challengeId) || this.used.size >= this.maxProofs) throw new Error("endpoint room denied");
+      this.observe("challenge-validated");
+      this.phase = "identity";
+      if (await this.primitives.credentialId(this.signer.publicSpki) !== this.trust.credentialId) throw new Error("endpoint room denied");
+      this.observe("identity-validated");
+      this.current();
+      if (challenge2.expiresAt <= this.clock()) throw new Error("endpoint room stale");
+      this.stopLease();
+      this.stopChallenge();
+      this.lease?.abort();
+      this.lease = void 0;
+      this.challenge = challenge2;
+      this.used.add(challenge2.challengeId);
+      this.stopChallenge = this.scheduler.after(challenge2.expiresAt - this.clock(), () => {
+        this.observe("challenge-deadline");
+        this.close();
+      });
+      this.phase = "sign";
+      this.observe("sign-started");
+      const signature4 = await this.signer.sign(relayProofBytes(challenge2));
+      this.observe("sign-completed");
+      this.current();
+      if (challenge2.expiresAt <= this.clock() || this.challenge !== challenge2) throw new Error("endpoint room stale");
+      this.phase = "send";
+      this.socket.send(new TextEncoder().encode(JSON.stringify({ challenge: challenge2, signature: this.primitives.encode(signature4) })));
+      this.observe("proof-queued");
+      this.phase = "room";
+      return;
+    }
+    this.phase = "room";
+    const receipt2 = relayReceipt(candidate), challenge = this.challenge;
+    if (challenge === void 0 || challenge.expiresAt <= this.clock() || receipt2.pairId !== this.trust.pairId || receipt2.role !== this.trust.role || receipt2.epoch !== this.trust.epoch || receipt2.round !== challenge.round || receipt2.expiresAt <= this.clock() || receipt2.expiresAt > Math.min(this.trust.expiresAt, this.clock() + this.maxRoomTtlMs) || this.lease !== void 0) throw new Error("endpoint room denied");
+    this.observe("room-validated");
+    this.stopChallenge();
+    this.challenge = void 0;
+    this.lease = new AbortController();
+    const lease = this.lease;
+    this.stopLease = this.scheduler.after(receipt2.expiresAt - this.clock(), () => lease.abort());
+    this.room({ receipt: receipt2, signal: lease.signal });
+  }
+  /** @returns after currently queued signer/parse work; no automatic reconnect or key creation is performed here. */
+  async settled() {
+    await this.tail;
+    if (this.failed) throw new Error("endpoint control cleanup failed");
+  }
+  /** @returns nothing; abort current data lease before releasing control listeners/socket and discarding proof state. */
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    this.observe("closed");
+    const lease = this.lease;
+    this.lease = void 0;
+    this.challenge = void 0;
+    this.used.clear();
+    for (const stop of [() => lease?.abort(), this.stopLease, this.stopChallenge, ...this.stops, () => this.socket.terminate()]) {
+      try {
+        stop();
+      } catch (error51) {
+        void error51;
+        this.failed = true;
+      }
+    }
+  }
+};
+
+// integration/connection-lifetime.ts
+function bindConnectionLifetime(signal, cleanup) {
+  let stopped = false;
+  const run = () => {
+    if (stopped) return;
+    stopped = true;
+    signal.removeEventListener("abort", run);
+    cleanup();
+  };
+  if (signal.aborted) run();
+  else signal.addEventListener("abort", run, { once: true });
+  return () => {
+    stopped = true;
+    signal.removeEventListener("abort", run);
+  };
+}
+
+// integration/e2e-socket.ts
+var EncryptedRelayConnection = class {
+  /** @param socket - owned WSS or fake carrier. @param crypto - fresh pinned channel per connection. @param signer - trusted identity signer; never a rich guest object. @param maxQueuedBytes - explicit byte budget including pending async crypto. @param delivery - host-only authenticated plaintext consumer. @param connected - host-only callback after both identity proofs. @param diagnostic - optional fixed handshake facts; omission emits nothing, and sink failures produce only a fixed fallback diagnostic. */
+  constructor(socket, crypto, signer, maxQueuedBytes, delivery, connected, scheduler, handshakeMs, lifetime, diagnostic) {
+    this.socket = socket;
+    this.crypto = crypto;
+    this.signer = signer;
+    this.delivery = delivery;
+    this.connected = connected;
+    this.diagnostic = diagnostic;
+    if (!Number.isSafeInteger(maxQueuedBytes) || maxQueuedBytes <= 0) throw new Error("invalid encrypted queue limit");
+    if (!Number.isSafeInteger(handshakeMs) || handshakeMs <= 0) throw new Error("invalid handshake deadline");
+    this.stopDeadline = scheduler.after(handshakeMs, () => {
+      this.observe("handshake-deadline");
+      this.close();
+    });
+    this.stops.push(socket.onEnd(() => this.close()), socket.onFrame((bytes, binary) => {
+      if (this.phase === "closed") return;
+      if (bytes.byteLength === 0 || this.pending + bytes.byteLength > maxQueuedBytes) {
+        this.observe("frame-budget-rejected");
+        this.close();
+        return;
+      }
+      this.pending += bytes.byteLength;
+      const copy = Uint8Array.from(bytes);
+      this.tail = this.tail.then(async () => {
+        if (this.phase === "closed") return;
+        const text4 = new TextDecoder("utf-8", { fatal: true }).decode(copy);
+        if (!binary) {
+          if (this.phase !== "ready" || text4 !== '{"relay":"ready","v":1}') throw new E2EError("invalid");
+          this.observe("relay-ready");
+          this.phase = "hello";
+          this.transmit(this.crypto.hello());
+          return;
+        }
+        switch (this.phase) {
+          case "hello":
+            this.observe("peer-hello");
+            await this.crypto.receiveHello(JSON.parse(text4));
+            if (this.closed()) return;
+            this.observe("keys-derived");
+            this.phase = "finished";
+            this.transmit(await this.crypto.finish(this.signer));
+            this.observe("finished-sent");
+            break;
+          case "finished":
+            await this.crypto.acceptFinished(text4);
+            if (this.closed()) return;
+            this.phase = "data";
+            this.stopDeadline();
+            this.observe("peer-verified");
+            this.connected(this.crypto.binding());
+            break;
+          case "data": {
+            const value = await this.crypto.open(text4);
+            if (!this.closed()) await this.delivery(value);
+            break;
+          }
+          case "ready":
+            throw new E2EError("not-ready");
+          default:
+            return;
+        }
+      }).catch((error51) => {
+        const phase = this.phase;
+        if (phase !== "closed") this.observe(`failure-${phase}:${error51 instanceof E2EError ? error51.code : error51 instanceof SyntaxError ? "format" : "unexpected"}`);
+        this.close();
+      }).finally(() => {
+        this.pending -= copy.byteLength;
+        copy.fill(0);
+      });
+    }));
+    this.stops.push(bindConnectionLifetime(lifetime, () => this.close()));
+  }
+  socket;
+  crypto;
+  signer;
+  delivery;
+  connected;
+  diagnostic;
+  phase = "ready";
+  pending = 0;
+  tail = Promise.resolve();
+  stops = [];
+  stopDeadline;
+  cleanupFailed = false;
+  closed() {
+    return this.phase === "closed";
+  }
+  observe(stage) {
+    if (this.diagnostic === void 0) return;
+    try {
+      this.diagnostic(stage);
+    } catch (error51) {
+      void error51;
+      console.warn("DSH_E2E_DIAGNOSTIC_FAILURE");
+    }
+  }
+  transmit(value) {
+    if (this.closed()) return;
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    this.socket.send(bytes);
+  }
+  /** @param value - canonical authenticated application payload, containing original command identities. @returns after bounded send; receipt remains owned by desktop journal. No retry is attempted. */
+  async send(value) {
+    if (this.phase !== "data") throw new Error("encrypted connection not ready");
+    try {
+      const frame = await this.crypto.seal(value);
+      if (this.closed()) throw new Error("encrypted connection closed");
+      this.transmit(frame);
+    } catch (error51) {
+      this.close();
+      throw error51;
+    }
+  }
+  /** @returns nothing; crypto binding aborts before socket closure, and late async results are discarded. */
+  close() {
+    if (this.closed()) return;
+    this.phase = "closed";
+    for (const release of [this.stopDeadline, ...this.stops, () => this.crypto.close(), () => this.socket.terminate()]) {
+      try {
+        release();
+      } catch (error51) {
+        void error51;
+        this.cleanupFailed = true;
+      }
+    }
+    ;
+    this.observe("closed");
+  }
+  /** @returns after the currently queued asynchronous work settles; shutdown itself denies immediately. */
+  async settled() {
+    await this.tail;
+    if (this.cleanupFailed) throw new Error("encrypted connection cleanup failed");
+  }
+};
+
+// src/paired-relay.ts
+function validatePairedRelayPolicy(policy) {
+  if (![policy.maxProofs, policy.maxQueuedBytes, policy.maxChallengeTtlMs, policy.maxRoomTtlMs, policy.handshakeMs, ...Object.values(policy.e2e)].every((value) => Number.isSafeInteger(value) && value > 0) || policy.e2e.maxFrames > 4294967295) throw new Error("invalid paired relay policy");
+}
+var PairedRelayFailure = class extends Error {
+  constructor(protocolFailed, cleanupFailed) {
+    super("paired connection failed");
+    this.protocolFailed = protocolFailed;
+    this.cleanupFailed = cleanupFailed;
+    this.name = "PairedRelayFailure";
+  }
+  protocolFailed;
+  cleanupFailed;
+};
+var PairedRelayEndpoint = class {
+  /** @param trust - locally confirmed routing identity. @param policy - explicit bounds. @param ports - native/Node owner ports. @param received - authenticated plaintext delivery. @param ready - exact new binding and encrypted connection. @param notice - content-free closure/failure sink; no pending request success is implied. @param lifetime - pairing/device policy lifetime. @param diagnostic - optional fixed handshake facts; omission emits nothing. @param controlDiagnostic - optional fixed control facts; omission emits nothing and no payload reaches this sink. */
+  constructor(trust, policy, ports, received, ready, notice, lifetime, diagnostic, controlDiagnostic) {
+    this.notice = notice;
+    validatePairedRelayPolicy(policy);
+    this.controller = new RelayControlClient(ports.control, trust, ports.signer, ports.primitives, ports.clock, policy.maxProofs, policy.maxQueuedBytes, policy.maxChallengeTtlMs, policy.maxRoomTtlMs, ports.scheduler, (lease) => {
+      const generation = ++this.generation;
+      this.current?.close();
+      this.current = void 0;
+      this.tail = this.tail.then(async () => {
+        if (this.closed || lease.signal.aborted || generation !== this.generation) return;
+        const material = await ports.agreement();
+        if (this.closed || lease.signal.aborted || generation !== this.generation) {
+          this.release([() => material.key.close()]);
+          return;
+        }
+        let socket, crypto;
+        try {
+          socket = await ports.data(lease);
+          if (this.closed || lease.signal.aborted || generation !== this.generation) {
+            const late = socket;
+            this.release([() => late.terminate(), () => material.key.close()]);
+            return;
+          }
+          crypto = new P256SecureChannel(trust.role, lease.receipt.room, material.key, material.nonce, ports.remotePublicSpki, policy.e2e, ports.primitives);
+          const connection = new EncryptedRelayConnection(socket, crypto, ports.signer, policy.maxQueuedBytes, received, (binding) => {
+            if (this.closed || lease.signal.aborted || generation !== this.generation) return;
+            ready(binding, connection);
+          }, ports.scheduler, policy.handshakeMs, lease.signal, diagnostic ?? ports.diagnostic);
+          this.current = connection;
+          this.dataConnections.add(connection);
+        } catch (error51) {
+          void error51;
+          const acquired = socket, channel = crypto;
+          this.release([() => channel?.close(), () => material.key.close(), () => acquired?.terminate()]);
+          throw new Error("paired data acquisition failed");
+        }
+      }).catch((error51) => {
+        void error51;
+        if (!this.closed) {
+          this.protocolFailure = true;
+          this.close();
+          this.release([() => this.notice("failed")]);
+        }
+      });
+    }, lifetime, controlDiagnostic ?? ports.controlDiagnostic);
+    try {
+      this.stopControl = ports.control.onEnd(() => {
+        this.close();
+      });
+    } catch (error51) {
+      void error51;
+      this.controller.close();
+      throw new Error("paired control acquisition failed");
+    }
+  }
+  notice;
+  controller;
+  current;
+  generation = 0;
+  closed = false;
+  tail = Promise.resolve();
+  failure = false;
+  protocolFailure = false;
+  dataConnections = /* @__PURE__ */ new Set();
+  stopControl = () => {
+  };
+  release(actions) {
+    for (const action of actions) {
+      try {
+        action();
+      } catch (error51) {
+        void error51;
+        this.failure = true;
+      }
+    }
+  }
+  /** @param value - original application request, never automatically retried. @returns after authenticated bounded send; no task receipt is implied. */
+  send(value) {
+    if (this.closed || this.current === void 0) return Promise.reject(new Error("paired connection unavailable"));
+    return this.current.send(value);
+  }
+  /** @returns nothing; deny and close all generations before async teardown. */
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    this.generation++;
+    this.release([this.stopControl, () => this.controller.close(), () => this.current?.close(), ...[...this.dataConnections].map((connection) => () => connection.close()), () => this.notice("closed")]);
+    this.current = void 0;
+  }
+  /** @returns after pending native/crypto acquisitions and every encrypted queue settles; failures stay visible. */
+  async settled() {
+    await this.tail;
+    const results = await Promise.allSettled([this.controller.settled(), ...[...this.dataConnections].map((connection) => connection.settled())]);
+    const cleanupFailed = this.failure || results.some((value) => value.status === "rejected");
+    if (this.protocolFailure || cleanupFailed) throw new PairedRelayFailure(this.protocolFailure, cleanupFailed);
+    if (this.closed) this.dataConnections.clear();
+  }
+};
+
+// src/device-route-protocol.ts
+var identifier5 = external_exports.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
+var signature3 = external_exports.string().regex(/^[A-Za-z0-9_-]{1,192}$/);
+var time3 = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1);
+var body = external_exports.object({ schema: external_exports.literal("harmony-device-route-offer/1"), binding: deviceBindingSchema, routeId: identifier5, routeEpoch: external_exports.literal(1), nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), issuedAt: time3, expiresAt: time3 }).strict();
+var deviceRouteOfferSchema = body.extend({ signature: signature3 }).strict().refine((value) => !value.binding.revoked && value.routeId !== value.binding.bindingId && value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 18e5);
+var deviceRouteSchema = external_exports.object({ schema: external_exports.literal("harmony-device-route/1"), offer: deviceRouteOfferSchema, signature: signature3 }).strict();
+function deviceRouteOfferBytes(value) {
+  return transcriptBytes(["harmony-device-route-offer/1", JSON.stringify(body.parse(value))]);
+}
+function deviceRouteReplyBytes(offer) {
+  return transcriptBytes(["harmony-device-route/1", JSON.stringify(deviceRouteOfferSchema.parse(offer))]);
+}
+async function verifyDeviceRouteOffer(candidate, primitives, expected, now) {
+  const value = deviceRouteOfferSchema.parse(candidate), { signature: bindingSignature, ...binding } = value.binding, { signature: offerSignature, ...offer } = value;
+  if (expected !== void 0 && JSON.stringify(value.binding) !== JSON.stringify(deviceBindingSchema.parse(expected)) || now !== void 0 && (value.issuedAt > now || value.expiresAt <= now)) throw new Error("device route selection or lifetime denied");
+  if (await primitives.credentialId(binding.desktopPublicSpki) !== binding.desktopCredentialId || await primitives.credentialId(binding.phonePublicSpki) !== binding.credentialId || !await primitives.verify(binding.desktopPublicSpki, deviceBindingBytes(binding), primitives.decode(bindingSignature)) || !await primitives.verify(binding.desktopPublicSpki, deviceRouteOfferBytes(offer), primitives.decode(offerSignature))) throw new Error("device route original signature denied");
+  return value;
+}
+async function verifyDeviceRoute(candidate, primitives, expected, now) {
+  const value = deviceRouteSchema.parse(candidate), offer = await verifyDeviceRouteOffer(value.offer, primitives, expected, now);
+  if (!await primitives.verify(offer.binding.phonePublicSpki, deviceRouteReplyBytes(offer), primitives.decode(value.signature))) throw new Error("device route phone signature denied");
+  return value;
+}
+
+// src/native-device-bridge.ts
+var route = external_exports.object({ desktopId: external_exports.string().min(1).max(256), profileId: external_exports.literal("desktop"), sessionId: external_exports.string().min(1).max(256) }).strict();
+var NativeDeviceCore = class {
+  /** @param registration - locally confirmed public device receipt, never a relay-provided grant. @param routingExpiresAt - independent finite relay directory/connection lease. @param policy - existing explicit control/E2E budgets. @param ports - existing HUKS/native transport and maintained crypto. @param status - trusted native state sink. @param received - bounded result/frame sink for the original PhoneCore transport. */
+  constructor(registration, routingExpiresAt, policy, ports, status, received, route2) {
+    this.registration = registration;
+    this.routingExpiresAt = routingExpiresAt;
+    this.policy = policy;
+    this.ports = ports;
+    this.status = status;
+    this.received = received;
+    this.route = route2;
+    const value = deviceBindingSchema.parse(JSON.parse(registration));
+    if (value.revoked || routingExpiresAt <= ports.clock() || value.desktopPublicSpki !== ports.remotePublicSpki) throw new Error("native device routing denied");
+    this.client = new DeviceBindingClient(this.authority, { desktopId: value.desktopId, profileId: "desktop", deviceId: value.deviceId, identityAlias: value.identityAlias, desktopCredentialId: value.desktopCredentialId, audience: value.audience, maxPublicBytes: policy.e2e.maxPlaintextBytes, maxProofs: policy.maxProofs, maxChallengeTtlMs: policy.maxChallengeTtlMs }, { read: async () => registration, compareAndSet: async () => {
+      throw new Error("connection cannot replace device registration");
+    } }, ports.signer, ports.primitives, ports.clock);
+    void this.authorized.catch(() => {
+    });
+  }
+  registration;
+  routingExpiresAt;
+  policy;
+  ports;
+  status;
+  received;
+  route;
+  authority = {};
+  client;
+  lifetime = new AbortController();
+  authorizedResolve = () => {
+  };
+  authorizedReject = () => {
+  };
+  authorized = new Promise((resolve, reject) => {
+    this.authorizedResolve = resolve;
+    this.authorizedReject = reject;
+  });
+  endpoint;
+  originalBinding;
+  receipt;
+  phase = "identity-read";
+  firstFailure;
+  proofPending = false;
+  unexpectedClose = false;
+  closed = false;
+  failed = false;
+  closing;
+  stopHandshake = () => {
+  };
+  stopTicket = () => {
+  };
+  report(state) {
+    try {
+      this.status(state);
+    } catch (error51) {
+      void error51;
+      this.failed = true;
+    }
+  }
+  remember(stage, category) {
+    this.firstFailure ??= new DeviceConnectionFailure(stage, category);
+  }
+  controlFact(fact) {
+    if (this.closed && !this.unexpectedClose || this.failed) return;
+    if (fact.startsWith("failure-")) this.remember(this.phase === "active-channel" ? "active-channel" : fact.startsWith("failure-identity:") || fact.startsWith("failure-sign:") ? "identity-read" : "control-handshake", fact.endsWith(":format") ? "invalid" : "refused");
+    else if (fact === "challenge-deadline" || fact === "trust-deadline") this.remember("control-handshake", "timeout");
+    else if (this.phase === "active-channel") return;
+    else if (fact === "room-validated") this.phase = "encrypted-handshake";
+    else if (fact !== "closed") this.phase = "control-handshake";
+  }
+  encryptedFact(fact) {
+    if (this.closed && !this.unexpectedClose || this.failed) return;
+    if (fact === "handshake-deadline") this.remember("encrypted-handshake", "timeout");
+    else if (fact.startsWith("failure-") || fact === "frame-budget-rejected") this.remember(this.phase === "active-channel" ? "active-channel" : this.phase === "ticket" ? "ticket" : "encrypted-handshake", "refused");
+    else if (fact !== "closed" && this.phase !== "ticket" && this.phase !== "active-channel") this.phase = "encrypted-handshake";
+  }
+  /** Earlier protocol evidence wins over a later native open or cleanup exception. */
+  connectionFailure(error51, stage) {
+    return this.firstFailure ?? deviceConnectionFailure(error51, stage);
+  }
+  fail(category = "unavailable") {
+    if (this.closed || this.failed) return;
+    this.remember(this.phase, category);
+    this.failed = true;
+    this.receipt = void 0;
+    this.authorizedReject(this.firstFailure);
+    this.report("connection-failed");
+    this.endpoint?.close();
+  }
+  /** Verify the original public receipt before installing network handlers; the native owner opens its control socket afterward. */
+  async initialize() {
+    if (this.closed || this.endpoint !== void 0) throw new Error("native device already initialized");
+    const value = await this.client.load(this.authority);
+    const route2 = await verifyDeviceRoute(this.route, this.ports.primitives, value, this.ports.clock());
+    const context = { routeId: route2.offer.routeId, routeEpoch: route2.offer.routeEpoch, expiresAt: route2.offer.expiresAt };
+    if (route2.offer.expiresAt !== this.routingExpiresAt) throw new Error("native routing deadline mismatch");
+    if (this.closed) throw new Error("native device closed");
+    this.stopHandshake = this.ports.scheduler.after(this.policy.handshakeMs, () => this.fail("timeout"));
+    this.phase = "control-handshake";
+    this.endpoint = new PairedRelayEndpoint({ pairId: id(route2.offer.routeId), epoch: route2.offer.routeEpoch, role: "phone", audience: value.audience, credentialId: id(value.credentialId), expiresAt: this.routingExpiresAt }, this.policy, { ...this.ports, data: async (lease) => {
+      try {
+        return await this.ports.data(lease);
+      } catch (error51) {
+        this.firstFailure ??= deviceConnectionFailure(error51, "native-channel");
+        throw error51;
+      }
+    } }, async (data) => {
+      const binding = this.originalBinding;
+      if (binding === void 0 || binding.signal.aborted) throw new Error("native device binding unavailable");
+      if (this.receipt === void 0) {
+        const packet = fields(data, ["kind", "value"]);
+        if (packet.kind === "device-binding-challenge" && !this.proofPending) {
+          this.proofPending = true;
+          this.phase = "ticket";
+          const proof = await this.client.connectionProof(this.authority, binding, JSON.stringify(packet.value), context);
+          if (binding !== this.originalBinding || binding.signal.aborted || this.closed) return;
+          await this.endpoint.send(jsonPayload({ kind: "device-binding-proof", value: proof }));
+          return;
+        }
+        if (packet.kind === "device-binding-authorized" && this.proofPending) {
+          this.phase = "ticket";
+          const ticket = await this.client.ticket(this.authority, binding, packet.value, context);
+          if (binding !== this.originalBinding || binding.signal.aborted || this.closed) return;
+          this.receipt = ticket;
+          this.phase = "active-channel";
+          this.stopHandshake();
+          this.stopTicket = this.ports.scheduler.after(ticket.expiresAt - this.ports.clock(), () => {
+            this.remember("connection-expiry", "timeout");
+            this.receipt = void 0;
+            this.report("disconnected");
+            this.endpoint?.close();
+          });
+          this.authorizedResolve();
+          this.report("authorized");
+          return;
+        }
+        throw new Error("native device proof required");
+      }
+      if (this.receipt.expiresAt <= this.ports.clock()) throw new Error("native device ticket expired");
+      this.received(JSON.stringify(data));
+    }, (binding) => {
+      this.phase = "ticket";
+      this.originalBinding = binding;
+      this.receipt = void 0;
+      this.proofPending = false;
+      this.report("identity-authenticated");
+      binding.signal.addEventListener("abort", () => {
+        if (this.originalBinding === binding && !this.closed) {
+          this.unexpectedClose = true;
+          this.receipt = void 0;
+          this.report("disconnected");
+        }
+      }, { once: true });
+    }, (state) => {
+      if (this.closed) return;
+      if (state === "failed") this.fail();
+      else {
+        this.remember(this.phase, "closed");
+        this.receipt = void 0;
+        this.authorizedReject(this.firstFailure);
+        this.report("control-closed");
+      }
+    }, this.lifetime.signal, (fact) => {
+      this.encryptedFact(fact);
+      this.ports.diagnostic?.(fact);
+    }, (fact) => {
+      this.controlFact(fact);
+      this.ports.controlDiagnostic?.(fact);
+    });
+  }
+  /** @returns after the original identity's fresh channel proof, never just broker readiness. */
+  ready() {
+    return this.authorized;
+  }
+  /** @returns exact local crypto binding; native callers cannot choose its id or remote identity. */
+  get binding() {
+    if (this.originalBinding === void 0) throw new Error("native device crypto binding unavailable");
+    return this.originalBinding;
+  }
+  /** @returns reviewed public short ticket for the native product owner; it is never persisted or passed to a rich guest. */
+  ticketJson() {
+    if (this.receipt === void 0 || this.receipt.expiresAt <= this.ports.clock()) throw new Error("native device ticket unavailable");
+    return JSON.stringify(this.receipt);
+  }
+  active() {
+    if (this.closed || this.failed || this.receipt === void 0 || this.receipt.expiresAt <= this.ports.clock() || this.binding.signal.aborted || this.endpoint === void 0) throw new Error("native device request denied");
+    return this.endpoint;
+  }
+  selected(candidate) {
+    const value = route.parse(candidate), binding = deviceBindingSchema.parse(JSON.parse(this.registration));
+    if (value.desktopId !== binding.desktopId) throw new Error("native device route denied");
+    return value;
+  }
+  /** @param idText - native-owned correlation id. @param raw - only metadata/select/request with an explicit route for Session operations. @returns after encrypted send, never task completion. */
+  async request(idText, raw) {
+    const endpoint = this.active();
+    if (new TextEncoder().encode(raw).length > this.policy.e2e.maxPlaintextBytes) throw new Error("native device packet capacity");
+    const value = JSON.parse(raw), method = value?.method;
+    if (method === "metadata") {
+      const packet = fields(value, ["method", "argument"]);
+      if (packet.argument !== null) throw new Error("native device metadata denied");
+    } else if (method === "select") this.selected(fields(value, ["method", "route"]).route);
+    else if (method === "request") this.selected(fields(value, ["method", "route", "argument"]).route);
+    else throw new Error("native device method denied");
+    await endpoint.send(jsonPayload({ kind: "request", id: text(idText), value }));
+  }
+  /** @param idText - native-owned subscriber id. @param raw - exact route/argument/resume JSON. @returns after encrypted subscription send. */
+  async follow(idText, raw) {
+    if (new TextEncoder().encode(raw).length > this.policy.e2e.maxPlaintextBytes) throw new Error("native device packet capacity");
+    const endpoint = this.active(), value = fields(JSON.parse(raw), ["route", "argument", "resume"]);
+    this.selected(value.route);
+    await endpoint.send(jsonPayload({ kind: "follow", id: text(idText), value }));
+  }
+  /** @param idText - existing subscriber/request wait. @returns after wait cancellation; accepted tasks are never cancelled implicitly. */
+  async stop(idText) {
+    if (!this.closed && this.receipt !== void 0) await this.active().send({ kind: "stop", id: text(idText) });
+  }
+  /** Close this finite channel and proof client; original identity and persistent registration remain owned by native storage. */
+  close() {
+    if (this.closing !== void 0) return this.closing;
+    this.closed = true;
+    this.receipt = void 0;
+    this.lifetime.abort();
+    this.stopHandshake();
+    this.stopTicket();
+    this.client.close();
+    this.authorizedReject(new Error("native device closed"));
+    this.closing = (async () => {
+      this.endpoint?.close();
+      try {
+        await this.endpoint?.settled();
+      } catch (error51) {
+        if (!(error51 instanceof PairedRelayFailure) || error51.cleanupFailed) throw error51;
+      }
+    })();
+    return this.closing;
+  }
+};
+
+// src/device-route-owner.ts
+var ledger = external_exports.object({ schema: external_exports.literal("harmony-device-route-ledger/1"), offers: external_exports.array(deviceRouteOfferSchema).max(64), routes: external_exports.array(deviceRouteSchema).max(64), retired: external_exports.array(external_exports.string()).max(64) }).strict();
+var DeviceRouteOwner = class {
+  constructor(authority, role, binding, storage, signer, primitives, clock, source) {
+    this.authority = authority;
+    this.role = role;
+    this.binding = binding;
+    this.storage = storage;
+    this.signer = signer;
+    this.primitives = primitives;
+    this.clock = clock;
+    this.source = source;
+  }
+  authority;
+  role;
+  binding;
+  storage;
+  signer;
+  primitives;
+  clock;
+  source;
+  closed = false;
+  blocked = false;
+  tail = Promise.resolve();
+  local(authority) {
+    if (this.closed || this.blocked || authority !== this.authority) throw new Error("device route owner unavailable");
+  }
+  serialized(operation) {
+    const result = this.tail.then(operation);
+    this.tail = result.then(() => {
+    }, () => {
+    });
+    return result;
+  }
+  async read() {
+    const raw = await this.storage.read();
+    if (raw !== null && new TextEncoder().encode(raw).length > 524288) throw new Error("device route history capacity");
+    const value = raw === null ? ledger.parse({ schema: "harmony-device-route-ledger/1", offers: [], routes: [], retired: [] }) : ledger.parse(JSON.parse(raw));
+    const ids = value.offers.map((item) => item.routeId);
+    if (new Set(ids).size !== ids.length || new Set(value.offers.map((item) => item.nonce)).size !== ids.length || new Set(value.routes.map((item) => item.offer.routeId)).size !== value.routes.length || new Set(value.retired).size !== value.retired.length || value.retired.some((id2) => !ids.includes(id2))) throw new Error("device route history denied");
+    for (const offer of value.offers) {
+      await verifyDeviceRouteOffer(offer, this.primitives);
+      if ((this.role === "desktop" ? offer.binding.desktopPublicSpki : offer.binding.phonePublicSpki) !== this.signer.publicSpki) throw new Error("device route original identity denied");
+    }
+    for (const route2 of value.routes) {
+      await verifyDeviceRoute(route2, this.primitives);
+      if (!value.offers.some((offer) => JSON.stringify(offer) === JSON.stringify(route2.offer))) throw new Error("device route offer history denied");
+    }
+    return { raw, value };
+  }
+  async write(previous, value) {
+    const raw = JSON.stringify(ledger.parse(value));
+    if (new TextEncoder().encode(raw).length > 524288) throw new Error("device route history capacity");
+    try {
+      await this.storage.compareAndSet(previous, raw);
+    } catch (error51) {
+      this.blocked = true;
+      throw new Error("device route persistence outcome unknown", { cause: error51 });
+    }
+  }
+  async activeBinding() {
+    const binding = await this.binding();
+    if (binding.revoked || binding.profileId !== "desktop" || (this.role === "desktop" ? binding.desktopPublicSpki : binding.phonePublicSpki) !== this.signer.publicSpki) throw new Error("device route binding revoked or foreign");
+    return binding;
+  }
+  availableSlot(value) {
+    if (value.offers.length >= 64 || value.offers.some((item) => !value.retired.includes(item.routeId) && item.expiresAt > this.clock())) throw new Error("device route active window or capacity");
+  }
+  /** Full read-only audit before native marker recovery; every record must name this exact original binding. */
+  async auditRecovery(authority, requiredRetired = []) {
+    this.local(authority);
+    const binding = await this.activeBinding(), { value } = await this.read();
+    if (requiredRetired.some((id2) => !value.retired.includes(id2))) throw new Error("device recovery revocation anchor missing");
+    for (const offer of value.offers) {
+      if (JSON.stringify(offer.binding) !== JSON.stringify(binding)) throw new Error("device route recovery binding mismatch");
+      if (!value.retired.includes(offer.routeId) && offer.expiresAt > this.clock()) throw new Error("device route recovery active window denied");
+    }
+    ;
+    return { offers: value.offers.length, routes: value.routes.length, retired: value.retired.length };
+  }
+  /** Public comparison does not sign, persist or acquire transport. */
+  async inspectOffer(authority, candidate) {
+    this.local(authority);
+    return verifyDeviceRouteOffer(candidate, this.primitives, await this.activeBinding(), this.clock());
+  }
+  /** Persist a pending desktop offer before disclosure; concurrent windows and nonce/id reuse refuse. */
+  offer(authority, ttlMs) {
+    this.local(authority);
+    return this.serialized(async () => {
+      this.local(authority);
+      if (this.role !== "desktop" || this.source === void 0 || !Number.isSafeInteger(ttlMs) || ttlMs <= 0 || ttlMs > 18e5) throw new Error("device route offer denied");
+      const binding = await this.activeBinding(), { raw, value } = await this.read();
+      this.availableSlot(value);
+      const now = this.clock(), unsigned = { schema: "harmony-device-route-offer/1", binding, routeId: this.source.id(), routeEpoch: 1, nonce: this.source.nonce(), issuedAt: now, expiresAt: now + ttlMs };
+      if (value.offers.some((item) => item.routeId === unsigned.routeId || item.nonce === unsigned.nonce)) throw new Error("device route replay");
+      const offer = deviceRouteOfferSchema.parse({ ...unsigned, signature: this.primitives.encode(await this.signer.sign(deviceRouteOfferBytes(unsigned))) });
+      this.local(authority);
+      await verifyDeviceRouteOffer(offer, this.primitives, await this.activeBinding(), this.clock());
+      await this.write(raw, { ...value, offers: [...value.offers, offer] });
+      return offer;
+    });
+  }
+  /** Original phone signs one current, explicitly approved window, retaining the replay history before returning. */
+  acceptOffer(authority, candidate, approved) {
+    this.local(authority);
+    return this.serialized(async () => {
+      if (this.role !== "phone" || !approved) throw new Error("device route phone approval required");
+      const binding = await this.activeBinding(), offer = await verifyDeviceRouteOffer(candidate, this.primitives, binding, this.clock()), { raw, value } = await this.read();
+      this.availableSlot(value);
+      if (value.offers.some((item) => item.routeId === offer.routeId || item.nonce === offer.nonce)) throw new Error("device route replay");
+      const route2 = deviceRouteSchema.parse({ schema: "harmony-device-route/1", offer, signature: this.primitives.encode(await this.signer.sign(deviceRouteReplyBytes(offer))) });
+      this.local(authority);
+      await verifyDeviceRoute(route2, this.primitives, await this.activeBinding(), this.clock());
+      await this.write(raw, { ...value, offers: [...value.offers, offer], routes: [...value.routes, route2] });
+      return route2;
+    });
+  }
+  /** Confirm the exact persisted offer; an identical known result is idempotent, retired routes never reactivate. */
+  confirm(authority, candidate) {
+    this.local(authority);
+    return this.serialized(async () => {
+      if (this.role !== "desktop") throw new Error("device route desktop confirmation required");
+      const route2 = await verifyDeviceRoute(candidate, this.primitives, await this.activeBinding(), this.clock()), { raw, value } = await this.read();
+      if (value.retired.includes(route2.offer.routeId) || !value.offers.some((offer) => JSON.stringify(offer) === JSON.stringify(route2.offer))) throw new Error("device route pending offer absent");
+      const old = value.routes.find((item) => item.offer.routeId === route2.offer.routeId);
+      if (old !== void 0) {
+        if (JSON.stringify(old) !== JSON.stringify(route2)) throw new Error("device route conflicting confirmation");
+        return old;
+      }
+      this.local(authority);
+      await this.write(raw, { ...value, routes: [...value.routes, route2] });
+      return route2;
+    });
+  }
+  /** A cold process may recover this still-finite window, but every connection still requires fresh proofs and consent. */
+  async current(authority) {
+    this.local(authority);
+    const binding = await this.activeBinding(), { value } = await this.read(), routes = value.routes.filter((route3) => !value.retired.includes(route3.offer.routeId) && route3.offer.expiresAt > this.clock());
+    if (routes.length > 1) throw new Error("device route concurrent history denied");
+    const route2 = routes[0];
+    return route2 === void 0 ? null : verifyDeviceRoute(route2, this.primitives, binding, this.clock());
+  }
+  /** Persist terminal local retirement without modifying the binding; relay durable revocation remains explicit. */
+  retire(authority) {
+    this.local(authority);
+    return this.serialized(async () => {
+      const { raw, value } = await this.read(), ids = value.offers.filter((item) => !value.retired.includes(item.routeId)).map((item) => item.routeId);
+      if (ids.length) await this.write(raw, { ...value, retired: [...value.retired, ...ids] });
+      return ids;
+    });
+  }
+  /** Stop this owner without deleting history or changing any remote record. */
+  async close() {
+    this.closed = true;
+    await this.tail;
+  }
+};
+
+// src/product-route-storage.ts
+var ProductRouteStorage = class {
+  constructor(storage, maxBytes) {
+    this.storage = storage;
+    this.maxBytes = maxBytes;
+  }
+  storage;
+  maxBytes;
+  loaded = false;
+  raw = null;
+  reading;
+  tail = Promise.resolve();
+  failed = false;
+  closed = false;
+  read() {
+    if (this.closed || this.failed) return Promise.reject(new Error("native route storage blocked"));
+    if (this.loaded) return Promise.resolve(this.raw);
+    this.reading ??= this.storage.read(this.maxBytes).then((raw) => {
+      this.raw = raw;
+      this.loaded = true;
+      return raw;
+    }, (error51) => {
+      this.failed = true;
+      throw error51;
+    });
+    return this.reading;
+  }
+  compareAndSet(previous, next) {
+    const operation = this.tail.then(async () => {
+      if (this.closed || this.failed || new TextEncoder().encode(next).length > this.maxBytes || await this.read() !== previous) throw new Error("native route CAS denied");
+      try {
+        await this.storage.write(next);
+        this.raw = next;
+      } catch (error51) {
+        this.failed = true;
+        throw error51;
+      }
+    });
+    this.tail = operation.then(() => {
+    }, () => {
+    });
+    return operation;
+  }
+  /** Prior IO failure remains the read/write result; only actual resource release may fail close. */
+  async close() {
+    this.closed = true;
+    await Promise.allSettled([this.tail, this.reading]);
+    await this.storage.close();
+  }
+};
+
+// src/native-device-product.ts
+var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
+  /** @param authority - exact native UI owner. @param policyJson - existing default-disabled product/domain limits. @param identityAlias - original selected HUKS alias. @param host - approved existing relay host. @param routingExpiresAt - independent public relay directory deadline. @param relay - existing control/E2E capacities. @param publicStorage - separate app-private device public file. @param crypto - original native signer and maintained backend. @param scheduler - native timers. @param clock - trusted native clock. @param acquire - original native WSS acquisition, called only on connect. @param publish - sanitized original page DTO sink. */
+  constructor(authority, policyJson, identityAlias, host, routingExpiresAt, relay, publicStorage, crypto, scheduler, clock, acquire, publish, catalogRefreshMs, routeStorage) {
+    this.authority = authority;
+    this.identityAlias = identityAlias;
+    this.host = host;
+    this.routingExpiresAt = routingExpiresAt;
+    this.relay = relay;
+    this.publicStorage = publicStorage;
+    this.crypto = crypto;
+    this.scheduler = scheduler;
+    this.clock = clock;
+    this.acquire = acquire;
+    this.publish = publish;
+    this.catalogRefreshMs = catalogRefreshMs;
+    this.policy = parseProductPolicy(policyJson);
+    if (!Number.isSafeInteger(catalogRefreshMs) || catalogRefreshMs <= 0 || catalogRefreshMs > 2147483647) throw new Error("native device catalogue interval denied");
+    this.storage = { read: () => this.readPublic(), compareAndSet: (previous, next) => {
+      const operation = this.writeTail.then(async () => {
+        if (this.closed || this.ioBlocked || await this.readPublic() !== previous) throw new Error("native device public CAS conflict");
+        try {
+          await this.publicStorage.write(next);
+          this.cached = next;
+        } catch (error51) {
+          this.ioBlocked = true;
+          throw error51;
+        }
+      });
+      this.writeTail = operation.then(() => {
+      }, () => {
+      });
+      return operation;
+    } };
+    if (routeStorage !== void 0) {
+      this.routeStorage = new ProductRouteStorage(routeStorage, Math.min(this.policy.trustMaxBytes, 524288));
+      this.routes = new DeviceRouteOwner(authority, "phone", async () => {
+        if (this.client === void 0) throw new Error("native bound device required");
+        return this.client.load(authority);
+      }, this.routeStorage, crypto.signer, crypto.primitives, clock);
+    }
+  }
+  authority;
+  identityAlias;
+  host;
+  routingExpiresAt;
+  relay;
+  publicStorage;
+  crypto;
+  scheduler;
+  clock;
+  acquire;
+  publish;
+  catalogRefreshMs;
+  policy;
+  storage;
+  client;
+  device;
+  selected;
+  closed = false;
+  connectionApproved = false;
+  revoked = false;
+  writeTail = Promise.resolve();
+  publicRead;
+  cached = null;
+  loaded = false;
+  ioBlocked = false;
+  stopCatalog = () => {
+  };
+  polling;
+  catalogError = "";
+  routeStorage;
+  routes;
+  startupFailure;
+  recoveryVerified = false;
+  hasRoute = false;
+  routeDeadline = 0;
+  readPublic() {
+    if (this.closed || this.ioBlocked) return Promise.reject(new Error("native device public state unavailable"));
+    if (this.loaded) return Promise.resolve(this.cached);
+    this.publicRead ??= this.publicStorage.read(this.policy.trustMaxBytes).then((value) => {
+      this.cached = value;
+      this.loaded = true;
+      return value;
+    }, (error51) => {
+      this.ioBlocked = true;
+      throw error51;
+    });
+    return this.publicRead;
+  }
+  /** @param raw - strict public device offer or receipt. @returns only original identity/host selection for native bootstrap; no signing or network occurs. */
+  static selectionInput(raw) {
+    const value = JSON.parse(raw), offer = deviceBindingOfferSchema.safeParse(value), record3 = offer.success ? offer.data.registration : deviceBindingSchema.parse(value);
+    return JSON.stringify({ identityAlias: record3.identityAlias, audience: record3.audience, bindingId: record3.bindingId, desktopPublicSpki: record3.desktopPublicSpki });
+  }
+  /** Used only after the facade verifies both signatures before native socket acquisition. */
+  static routingInput(raw) {
+    const route2 = deviceRouteSchema.parse(JSON.parse(raw)), value = route2.offer.binding;
+    return JSON.stringify({ identityAlias: value.identityAlias, audience: value.audience, bindingId: value.bindingId, desktopPublicSpki: value.desktopPublicSpki, routeId: route2.offer.routeId });
+  }
+  local(authority) {
+    if (this.closed || this.startupFailure !== void 0 || !this.policy.enabled || authority !== this.authority) throw new Error("native device product disabled");
+  }
+  makeClient(value) {
+    if (value.identityAlias !== this.identityAlias || value.audience !== this.host || value.profileId !== "desktop") throw new Error("native device local selection denied");
+    return new DeviceBindingClient(this.authority, { desktopId: value.desktopId, profileId: "desktop", deviceId: value.deviceId, identityAlias: this.identityAlias, desktopCredentialId: value.desktopCredentialId, audience: this.host, maxPublicBytes: this.policy.trustMaxBytes, maxProofs: this.relay.maxProofs, maxChallengeTtlMs: this.relay.maxChallengeTtlMs }, this.storage, this.crypto.signer, this.crypto.primitives, this.clock);
+  }
+  empty(error51 = "") {
+    this.publish(JSON.stringify({ pairing: error51 === "" ? "unpaired" : "blocked", connection: "disconnected", error: error51, projects: [], sessions: [], selected: "", task: "idle", readOnly: true, messages: [], liveText: "", richJson: "" }));
+  }
+  project(view) {
+    if (view.state !== "connected") this.stopCatalog();
+    const session = view.content === "" ? {} : JSON.parse(view.content);
+    this.publish(JSON.stringify({ ...session, pairing: "paired", connectionDiagnostic: deviceConnectionDiagnosticText(view.diagnostic), connection: view.state === "connected" ? "connected" : view.state, error: view.error || this.catalogError || session.error || "", projects: [], sessions: view.sessions.map((row) => ({ sessionId: row.sessionId, projectId: row.projectId, title: row.title })), selected: view.selected?.sessionId ?? "", task: session.task ?? "idle", readOnly: session.readOnly ?? true, messages: session.messages ?? [], liveText: session.liveText ?? "", richJson: session.richJson ?? "" }));
+  }
+  sessionView(view) {
+    return JSON.stringify({ task: view.transcript?.task ?? "idle", readOnly: view.transcript?.readOnly ?? true, error: view.error, messages: view.transcript?.messages.map((message) => ({ id: message.id, role: message.role, text: message.parts.flatMap((part) => part.kind === "text" || part.kind === "reasoning" ? [part.text] : []).join("\n") })) ?? [], liveText: view.transcript?.liveText ?? "", richJson: view.rich === null ? "" : JSON.stringify(view.rich) });
+  }
+  install(_record2, client) {
+    if (this.device !== void 0) throw new Error("native device product already installed");
+    this.client = client;
+    this.device = new DeviceBoundMobileProduct(this.authority, client, { connect: (registration, lifetime) => this.connection(registration, client, lifetime) }, this.clock, this.scheduler, (view) => this.project(view));
+    return this.device;
+  }
+  /** @param error - opaque native cause. @param stage - owned native startup step. @returns safe fixed startup code only. */
+  static startupDiagnostic(error51, stage) {
+    return deviceStartupDiagnosticText(error51, stage);
+  }
+  /** Only fixed public verification results are emitted; no records, proofs or keys are projected. */
+  async verifyStorageRecovery(expected) {
+    this.local(this.authority);
+    const pin = external_exports.object({ bindingId: external_exports.string(), epoch: external_exports.number().int().positive(), desktopCredentialId: external_exports.string(), credentialId: external_exports.string(), identityAlias: external_exports.string(), retiredRoutes: external_exports.array(external_exports.string()).max(64) }).strict().parse(JSON.parse(expected));
+    if (this.client === void 0 || this.routes === void 0) throw new Error("native recovery records missing");
+    const binding = await this.client.load(this.authority);
+    for (const key of ["bindingId", "epoch", "desktopCredentialId", "credentialId", "identityAlias"]) if (binding[key] !== pin[key]) throw new Error("native recovery original identity mismatch");
+    let history;
+    try {
+      history = await this.routes.auditRecovery(this.authority, pin.retiredRoutes);
+    } catch (error51) {
+      throw deviceStartupFailure(error51, "route-history-restore", true);
+    }
+    ;
+    this.hasRoute = false;
+    this.routeDeadline = 0;
+    this.recoveryVerified = true;
+    return JSON.stringify({ originalBindingVerified: true, originalIdentityVerified: true, historyVerified: true, revocationAnchorsVerified: true, offers: history.offers, routes: history.routes, retired: history.retired, activeRoutes: 0 });
+  }
+  /** Refresh only the native disconnected view after the owned marker transition. */
+  async bootStatus() {
+    this.local(this.authority);
+    if (!this.recoveryVerified || this.device === void 0) throw new Error("native recovery validation required");
+    this.project(this.device.view);
+  }
+  /** Verify original binding and route history before publishing readiness; either failure blocks operations without deleting or replacing records. */
+  async boot() {
+    this.local(this.authority);
+    let stage = "binding-read", verified = false;
+    try {
+      const raw = await this.storage.read();
+      if (raw === null) {
+        this.empty();
+        return;
+      }
+      ;
+      const value = deviceBindingSchema.parse(JSON.parse(raw)), client = this.makeClient(value), checked = await client.load(this.authority);
+      this.local(this.authority);
+      verified = true;
+      const device = this.install(checked, client);
+      stage = "route-history-restore";
+      const route2 = await this.routes?.current(this.authority);
+      this.local(this.authority);
+      this.hasRoute = route2 != null;
+      this.routeDeadline = route2?.offer.expiresAt ?? 0;
+      this.project(device.view);
+    } catch (error51) {
+      const failure = deviceStartupFailure(error51, stage, verified);
+      this.startupFailure = failure;
+      this.hasRoute = false;
+      this.routeDeadline = 0;
+      if (!this.closed) this.publish(JSON.stringify({ pairing: failure.bindingVerified ? "paired" : "blocked", connection: "blocked", error: failure.bindingVerified ? "device-route-history-unavailable" : "device-binding-unavailable", startupDiagnostic: deviceStartupDiagnosticText(failure, stage), projects: [], sessions: [], selected: "", task: "idle", readOnly: true, messages: [], liveText: "", richJson: "" }));
+      throw failure;
+    }
+  }
+  async connection(registration, proof, lifetime) {
+    this.local(this.authority);
+    if (!this.connectionApproved || this.routingExpiresAt <= this.clock()) throw new Error("native device network approval or directory lease missing");
+    let stage = "route-verify", cleanupFailed = false;
+    let acquisition, core, rpc;
+    let closing;
+    const close = () => closing ??= (async () => {
+      const results = await Promise.allSettled([(async () => {
+        await rpc?.close();
+      })(), (async () => {
+        await core?.close();
+      })(), (async () => {
+        await acquisition?.close();
+      })()]);
+      if (results.some((result) => result.status === "rejected")) throw new Error("native device network cleanup failed");
+    })();
+    const abort = () => {
+      void close().catch((error51) => {
+        void error51;
+        cleanupFailed = true;
+      });
+    };
+    try {
+      lifetime.throwIfAborted();
+      const route2 = await this.routes?.current(this.authority);
+      lifetime.throwIfAborted();
+      if (route2 == null) {
+        this.hasRoute = false;
+        throw new Error("native signed route window required");
+      }
+      const context = { routeId: route2.offer.routeId, routeEpoch: route2.offer.routeEpoch, expiresAt: route2.offer.expiresAt };
+      stage = "native-channel";
+      acquisition = await this.acquire(JSON.stringify(route2), (fact) => {
+        if (fact === "identity-read" || fact === "native-channel") stage = fact;
+        if (fact === "cleanup-failed") cleanupFailed = true;
+      });
+      lifetime.throwIfAborted();
+      const acquired = acquisition;
+      core = new NativeDeviceCore(JSON.stringify(registration), route2.offer.expiresAt, this.relay, acquisition.ports, (state) => {
+        if (state === "identity-authenticated") acquired.authenticated();
+      }, (packet) => rpc?.receive(packet), route2);
+      rpc = new DeviceProductRpc(core, this.scheduler, this.policy.transport.timeoutMs, this.policy.transport.maxPending, this.policy.commandPrefix);
+      lifetime.addEventListener("abort", abort, { once: true });
+      stage = "identity-read";
+      await core.initialize();
+      lifetime.throwIfAborted();
+      stage = "native-channel";
+      await acquired.open();
+      lifetime.throwIfAborted();
+      stage = "control-handshake";
+      await core.ready();
+      lifetime.throwIfAborted();
+      this.local(this.authority);
+      const network = core, calls = rpc;
+      return { authentication: "native", route: context, binding: network.binding, failure: (fallback) => network.connectionFailure(fallback, "active-channel"), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => {
+        const value = fields(await calls.call({ method: "metadata", argument: null }), ["desktopId", "profileId", "sessions"]);
+        if (value.desktopId !== registration.desktopId || value.profileId !== "desktop") throw new Error("native device catalogue identity denied");
+        return external_exports.array(external_exports.object({ profileId: external_exports.literal("desktop"), sessionId: external_exports.string(), title: external_exports.string(), projectId: external_exports.string().nullable() }).strict()).parse(value.sessions);
+      }, select: async (route3, ticket, publish, lifetime2) => {
+        const result = fields(await calls.call({ method: "select", route: route3 }), ["selected"]);
+        if (JSON.stringify(result.selected) !== JSON.stringify(route3)) throw new Error("native device selection acknowledgement denied");
+        const session = new DevicePhoneSession(route3, registration, ticket, network.binding, proof, this.authority, this.policy, calls, this.scheduler, this.clock, (view) => publish(this.sessionView(view)), context);
+        try {
+          await session.start();
+          if (lifetime2.aborted) throw new Error("native device selection retired");
+          this.selected = session;
+          return { richRequest: (raw) => session.richRequest(raw), close: async () => {
+            if (this.selected === session) this.selected = void 0;
+            await session.close();
+          } };
+        } catch (error51) {
+          await session.close();
+          throw error51;
+        }
+      }, close };
+    } catch (error51) {
+      const failure = core?.connectionFailure(error51, stage) ?? deviceConnectionFailure(error51, stage);
+      if (cleanupFailed) failure.cleanupFailed();
+      try {
+        await close();
+      } catch (cleanup) {
+        void cleanup;
+        failure.cleanupFailed();
+      }
+      ;
+      throw failure;
+    } finally {
+      lifetime.removeEventListener("abort", abort);
+    }
+  }
+  /** @param raw - public offer only. @returns verified preview; no signing, persistence or network occurs. */
+  async previewEnrollment(raw) {
+    this.local(this.authority);
+    const offer = deviceBindingOfferSchema.parse(JSON.parse(raw)), client = this.client ?? this.makeClient(offer.registration);
+    await client.inspectOffer(this.authority, raw);
+    this.client = client;
+    return JSON.stringify({ ..._NativeDeviceProductFacade.previewObject(offer.registration), expiresAt: offer.expiresAt, grantTtlMs: 18e5 });
+  }
+  /** @param raw - public signed offer. @param compared - explicit original fingerprint decision. @returns original HUKS proof without a new identity or registration. */
+  async signEnrollment(raw, compared) {
+    this.local(this.authority);
+    const offer = deviceBindingOfferSchema.parse(JSON.parse(raw)), client = this.client ?? this.makeClient(offer.registration);
+    this.client = client;
+    return client.signOffer(this.authority, raw, compared);
+  }
+  static previewObject(value) {
+    return { deviceBinding: true, renewal: false, grantEpoch: value.epoch, pairId: value.bindingId, desktopFingerprint: value.desktopCredentialId, phoneFingerprint: value.credentialId, desktopId: value.desktopId, profileId: "desktop", sessions: [], operations: value.operations, audience: value.audience, identityAlias: value.identityAlias, expiresAt: 0, grantTtlMs: 18e5 };
+  }
+  /** @param raw - strict public device receipt. @returns read-only public preview before any native identity acquisition. */
+  static previewReceipt(raw) {
+    return JSON.stringify(_NativeDeviceProductFacade.previewObject(deviceBindingSchema.parse(JSON.parse(raw))));
+  }
+  /** @returns whether a verified persistent binding is available; connection state and model activity remain independent. */
+  bound() {
+    return !this.closed && !this.revoked && this.device !== void 0;
+  }
+  /** @returns the original host after binding/identity verification; this does not approve network access. */
+  connectionHost() {
+    return this.bound() ? this.host : "";
+  }
+  /** No network is acquired; cold restore still requires fresh foreground host consent. */
+  routeReady() {
+    return this.startupFailure === void 0 && this.hasRoute && this.routeDeadline > this.clock();
+  }
+  async previewRoute(raw) {
+    this.local(this.authority);
+    if (this.routes === void 0) throw new Error("native route storage unavailable");
+    const offer = await this.routes.inspectOffer(this.authority, JSON.parse(raw));
+    return JSON.stringify({ routeId: offer.routeId, audience: offer.binding.audience, bindingId: offer.binding.bindingId, profileId: offer.binding.profileId, expiresAt: offer.expiresAt, desktopFingerprint: offer.binding.desktopCredentialId, phoneFingerprint: offer.binding.credentialId });
+  }
+  async signRoute(raw, approved) {
+    this.local(this.authority);
+    if (this.routes === void 0) throw new Error("native route storage unavailable");
+    const route2 = await this.routes.acceptOffer(this.authority, JSON.parse(raw), approved);
+    this.hasRoute = true;
+    this.routeDeadline = route2.offer.expiresAt;
+    return JSON.stringify(route2);
+  }
+  async stopRoute() {
+    this.local(this.authority);
+    this.hasRoute = false;
+    const results = await Promise.allSettled([this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]);
+    if (results.some((value) => value.status === "rejected")) throw new Error("native route cleanup outcome unknown");
+  }
+  /** @param raw - strict public device receipt. @returns pure public preview; activation still verifies the original identity and signature. */
+  preview(raw) {
+    if (new TextEncoder().encode(raw).length > this.policy.trustMaxBytes) throw new Error("native device preview capacity");
+    return JSON.stringify(_NativeDeviceProductFacade.previewObject(deviceBindingSchema.parse(JSON.parse(raw))));
+  }
+  /** @param raw - signed confirmed receipt. @param compared - explicit native fingerprint/scope decision. @param networkApproved - native relay disclosure consent. @returns after original public receipt persistence only; no socket is opened. */
+  async pairWithConnection(raw, compared, networkApproved) {
+    this.local(this.authority);
+    if (!networkApproved) throw new Error("native device network disclosure not approved");
+    const value = deviceBindingSchema.parse(JSON.parse(raw)), client = this.client ?? this.makeClient(value);
+    await client.accept(this.authority, raw, compared);
+    this.local(this.authority);
+    this.connectionApproved = true;
+    if (this.device === void 0) this.project(this.install(await client.load(this.authority), client).view);
+  }
+  /** @param confirmed - explicit native saved-binding choice. @returns existing public receipt without changing identity or opening a connection. */
+  async savedPairing(confirmed) {
+    this.local(this.authority);
+    if (!confirmed) throw new Error("native saved device decision required");
+    const raw = await this.storage.read();
+    if (raw === null) throw new Error("native device not bound");
+    return raw;
+  }
+  /** @param networkApproved - current native page's explicit host decision, never inferred from a saved binding. @returns after a fresh finite channel proof; no model is submitted. */
+  async connect(networkApproved) {
+    this.local(this.authority);
+    if (networkApproved !== true) throw new Error("native device host consent required");
+    if (this.revoked || this.device === void 0) throw new Error("native device not bound");
+    this.connectionApproved = true;
+    await this.device.connect(this.authority);
+    this.scheduleCatalog();
+  }
+  scheduleCatalog() {
+    this.stopCatalog();
+    if (this.closed || this.revoked || this.device?.view.state !== "connected") return;
+    this.stopCatalog = this.scheduler.after(this.catalogRefreshMs, () => {
+      const device = this.device;
+      if (device === void 0 || this.closed || device.view.state !== "connected") return;
+      const operation = (async () => {
+        try {
+          await device.refresh(this.authority);
+          this.catalogError = "";
+        } catch (error51) {
+          void error51;
+          this.catalogError = "device-catalog-unavailable";
+        }
+        ;
+        if (!this.closed) this.project(device.view);
+      })();
+      this.polling = operation;
+      void operation.then(() => {
+        if (this.polling === operation) this.polling = void 0;
+        this.scheduleCatalog();
+      }, () => {
+        if (this.polling === operation) this.polling = void 0;
+      });
+    });
+  }
+  /** @param sessionId - current catalogue row. @returns after canonical old rich/subscription cleanup and selected Session start. */
+  async select(sessionId) {
+    this.local(this.authority);
+    if (this.device === void 0) throw new Error("native device not bound");
+    await this.device.select(this.authority, sessionId);
+  }
+  /** Refresh dynamic catalogue without resuming an Agent. */
+  async refresh() {
+    this.local(this.authority);
+    if (this.device === void 0) throw new Error("native device not bound");
+    await this.device.refresh(this.authority);
+  }
+  session() {
+    this.local(this.authority);
+    if (this.selected === void 0 || this.device?.view.selected?.sessionId !== this.selected.route.sessionId || this.device.view.state !== "connected") throw new Error("native device Session required");
+    return this.selected;
+  }
+  /** @param requestId - original native user intent. @param text - user task. @returns canonical desktop receipt JSON. */
+  async submit(requestId, text4) {
+    return JSON.stringify(await this.session().submit(requestId, text4));
+  }
+  /** @param requestId - original intent. @returns read-only receipt JSON, never a resubmission. */
+  async receipt(requestId) {
+    return JSON.stringify(await this.session().receipt(requestId));
+  }
+  /** Cancel only the native-selected Session's task through the existing canonical owner. */
+  cancel() {
+    return this.session().cancel();
+  }
+  /** @param raw - rejected rich envelope. @returns only its bounded correlation id and a refusal; no selection or Host operation occurs. */
+  richRefusal(raw) {
+    const value = fields(JSON.parse(raw), ["kind", "id", "operation", "payload"]);
+    if (value.kind !== "rich.request" || typeof value.id !== "string" || value.id.length > 128) throw new Error("native device rich refusal denied");
+    return JSON.stringify({ kind: "rich.reply", id: value.id, error: true });
+  }
+  /** @param raw - existing bounded rich SDK request. @returns scoped result from the original rich-inline owner, with no control/selection/credential entry. */
+  richRequest(raw) {
+    if (this.device === void 0) return Promise.reject(new Error("native device not bound"));
+    return this.device.richRequest(raw);
+  }
+  /** Store sticky phone-local revocation and disconnect; desktop and relay revocation still require their separate explicit acknowledgements. */
+  async revoke() {
+    this.local(this.authority);
+    if (this.client === void 0) throw new Error("native device not bound");
+    this.revoked = true;
+    this.hasRoute = false;
+    const results = await Promise.allSettled([this.client.revokeLocal(this.authority), this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]);
+    if (results.some((result) => result.status === "rejected")) throw new Error("native device local revocation outcome unknown");
+    this.empty("device-binding-locally-revoked");
+  }
+  /** Native foreground retirement closes network and per-Session resources, retaining public binding and original HUKS identity. */
+  async close() {
+    if (this.closed) return;
+    this.closed = true;
+    this.stopCatalog();
+    const results = await Promise.allSettled([this.device?.close(), this.writeTail, this.publicRead, this.polling, this.routes?.close()]);
+    this.client?.close();
+    const stores = await Promise.allSettled([this.publicStorage.close(), this.routeStorage?.close()]);
+    if ([...results, ...stores].some((result) => result.status === "rejected")) throw new Error("native device product close failed");
+  }
+};
+
 // src/native-product-facade.ts
 var positive = external_exports.number().int().positive().max(2147483647);
 var recovery = external_exports.object({ maxAttempts: positive, retryDelayMs: positive }).strict();
@@ -18380,13 +20758,13 @@ var NativeProductFacade = class {
   constructor(authority, policyJson, ports, publish) {
     const policy = parseProductPolicy(policyJson);
     this.trustMaxBytes = policy.trustMaxBytes;
-    this.product = new MobileProduct(authority, policy, { ...ports, connect: (record2, status, received) => ports.connect(JSON.stringify(record2), status, received), verifyTrust: (_record2, document2, previous) => ports.verifyTrust(canonicalPublicTrust(document2), previous === void 0 ? void 0 : canonicalPublicTrust(previous)) }, (view) => publish(JSON.stringify({ pairing: view.pairing, connection: view.connection, error: view.error, projects: view.projects, sessions: view.sessions, selected: view.selected, task: view.transcript?.task ?? "idle", readOnly: view.transcript?.readOnly ?? true, messages: view.transcript?.messages.map((message) => ({ id: message.id, role: message.role, text: message.parts.flatMap((part) => part.kind === "text" || part.kind === "reasoning" ? [part.text] : []).join("\n") })) ?? [], liveText: view.transcript?.liveText ?? "", richJson: view.rich === null ? "" : JSON.stringify(view.rich) })));
+    this.product = new MobileProduct(authority, policy, { ...ports, connect: (record3, status, received) => ports.connect(JSON.stringify(record3), status, received), verifyTrust: (_record2, document2, previous) => ports.verifyTrust(canonicalPublicTrust(document2), previous === void 0 ? void 0 : canonicalPublicTrust(previous)) }, (view) => publish(JSON.stringify({ pairing: view.pairing, connection: view.connection, error: view.error, projects: view.projects, sessions: view.sessions, selected: view.selected, task: view.transcript?.task ?? "idle", readOnly: view.transcript?.readOnly ?? true, messages: view.transcript?.messages.map((message) => ({ id: message.id, role: message.role, text: message.parts.flatMap((part) => part.kind === "text" || part.kind === "reasoning" ? [part.text] : []).join("\n") })) ?? [], liveText: view.transcript?.liveText ?? "", richJson: view.rich === null ? "" : JSON.stringify(view.rich) })));
   }
   /** @param raw - locally selected public offer. @returns formatted public fingerprint/scope fields only; no IO, signing, storage or authorization occurs. */
   preview(raw) {
     if (new TextEncoder().encode(raw).length > this.trustMaxBytes) throw new Error("public offer capacity");
-    const document2 = parsePublicTrustDocument(raw, this.trustMaxBytes), record2 = publicTrustRecord(document2);
-    return JSON.stringify({ renewal: document2.schema === "harmony-product-public-trust/2", expiresAt: Math.min(record2.paired.expiresAt, record2.paired.grant.expiresAt), grantEpoch: record2.paired.grant.epoch, pairId: record2.paired.pairId, desktopFingerprint: record2.paired.desktopCredentialId, phoneFingerprint: record2.paired.credentialId, desktopId: record2.paired.grant.desktopId, profileId: record2.paired.grant.profileId, sessions: record2.paired.grant.sessions, operations: record2.paired.grant.operations, audience: record2.paired.audience, identityAlias: record2.identityAlias });
+    const document2 = parsePublicTrustDocument(raw, this.trustMaxBytes), record3 = publicTrustRecord(document2);
+    return JSON.stringify({ renewal: document2.schema === "harmony-product-public-trust/2", expiresAt: Math.min(record3.paired.expiresAt, record3.paired.grant.expiresAt), grantEpoch: record3.paired.grant.epoch, pairId: record3.paired.pairId, desktopFingerprint: record3.paired.desktopCredentialId, phoneFingerprint: record3.paired.credentialId, desktopId: record3.paired.grant.desktopId, profileId: record3.paired.grant.profileId, sessions: record3.paired.grant.sessions, operations: record3.paired.grant.operations, audience: record3.paired.audience, identityAlias: record3.identityAlias });
   }
   /** @param raw - selected public generation. @returns canonical current carrier fields for native key verification only. */
   trustInput(raw) {
@@ -18437,8 +20815,8 @@ var NativeProductFacade = class {
     return this.product.select(authority, session);
   }
   /** @param authority - native composer intent. @param request - original id. @param text - user text. @returns canonical receipt JSON or visible uncertainty. */
-  async submit(authority, request, text3) {
-    return JSON.stringify(await this.product.submit(authority, request, text3));
+  async submit(authority, request, text4) {
+    return JSON.stringify(await this.product.submit(authority, request, text4));
   }
   /** @param authority - native reconciliation decision. @param request - original intent id. @returns read-only receipt JSON. */
   async receipt(authority, request) {
@@ -18468,6 +20846,7 @@ var NativeProductFacade = class {
   }
 };
 export {
+  NativeDeviceProductFacade,
   NativeProductFacade,
   parseProductPolicy
 };

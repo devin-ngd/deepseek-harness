@@ -3,6 +3,12 @@ export class NativeDiagnostics {
   private count: number = 0
   /** @returns failures retained even when the platform logger also fails. */
   get failures(): number { return this.count }
+  /** @returns whether one constant local INFO call returned; collection success requires separate evidence. */
+  localSelfCheck(): boolean {
+    const failures = this.count
+    this.observe(() => 'DSH_LOG_PROBE=local-only')
+    return this.count === failures
+  }
   /** @param make - diagnostic serialization only, never a product operation. */
   observe(make: () => string): void {
     try { console.info(make()) }

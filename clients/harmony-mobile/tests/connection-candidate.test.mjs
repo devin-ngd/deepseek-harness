@@ -183,6 +183,16 @@ test('unsigned HAP inspection accepts a complete contiguous payload', () => {
   assert.equal(result.module.app.bundleName, 'local.dsh.mobile.offlineproduct')
 })
 
+test('unsigned HAP inspection requires the selected versioned candidate metadata', () => {
+  const entries = hapEntries(), module = JSON.parse(entries[0].data)
+  Object.assign(module.app, { versionName: '0.0.0-rc2.16', versionCode: 2 }); entries[0].data = JSON.stringify(module)
+  const bytes = buildZip(entries), expected = { ...expectedHap, versionName: '0.0.0-rc2.16', versionCode: 2 }
+  assert.equal(inspectUnsignedHap(bytes, expected).module.app.versionName, expected.versionName)
+  assert.throws(() => inspectUnsignedHap(bytes, expectedHap), /bundle or version/)
+  assert.throws(() => inspectUnsignedHap(bytes, { ...expected, versionName: '0.0.0-rc2.15' }), /bundle or version/)
+  assert.throws(() => inspectUnsignedHap(bytes, { ...expected, versionCode: 1 }), /bundle or version/)
+})
+
 for (const bad of [
   { name: 'signing metadata entry', entries: () => hapEntries({ extra: [{ name: 'META-INF/CERT.RSA', data: 'signature' }] }), error: /signing metadata|signature material/ },
   { name: 'signature material entry', entries: () => hapEntries({ extra: [{ name: '.pages.info', data: 'bitmap' }] }), error: /signature material/ },

@@ -12,6 +12,7 @@ export class PublicTrustError extends Error { constructor(readonly code: 'invali
 /** Tests inject interrupted append/sync without changing real configuration. Production uses explicit file IO below. */
 export interface PublicTrustWrites { append(file: FileHandle, bytes: Uint8Array): Promise<void>; sync(file: FileHandle): Promise<void>; directorySync(path: string): Promise<void> }
 const writes: PublicTrustWrites = { async append(file, bytes) { let offset = 0; while (offset < bytes.length) { const result = await file.write(bytes, offset, bytes.length - offset, null); if (result.bytesWritten === 0) throw new PublicTrustError('write-unknown'); offset += result.bytesWritten } }, sync: file => file.sync(), async directorySync(path) { const file = await open(path, constants.O_RDONLY); try { await file.sync() } finally { await file.close() } } }
+export { writes as publicTrustWrites }
 interface Snapshot { readonly format: 'harmony-public-trust/1'; readonly audience: string; readonly generation: number; readonly pairs: readonly RelayPairTrust[]; readonly previous: string }
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
 function policyCheck(policy: PublicTrustPolicy): void { if (!isAbsolute(policy.path) || resolve(policy.path) !== policy.path || ![policy.maxBytes, policy.maxRecords].every(value => Number.isSafeInteger(value) && value > 0)) throw new PublicTrustError('invalid') }
@@ -55,6 +56,8 @@ export class PublicTrustStore implements PublicPairRevocations {
   }
   /** @returns current validated public record; no token, private key or message is stored. */
   pairs(): readonly RelayPairTrust[] { if (this.closed || this.failed) throw new PublicTrustError('closed'); return this.value.pairs }
+  /** Public chain anchor for an explicitly initialized independent route journal; no legacy record is changed. */
+  fingerprint(): string { if (this.closed || this.failed) throw new PublicTrustError('closed'); return this.head }
   /** @param pair - exact successor public tombstone from local broker denial. @returns after append/file sync; unknown failure terminally closes access and cannot be reported as durable success. */
   commit(pair: RelayPairTrust): Promise<void> {
     if (this.closed || this.closing !== undefined) return Promise.reject(new PublicTrustError('closed'))

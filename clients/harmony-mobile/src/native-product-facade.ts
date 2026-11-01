@@ -64,3 +64,7 @@ export class NativeProductFacade {
   /** @returns after owned IO/follow/rich work retires. */
   close(): Promise<void> { return this.product.close() }
 }
+
+/** Device binding is an explicit separate native mode; legacy records are not promoted. */
+export { NativeDeviceProductFacade } from './native-device-product.ts'
+export type { NativeDeviceNetwork, NativeDeviceCrypto } from './native-device-product.ts'

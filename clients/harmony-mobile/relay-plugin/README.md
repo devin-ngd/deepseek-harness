@@ -1,5 +1,7 @@
 # Optional legacy DSH relay adapter
 
+English | [中文](README.zh.md)
+
 The current source shares RelayRooms/RelayUpgrade with the user-selected independent Node relay in standalone-relay; the server no longer needs this DSH package or runtime. The sealed phase36 artifact is preserved as a historical optional adapter.
 
 This phase36 package adds one exact WebSocket upgrade route to the maintained DSH WebServer. Both bundle rows and `config.enabled` default to disabled. It has no bin, credential reader, HTTP provisioning route, operator Connection, Session, shell or model. Install only into a separately approved minimal `dsh` profile; installation and activation have not occurred.

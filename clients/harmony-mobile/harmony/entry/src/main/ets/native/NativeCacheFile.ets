@@ -10,7 +10,7 @@ export class NativeCacheFile implements NativeCacheStorage {
   private path: string
   private maxBytes: number
   constructor(filesDir: string, maxBytes: number, filename: string = 'mobile-offline-cache.json') {
-    if (!filesDir.startsWith('/') || filesDir.includes('..') || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || !/^(mobile-offline-cache|mobile-product-public-trust|mobile-product-scopes|mobile-product-scope-[a-f0-9]{64})\.json$/.test(filename)) throw new NativeFailure('cache-config-invalid')
+    if (!filesDir.startsWith('/') || filesDir.includes('..') || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || !/^(mobile-offline-cache|mobile-product-public-trust|mobile-device-binding-v1|mobile-device-routes-v1|mobile-product-scopes|mobile-product-scope-[a-f0-9]{64})\.json$/.test(filename)) throw new NativeFailure('cache-config-invalid')
     this.path = filesDir + '/' + filename
     this.maxBytes = maxBytes
   }

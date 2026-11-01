@@ -3,7 +3,8 @@ import { webview } from '@kit.ArkWeb'
 import { common } from '@kit.AbilityKit'
 import { util } from '@kit.ArkTS'
 import { NativeAssets } from '../native/NativeAssets'
-import { NativeProductOwner } from './NativeProductOwner'
+/** HTML receives only the scoped rich request/refusal port, never device binding or session selection. */
+export interface NativeProductRichPort { richRequest(packet: string): Promise<string>; richRefusal(packet: string): string }
 const DOCUMENT: string = 'https://product.dsh.invalid/rich'
 interface OwnedMount { mountId: string }
 interface RendererTransportLimits { maxPending: number; maxPacketBytes: number }
@@ -11,7 +12,7 @@ interface RendererLimits { transport: RendererTransportLimits }
 /** UI owner keeps task/trust methods outside the Web document and revokes its port on navigation/background. */
 export class NativeProductRichOwner {
   readonly controller: webview.WebviewController = new webview.WebviewController()
-  private product: NativeProductOwner
+  private product: NativeProductRichPort
   private policyJson: string
   private assets: NativeAssets | undefined = undefined
   private port: webview.WebMessagePort | undefined = undefined
@@ -27,7 +28,7 @@ export class NativeProductRichOwner {
   private mountGeneration: number = 0
   private maxPending: number
   private maxPacketBytes: number
-  constructor(product: NativeProductOwner, policyJson: string) { this.product = product; this.policyJson = policyJson; const limits = JSON.parse(policyJson) as RendererLimits; this.maxPending = limits.transport.maxPending; this.maxPacketBytes = limits.transport.maxPacketBytes; if (![this.maxPending, this.maxPacketBytes].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error('native rich limits denied') }
+  constructor(product: NativeProductRichPort, policyJson: string) { this.product = product; this.policyJson = policyJson; const limits = JSON.parse(policyJson) as RendererLimits; this.maxPending = limits.transport.maxPending; this.maxPacketBytes = limits.transport.maxPacketBytes; if (![this.maxPending, this.maxPacketBytes].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error('native rich limits denied') }
   initialize(context: common.UIAbilityContext): void { this.assets = new NativeAssets(context) }
   attached(): void {
     if (this.assets === undefined || this.closed) return; webview.WebviewController.setWebDebuggingAccess(false); webview.WebCookieManager.putAcceptCookieEnabled(false); webview.WebCookieManager.putAcceptThirdPartyCookieEnabled(false)

@@ -1,12 +1,12 @@
 /** Chrome executes the HAP-owned document and maintained guest SDK; only test driver code owns the parent MessagePort. This is not ArkWeb evidence. */
 import { chromium } from 'playwright'
 import { readFile } from 'node:fs/promises'
-import { NativeProductRichOwner, sdk, context, type NativeProductOwner } from '../tests/helpers/product-native-harness.mjs'
+import { NativeProductRichOwner, sdk, context } from '../tests/helpers/product-native-harness.mjs'
 import { object, string } from '../src/domain.ts'
 interface Driver { port: MessagePort; requests: string[]; ready: boolean }
 declare global { interface Window { __dshProductTest: Driver } }
 /** @param app - actual ETS product owner with SDK substitutes. @param mount - admitted native rich JSON. @param policy - same app policy. @returns the actual SDK form's invoke envelope and native canonical receipt, plus mobile layout/isolation evidence. */
-export async function submitProductForm(app: NativeProductOwner, mount: string, policy: string): Promise<{ packet: string; receipt: string; browser: string; actionId: string; widths: number[]; guestHostDenied: boolean }> {
+export async function submitProductForm(app: { richRequest(packet: string): Promise<string>; richRefusal(packet: string): string }, mount: string, policy: string): Promise<{ packet: string; receipt: string; browser: string; actionId: string; widths: number[]; guestHostDenied: boolean }> {
   const bytes = await readFile(new URL('../harmony/entry/src/main/resources/rawfile/product-rich-document.js', import.meta.url)); sdk.resources.set('product-rich-document.js', bytes)
   const native = new NativeProductRichOwner(app, policy); native.initialize(context()); native.attached(); native.bind('https://product.dsh.invalid/rich'); const nativePort = native.controller.ports[0]!
   const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, chromiumSandbox: true }), page = await browser.newPage({ viewport: { width: 360, height: 720 } }); let packet = '', receipt = ''

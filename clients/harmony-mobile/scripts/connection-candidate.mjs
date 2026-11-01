@@ -147,6 +147,8 @@ export function assertUnsignedHapEntries(names) {
  * @param {object} expected - Recorded toolchain and bundle inputs.
  * @param {string} expected.sdkVersion - Installed SDK version.
  * @param {number} expected.api - Installed SDK API.
+ * @param {string} [expected.versionName] - Candidate version name; omitted legacy fixtures use 0.0.0.
+ * @param {number} [expected.versionCode] - Candidate version code; omitted legacy fixtures use 1.
  * @returns {{entryCount: number, module: object, pack: object, unsignedLayout: boolean}} Verified unsigned payload metadata.
  */
 export function inspectUnsignedHap(bytes, expected) {
@@ -155,7 +157,7 @@ export function inspectUnsignedHap(bytes, expected) {
   assertUnsignedZipLayout(bytes, entries, directoryOffset)
   const module = JSON.parse(readZipEntry(bytes, entries, 'module.json').toString('utf8'))
   const pack = JSON.parse(readZipEntry(bytes, entries, 'pack.info').toString('utf8'))
-  if (module?.app?.bundleName !== CANDIDATE_BUNDLE_NAME || module?.app?.versionName !== '0.0.0' || module?.app?.versionCode !== 1) throw new Error('HAP bundle or version differs from the isolated candidate')
+  if (module?.app?.bundleName !== CANDIDATE_BUNDLE_NAME || module?.app?.versionName !== (expected.versionName ?? '0.0.0') || module?.app?.versionCode !== (expected.versionCode ?? 1)) throw new Error('HAP bundle or version differs from the isolated candidate')
   if (module?.app?.compileSdkVersion !== expected.sdkVersion) throw new Error('HAP compile SDK differs from the installed SDK')
   if (module?.module?.type !== 'entry' || JSON.stringify(module?.module?.requestPermissions) !== JSON.stringify(REQUIRED_PERMISSIONS)) throw new Error('HAP permissions or module type differ from the INTERNET-only entry')
   if (pack?.summary?.app?.bundleName !== CANDIDATE_BUNDLE_NAME || pack?.summary?.modules?.[0]?.apiVersion?.target !== expected.api) throw new Error('HAP pack metadata differs from the candidate bundle and API')

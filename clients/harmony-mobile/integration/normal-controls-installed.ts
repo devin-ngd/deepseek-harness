@@ -1,4 +1,4 @@
-/** Disposable normal profile using installed alpha.4 services and a finite local adapter; no user profile or live provider. */
+/** Disposable normal profile using the selected installed Host services and a finite local adapter; no user profile or live provider. */
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -10,6 +10,7 @@ import { MemoryCredentials } from '../../../packages/credentials/authorization/t
 import * as TestEntry from '../desktop-plugin/src/test-session.ts'
 import * as Product from '../desktop-plugin/src/product.ts'
 import * as Pairing from '../desktop-plugin/src/pairing.ts'
+import * as DeviceCommand from '../desktop-plugin/src/device-binding-command.ts'
 import { loadProfileServices } from './profile-services.ts'
 import { invokeProfile } from '../desktop-plugin/src/transport.ts'
 import { deviceRemotePolicy } from '../desktop-plugin/src/device-policy.ts'
@@ -37,11 +38,12 @@ try {
   const pairingStatus = await ctx.commands.execute(ctx.agents.get(sessionId)!, '/harmony-pair status', [], new AbortController().signal)
   assert.equal(pairingStatus?.result.kind, 'success'); assert.equal(JSON.parse(pairingStatus!.result.text!).sessionId, sessionId)
   await pairing.dispose()
+  await DeviceCommand.apply(ctx, { enabled: false }); assert.equal(DeviceCommand.inject.length, 15); assert.equal(ctx.get('harmonyAuthenticatedDevices'), undefined)
   const peer = ctx.connection.createPeer({ principal: { kind: 'harmony-device', desktopId, deviceId, epoch: 1 }, interactions: 'none' })
   const grant = { desktopId, profileId: id<'mobile-profile'>('normal-controls'), deviceId, epoch: 1, sessions: [sessionId], operations: deviceGrantOperations, expiresAt: Date.now() + 60000, revoked: false }
   ctx.provide('harmonyAuthenticatedDevices', { current: candidate => candidate === peer ? grant : undefined, onRevoke: () => () => {} })
   ctx.effect(() => () => peer.dispose()); ctx.effect(() => ctx.remoteAccess.registerPolicy('harmony-device', deviceRemotePolicy(principal => principal === peer.principal ? grant : undefined, Date.now)))
-  await ctx.plugin(Product, { enabled: true, desktopId, profileId: 'normal-controls', sessionId, journalMode: 'create' })
+  let product = ctx.plugin(Product, { enabled: true, desktopId, profileId: 'normal-controls', sessionId, journalMode: 'create-or-reopen' }); await product
   let command = 0
   const request = (operation: string, payload: unknown) => invokeProfile(ctx, peer, { method: 'request', argument: { version: PROFILE_RPC_CODEC, packet: JSON.stringify({ protocol: MOBILE_LINK_PROTOCOL, desktopId, deviceId, grantEpoch: 1, commandId: 'installed-' + ++command, expiresAt: Date.now() + 30000, operation, payload }) } }, new AbortController().signal)
   const task = { sessionId, requestId: 'installed-task', text: 'Show the synthetic link form.' }
@@ -59,7 +61,12 @@ try {
   await ctx.agents.get(sessionId)!.whenIdle()
   const commandResult = await ctx.commands.execute(ctx.agents.get(sessionId)!, '/harmony-test', [], new AbortController().signal)
   assert.equal(commandResult?.result.kind, 'success'); const result = JSON.parse(commandResult!.result.text!); assert.equal(result.responses, 3)
+  const admissionPath = join(world, 'state/harmony_mobile_admission.json'), admissionBefore = await readFile(admissionPath, 'utf8')
+  await product.dispose(); product = ctx.plugin(Product, { enabled: true, desktopId, profileId: 'normal-controls', sessionId, journalMode: 'create-or-reopen' }); await product
+  await request('task.submit', task); assert.equal(await readFile(admissionPath, 'utf8'), admissionBefore)
+  const afterResume = await ctx.commands.execute(ctx.agents.get(sessionId)!, '/harmony-test', [], new AbortController().signal)
+  assert.equal(afterResume?.result.kind, 'success'); assert.equal(JSON.parse(afterResume!.result.text!).responses, result.responses)
   assert.equal(ctx.llm.getOfflineReplayCounts().realCalls, 0)
-  console.log(JSON.stringify({ installedApi: 'alpha.4/protocol4', pairingCommandRegistered: true, normalProduct: true, fixedResponses: result.responses, richCompleted: true, duplicateIdsRetained: true, zeroRealDispatches: true, network: false, userProfile: false }))
+  console.log(JSON.stringify({ installedApi: 'installed-public-api/protocol4', pairingCommandRegistered: true, normalProduct: true, fixedResponses: result.responses, richCompleted: true, duplicateIdsRetained: true, journalReopenRetainsReceipts: true, zeroRealDispatches: true, network: false, userProfile: false }))
   await entry.dispose()
 } finally { await ctx.fiber.dispose() }

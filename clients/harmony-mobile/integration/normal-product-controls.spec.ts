@@ -3,6 +3,7 @@ import { it, expect, vi } from 'vitest'
 import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { Context } from '@deepseek-ai/cordis'
 import Gateway from '@deepseek-ai/dsh-api-gateway'
 import Authorization from '@deepseek-ai/dsh-authorization'
 import UserQuestions from '@deepseek-ai/dsh-user-questions'
@@ -23,6 +24,27 @@ import { deviceChallengeBytes } from '../src/pairing-protocol.ts'
 import { productTrustSchema, publicTrustRenewalSchema, publicTrustRenewalBytes, canonicalPublicTrust } from '../src/public-trust-protocol.ts'
 import { trustScope, addTrustScope, readTrustScopes } from '../src/trust-scopes.ts'
 import { NativeProductOwner, NativePublicTrustFile, resetProductSdk, state, context, sdk, network } from '../tests/helpers/product-native-harness.mjs'
+
+it('pairing command waits for isolated credential services before registering and removes discovery on unload', async () => {
+  const ctx = new Context(), unregister = vi.fn(), register = vi.fn(() => unregister)
+  const services = ['commands', 'userQuestions', 'connection', 'agents', 'sessionController', 'sessionPersistence', 'remoteAccess', 'profileContext', 'typert', 'typertGateway', 'richInline', 'workspaceRegistry', 'storageDomain']
+  for (const service of services) ctx.reflect.provide(service, service === 'commands' ? { register } : {})
+  const example = JSON.parse(await readFile(new URL('../desktop-plugin/pairing.enabled.example.json', import.meta.url), 'utf8'))
+  const plugin = ctx.plugin(Pairing, example)
+  try {
+    await plugin
+    expect(register).not.toHaveBeenCalled()
+    ctx.reflect.provide('credentials', {})
+    await plugin
+    expect(register).not.toHaveBeenCalled()
+    ctx.reflect.provide('authorization', {})
+    await plugin
+    expect(register).toHaveBeenCalledTimes(1)
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({ name: 'harmony-pair', recordInput: false }))
+    await plugin.dispose()
+    expect(unregister).toHaveBeenCalledTimes(1)
+  } finally { await ctx.fiber.dispose() }
+})
 
 const sessionId = id<'SessionId'>('controls-normal-session'), otherId = id<'SessionId'>('controls-other-session')
 async function setup(label: string) {
@@ -147,6 +169,22 @@ it('unloading the command entry cancels its human question before identity acces
     await plugin.dispose(); expect((await running)?.result.kind).toBe('error'); expect(f.questionCancelled()).toBe(true)
     expect(f.unprotect).not.toHaveBeenCalled(); expect(f.ctx.get('harmonyAuthenticatedDevices')).toBeUndefined()
     expect(f.ctx.commands.list(f.ctx.agents.get(sessionId)!).some(row => row.name === 'harmony-pair')).toBe(false)
+    f.ctx.llm.assertZeroRealCalls()
+  } finally { await f.close() }
+})
+
+it('stop cancels a challenge without creating a grant and permits another explicit start', async () => {
+  const f = await setup('controls-offer-stop')
+  try {
+    await f.ctx.plugin(Pairing, f.options)
+    const identity = JSON.stringify({ identityAlias: 'controls-phone-key', publicSpki: phoneKey.publicSpki, credentialId: p256CredentialId(phoneKey.publicSpki) })
+    output(await f.run('/harmony-pair start ' + identity))
+    expect((await f.run('/harmony-pair stop'))?.result).toEqual({ kind: 'success', text: 'Desktop pairing challenge cancelled; no grant was created.' })
+    expect(output(await f.run('/harmony-pair status')).state).toBe('not-started')
+    expect(await f.ctx.credentials.listRecords()).toHaveLength(1)
+    output(await f.run('/harmony-pair start ' + identity))
+    expect(output(await f.run('/harmony-pair status')).state).toBe('offered')
+    await f.run('/harmony-pair stop')
     f.ctx.llm.assertZeroRealCalls()
   } finally { await f.close() }
 })

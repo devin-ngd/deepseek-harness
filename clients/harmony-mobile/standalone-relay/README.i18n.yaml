@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write clients/harmony-mobile/standalone-relay/README.md
+/independent-harmony-relay:
+  en: 9f8f26e32bcfe772
+  zh: f3cfae45c8516724
+/independent-harmony-relay/activation-and-trust:
+  en: 9106e0d25ce773c2
+  zh: fba07122bfd7221f
+/independent-harmony-relay/what-the-server-sees:
+  en: 22e0aac0ecffef08
+  zh: 82579fc4d6f51af0
+/independent-harmony-relay/deployment-and-rollback:
+  en: 337703a862055432
+  zh: c366d8440510a150

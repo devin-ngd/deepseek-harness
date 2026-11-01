@@ -365,6 +365,7 @@ export function assertHdcInvocation(args, context = {}) {
   if (same(rest, ['shell', 'pidof', CANDIDATE.bundleName])) return 'process-id'
   if (same(rest, ['shell', 'aa', 'start', '-b', CANDIDATE.bundleName, '-m', 'entry', '-a', 'EntryAbility'])) return 'launch'
   if (rest.length === 9 && same(rest.slice(0, 7), ['shell', 'uitest', 'dumpLayout', '-b', CANDIDATE.bundleName, '-m', 'false']) && rest[7] === '-p' && remote(rest[8], 'json')) return 'layout'
+  if (rest.length === 8 && same(rest.slice(0, 6), ['shell', 'uitest', 'dumpLayout', '-b', CANDIDATE.bundleName, '-i']) && rest[6] === '-p' && remote(rest[7], 'json')) return 'layout-complete'
   if (rest.length === 4 && same(rest.slice(0, 2), ['file', 'recv']) && remote(rest[2], '(?:json|jpeg)') && inside(context.runDirectory, rest[3])) return 'receive-file'
   if (rest.length === 4 && same(rest.slice(0, 3), ['shell', 'snapshot_display', '-f']) && remote(rest[3], 'jpeg')) return 'capture'
   if (rest.length === 7 && same(rest.slice(0, 4), ['shell', 'uitest', 'uiInput', 'inputText']) && digits(rest[4]) && digits(rest[5]) && rest[6] === context.alias) return 'input-text'
@@ -411,9 +412,11 @@ export function parseLayoutTree(tree) {
  * @param {object} tree - Raw `dumpLayout` JSON.
  * @param {object} expected - Owned bundle.
  * @param {string} expected.bundle - Candidate bundle name.
- * @returns {{owned: boolean, foreign: boolean, nodes: object[], safe: object[]}} Layout assessment; text that starts with JSON is omitted.
+ * @param {'viewport'|'complete'} [expected.coverage] - `complete` only for a fresh `dumpLayout -i`; omission keeps viewport checks.
+ * @returns {{owned: boolean, foreign: boolean, coverage: string, nodes: object[], safe: object[]}} Layout assessment; JSON text is omitted from safe output.
  */
-export function assessLayout(tree, { bundle }) {
+export function assessLayout(tree, { bundle, coverage = 'viewport' }) {
+  if (!['viewport', 'complete'].includes(coverage)) throw new Error('unknown layout coverage')
   const nodes = parseLayoutTree(tree)
   const owned = nodes.some(node => node.bundleName === bundle)
   const foreign = nodes.some(node => typeof node.bundleName === 'string' && node.bundleName.length > 0 && node.bundleName !== bundle)
@@ -421,7 +424,7 @@ export function assessLayout(tree, { bundle }) {
     type: node.type, id: node.id, hint: node.hint, bounds: node.bounds, visible: node.visible, enabled: node.enabled, checked: node.checked,
     text: typeof node.text === 'string' && node.text.startsWith('{') ? '[public JSON omitted]' : node.text,
   }))
-  return { owned, foreign, nodes, safe }
+  return { owned, foreign, coverage, nodes, safe }
 }
 
 /**
@@ -456,6 +459,43 @@ export function controlPoint(bounds) {
 }
 
 /**
+ * Inspect an owned inactive UI for diagnostics and existing-public-identity reads only.
+ * @param {object} assessment - Owned current observation; complete trees include offscreen state, while viewport trees require visible state. Foreign overlays are refused.
+ * @param {object} labels - Native labels; absent expired label keeps generic errors refused.
+ * @returns {object} Inactive/recovery classification; never pairing readiness or authorization.
+ */
+export function assessInactiveLayout(assessment, labels) {
+  assertOwnedLayout(assessment)
+  const visible = assessment.nodes.filter(node => node.visible === 'true')
+  const observed = assessment.coverage === 'complete' ? assessment.nodes : visible
+  const texts = observed.map(node => node.text)
+  if (texts.includes(labels.connected) || texts.includes(labels.connecting)) throw new Error('the connection is active; no public identity UI input is permitted')
+  if (!texts.includes(labels.disconnected) && !texts.includes(labels.stopped)) throw new Error('the expected disconnected or stopped state is not visible')
+  const connect = observed.filter(node => node.type === 'Button' && node.text === labels.connect)
+  if (assessment.coverage === 'complete' && (texts.filter(text => text === labels.disconnected || text === labels.stopped).length !== 1 || connect.length !== 1)) throw new Error('complete layout has ambiguous or missing connection state')
+  if (connect.some(node => node.enabled !== 'false')) throw new Error('the connect control is enabled; no UI input is permitted')
+  const expired = typeof labels.expired === 'string' && labels.expired.length > 0 && texts.includes(labels.expired)
+  if (texts.includes(labels.failed) && !expired) throw new Error('the application reports an unclassified UI error; stop and inspect')
+  return { inactive: true, recovery: expired ? 'public-trust-expired' : null, readyForPairing: false }
+}
+
+/**
+ * Require successive fresh complete observations of the same original phone, process and window before a public-key click.
+ * @param {object} before - Earlier observation from the guarded collector, never retained history.
+ * @param {object} after - Newly collected observation whose visible action controls will be used.
+ * @returns {void} Throws before a UI claim if scope, process, window or observation sequence differs.
+ */
+export function assertSameLayoutOwner(before, after) {
+  for (const view of [before, after]) {
+    if (view.assessment?.coverage !== 'complete' || view.targetReference !== PHONE.targetRef || typeof view.serial !== 'string' || view.serial.length === 0 || !/^[1-9][0-9]*$/.test(view.pid) || typeof view.windowId !== 'string' || view.windowId.length === 0 || !Number.isSafeInteger(view.sequence) || view.sequence <= 0) throw new Error('a fresh complete original-device observation is required')
+    assertOwnedLayout(view.assessment)
+    if (view.controls?.coverage !== 'viewport') throw new Error('a fresh viewport is required for public-key controls')
+    assertOwnedLayout(view.controls)
+  }
+  if (before.serial !== after.serial || before.pid !== after.pid || before.windowId !== after.windowId || after.sequence <= before.sequence) throw new Error('device, process, window or fresh observation changed before the public-key action')
+}
+
+/**
  * Reject a layout that shows or enables a connection after launch. Boot may load and verify existing public trust,
  * but it must leave the connection disconnected until a human activates it.
  * @param {{nodes: object[]}} assessment - Layout assessment.
@@ -463,13 +503,8 @@ export function controlPoint(bounds) {
  * @returns {{inactive: true}} The same verified inactive launch state.
  */
 export function assertLaunchLayout(assessment, labels) {
-  const visible = assessment.nodes.filter(node => node.visible === 'true')
-  const texts = visible.map(node => node.text)
-  if (texts.includes(labels.failed)) throw new Error('the application reports a failure at launch; stop and inspect')
-  if (texts.includes(labels.connected) || texts.includes(labels.connecting)) throw new Error('the connection is active at launch; stop and inspect')
-  if (!texts.includes(labels.disconnected) && !texts.includes(labels.stopped)) throw new Error('the expected disconnected or stopped state is not visible')
-  const connect = visible.find(node => node.text === labels.connect)
-  if (connect !== undefined && connect.enabled !== 'false') throw new Error('the connect control is enabled; no UI input is permitted')
+  const view = assessInactiveLayout(assessment, labels)
+  if (view.recovery !== null) throw new Error('expired public trust requires local recovery; launch readiness is not established')
   return { inactive: true }
 }
 
@@ -569,3 +604,5 @@ export function nextRunLabel(now = new Date(), suffix) {
   if (typeof suffix !== 'string' || !/^[0-9a-f]{6,16}$/.test(suffix)) throw new Error('run label suffix must be six to sixteen lowercase hex characters')
   return RUN_PREFIX + now.toISOString().replace(/\D/g, '').slice(0, 15) + '-' + suffix
 }
+
+export { waitForConnectionTerminal } from './connection-observation.mjs'

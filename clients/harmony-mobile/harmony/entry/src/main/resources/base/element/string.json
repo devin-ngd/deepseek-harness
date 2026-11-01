@@ -1,6 +1,30 @@
 {
   "string": [
     {
+      "name": "product_storage_audit",
+      "value": "恢复校验（仅结论与计数）：%s"
+    },
+    {
+      "name": "product_storage_recover",
+      "value": "验证并恢复原存储（不连接）"
+    },
+    {
+      "name": "product_storage_recovered",
+      "value": "原绑定与完整历史验证通过，旧锁已留档；未建立连接。"
+    },
+    {
+      "name": "product_startup_diagnostic",
+      "value": "启动诊断：%s。原记录保留；请先核查此阶段，不要重新配对。"
+    },
+    {
+      "name": "product_startup_storage",
+      "value": "启动前文件元数据（不含内容）：%s"
+    },
+    {
+      "name": "product_connection_diagnostic",
+      "value": "连接诊断：%s"
+    },
+    {
       "name": "transport_disabled",
       "value": "连接未启用"
     },
@@ -45,20 +69,32 @@
       "value": "发送演示"
     },
     {
+      "name": "product_composer",
+      "value": "输入消息"
+    },
+    {
+      "name": "product_send",
+      "value": "发送"
+    },
+    {
+      "name": "product_stop",
+      "value": "停止生成"
+    },
+    {
       "name": "cancel",
       "value": "取消演示"
     },
     {
       "name": "queued",
-      "value": "演示已接收，尚未完成"
+      "value": "已接收，尚未完成"
     },
     {
       "name": "completed",
-      "value": "固定结果已展示"
+      "value": "已完成"
     },
     {
       "name": "cancelled",
-      "value": "演示已取消"
+      "value": "已取消"
     },
     {
       "name": "rich_preview",
@@ -423,6 +459,94 @@
     {
       "name": "product_scope_save_new",
       "value": "确认并另存为新范围"
+    },
+    {
+      "name": "product_device_identity",
+      "value": "Read the original phone identity. Device binding never creates or replaces a key."
+    },
+    {
+      "name": "product_device_scope",
+      "value": "All current and future visible desktop sessions. Other profiles denied. Binding lasts until revoked; each connection uses a short-lived ticket."
+    },
+    {
+      "name": "product_route_notice",
+      "value": "A connection window is separate from device binding. Use desktop route-start, verify and sign here, then return the public reply to route-confirm. Relay registration remains a separate step. Signing does not connect."
+    },
+    {
+      "name": "product_route_offer",
+      "value": "Paste the desktop signed route offer"
+    },
+    {
+      "name": "product_route_preview",
+      "value": "Verify connection window"
+    },
+    {
+      "name": "product_route_approve",
+      "value": "I approve this exact host, original device binding and expiry"
+    },
+    {
+      "name": "product_route_sign",
+      "value": "Sign this connection window with existing identity"
+    },
+    {
+      "name": "product_route_stop",
+      "value": "Close local window; retain device binding"
+    },
+    {
+      "name": "product_log_selfcheck",
+      "value": "日志自检"
+    },
+    {
+      "name": "product_log_selfcheck_requested",
+      "value": "已请求输出自检日志"
+    },
+    {
+      "name": "product_log_selfcheck_failed",
+      "value": "自检日志调用失败"
+    },
+    {
+      "name": "mvp_title",
+      "value": "DSH 手机端"
+    },
+    {
+      "name": "mvp_sessions",
+      "value": "会话"
+    },
+    {
+      "name": "mvp_device",
+      "value": "设备"
+    },
+    {
+      "name": "mvp_setup",
+      "value": "连接设置"
+    },
+    {
+      "name": "mvp_diagnostics",
+      "value": "高级与诊断"
+    },
+    {
+      "name": "mvp_connection_prepare",
+      "value": "当前还没有可用连接。请在桌面打开“手机连接”，完成连接设置后再连接。"
+    },
+    {
+      "name": "mvp_offline",
+      "value": "尚未连接桌面。连接后可查看桌面会话和最新回复。"
+    },
+    {
+      "name": "mvp_go_connect",
+      "value": "连接桌面"
+    },
+    {
+      "name": "mvp_no_sessions",
+      "value": "这里还没有会话。请先在桌面创建会话，列表会自动更新。"
+    },
+    {
+      "name": "mvp_back",
+      "value": "返回会话列表"
+    },
+    {
+      "name": "mvp_read_only",
+      "value": "当前会话仅可查看，暂不能发送消息或停止任务。"
     }
   ]
 }

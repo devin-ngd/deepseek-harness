@@ -8,7 +8,7 @@ import { NativeExistingIdentitySigner } from './NativeExistingIdentitySigner'
 import { NativeCryptoPrimitives } from './NativeCryptoPrimitives'
 import { NativeTransientAgreement } from './NativeTransientAgreement'
 import { NativeRelaySocket, NativeRelayPolicy } from './NativeRelaySocket'
-class Codec implements NativePrimitives {
+export class NativeProductCodec implements NativePrimitives {
   private base64: util.Base64Helper = new util.Base64Helper()
   private crypto: NativeCryptoPrimitives
   constructor(crypto: NativeCryptoPrimitives) { this.crypto = crypto }
@@ -27,8 +27,8 @@ class Agreement implements NativeAgreement {
   readonly publicSpki: string
   private authority: object
   private key: NativeTransientAgreement
-  private codec: Codec
-  constructor(authority: object, key: NativeTransientAgreement, codec: Codec) { this.authority = authority; this.key = key; this.codec = codec; this.publicSpki = codec.encode(key.publicSpki(authority)) }
+  private codec: NativeProductCodec
+  constructor(authority: object, key: NativeTransientAgreement, codec: NativeProductCodec) { this.authority = authority; this.key = key; this.codec = codec; this.publicSpki = codec.encode(key.publicSpki(authority)) }
   derive(spki: string): Promise<Uint8Array> { return this.key.derive(this.authority, this.codec.decode(spki)) }
   close(): void { this.key.close() }
 }
@@ -52,14 +52,14 @@ class Port implements NativePort {
   get bufferedAmount(): number { return this.queued }
   private received(data: string | ArrayBuffer): void { const binary = typeof data !== 'string', bytes = typeof data === 'string' ? new util.TextEncoder().encodeInto(data) : new Uint8Array(data); if (this.closed || bytes.length === 0 || this.incomingBytes + bytes.length > this.maxQueued) { this.terminate(); return }; this.incoming.push({ bytes, binary }); this.incomingBytes += bytes.length; this.drain() }
   private drain(): void { if (this.draining) return; this.draining = true; try { while (!this.closed && this.frame !== undefined && this.incoming.length > 0) { const next = this.incoming.shift(); if (next === undefined) break; this.incomingBytes -= next.bytes.length; this.deliver(next.bytes, next.binary) } } finally { this.draining = false } }
-  private deliver(bytes: Uint8Array, binary: boolean): void { try { this.frame?.(bytes, binary) } catch (error) { void error; this.failed = true; this.terminate() } }
+  private deliver(bytes: Uint8Array, binary: boolean): void { try { this.frame?.(bytes, binary) } catch (error) { void error; this.terminate() } }
   async openPair(pair: string): Promise<void> { await this.socket.connectControlNative(this.authority, pair, 'phone', data => this.received(data), failed => this.end(failed)) }
   async openRoom(lease: NativeLease): Promise<void> { await this.socket.connectNative(this.authority, lease.receipt.room, 'phone', lease.receipt.token, data => this.received(data), failed => this.end(failed)) }
   authenticated(): void { this.socket.authenticatedNative(this.authority) }
   onFrame(callback: (bytes: Uint8Array, binary: boolean) => void): () => void { if (this.frame !== undefined) throw new Error('native port listener already owned'); this.frame = callback; this.drain(); return () => { this.frame = undefined } }
   onEnd(callback: () => void): () => void { this.ends.add(callback); return () => { this.ends.delete(callback) } }
   ready(): void { throw new Error('native client cannot issue readiness') }
-  send(bytes: Uint8Array): void { if (this.closed || this.queued + bytes.length > this.maxQueued) { this.terminate(); throw new Error('native send queue denied') }; const copy = bytes.slice(); this.queued += copy.length; this.tail = this.tail.then(async () => { if (this.closed) return; if (this.control) await this.socket.sendControlNative(this.authority, util.TextDecoder.create('utf-8', { fatal: true }).decodeToString(copy)); else await this.socket.sendNative(this.authority, copy.buffer as ArrayBuffer) }).catch((error: Error) => { void error; this.failed = true; this.terminate() }).finally(() => { this.queued -= copy.length; copy.fill(0) }) }
+  send(bytes: Uint8Array): void { if (this.closed || this.queued + bytes.length > this.maxQueued) { this.terminate(); throw new Error('native send queue denied') }; const copy = bytes.slice(); this.queued += copy.length; this.tail = this.tail.then(async () => { if (this.closed) return; if (this.control) await this.socket.sendControlNative(this.authority, util.TextDecoder.create('utf-8', { fatal: true }).decodeToString(copy)); else await this.socket.sendNative(this.authority, copy.buffer as ArrayBuffer) }).catch((error: Error) => { void error; this.terminate() }).finally(() => { this.queued -= copy.length; copy.fill(0) }) }
   private end(failed: boolean): void { this.failed = this.failed || failed; if (this.closed) return; this.closed = true; for (const callback of this.ends) { try { callback() } catch (error) { void error; this.failed = true } }; this.incoming = []; this.incomingBytes = 0 }
   terminate(): void { this.end(false); void this.socket.closeNative(this.authority).catch((error: Error) => { void error; this.failed = true }) }
   async close(): Promise<void> { this.terminate(); const results = await Promise.allSettled([this.tail, this.socket.closeNative(this.authority)]); if (this.failed || results.some(value => value.status === 'rejected')) throw new Error('native port cleanup failed') }
@@ -86,6 +86,7 @@ export class NativePairedConnectionOwner {
   private opening: boolean = false
   private closing: Promise<void> | undefined = undefined
   private currentData: Port | undefined = undefined
+  private deviceControl: Port | undefined = undefined
   private acquisition: Promise<void> | undefined = undefined
   private authority: object
   private policy: NativePairedPolicy
@@ -96,14 +97,28 @@ export class NativePairedConnectionOwner {
     this.acquisition = this.connectOwned(authority, record, remoteDesktopSpki, status, received)
     return this.acquisition.catch(async (error: Error) => { void error; await this.closeNative(authority); throw new Error('native paired connect failed') })
   }
-  private async connectOwned(authority: object, record: string, remoteDesktopSpki: string, status: (state: string) => void, received: (packet: string) => void): Promise<void> {
-    const crypto = new NativeCryptoPrimitives(this.policy.maxCryptoBytes), codec = new Codec(crypto), keys = new NativeDeviceKeys(new NativeDeviceKeyPolicy(authority, this.policy.identityAlias, this.policy.storage, this.policy.maxCryptoBytes)), signer = new NativeExistingIdentitySigner(authority, keys, crypto); this.signer = signer
+  private async acquirePorts(authority: object, remoteDesktopSpki: string, diagnostic?: (stage: string) => void): Promise<NativePorts> {
+    const crypto = new NativeCryptoPrimitives(this.policy.maxCryptoBytes), codec = new NativeProductCodec(crypto), keys = new NativeDeviceKeys(new NativeDeviceKeyPolicy(authority, this.policy.identityAlias, this.policy.storage, this.policy.maxCryptoBytes)), signer = new NativeExistingIdentitySigner(authority, keys, crypto); this.signer = signer
     try {
-      const publicSpki = codec.encode(await signer.initializeNative(authority)); if (this.closed) throw new Error('native paired closed'); const socketPolicy = new NativeRelayPolicy(authority, this.policy.host, this.policy.deviceApiVerified, this.policy.budgets.handshakeMs, this.policy.budgets.e2e.maxFrameBytes, this.policy.maxTotalSendBytes), control = new Port(authority, socketPolicy, this.policy.budgets.maxQueuedBytes, true); this.ports.push(control)
-      const ports: NativePorts = { control, signer: { publicSpki, sign: bytes => signer.signNative(authority, bytes) }, primitives: codec, remotePublicSpki: remoteDesktopSpki, scheduler: new Schedule(), clock: () => Date.now(), agreement: async () => { const key = new NativeTransientAgreement(authority); this.agreements.push(key); await key.initialize(authority); if (this.closed) { key.close(); throw new Error('native agreement closed') }; return { key: new Agreement(authority, key, codec), nonce: cryptoFramework.createRandom().generateRandomSync(32).data } }, data: async lease => { control.authenticated(); const port = new Port(authority, socketPolicy, this.policy.budgets.maxQueuedBytes, false); this.ports.push(port); this.currentData = port; await port.openRoom(lease); if (this.closed || lease.signal.aborted) { await port.close(); throw new Error('native room closed') }; return port } }
-      this.core = new NativePairedCore(record, this.policy.budgets, ports, state => { if (this.closed) return; if (state === 'identity-authenticated') this.currentData?.authenticated(); status(state) }, packet => { if (!this.closed) received(packet) }, (stage: string) => { console.info("DSH_E2E_STAGE=phone-" + stage) }, (stage: string) => { console.info('DSH_CONTROL_STAGE=phone-' + stage + ' at=' + Date.now()) }); await control.openPair(this.policy.pairId); if (this.closed) throw new Error('native paired closed')
-    } catch (error) { void error; throw new Error('native paired connect failed') }
+      diagnostic?.('identity-read'); const publicSpki = codec.encode(await signer.initializeNative(authority)); diagnostic?.('native-channel'); if (this.closed) throw new Error('native paired closed'); const socketPolicy = new NativeRelayPolicy(authority, this.policy.host, this.policy.deviceApiVerified, this.policy.budgets.handshakeMs, this.policy.budgets.e2e.maxFrameBytes, this.policy.maxTotalSendBytes), control = new Port(authority, socketPolicy, this.policy.budgets.maxQueuedBytes, true); this.ports.push(control); this.deviceControl = control
+      const ports: NativePorts = { control, diagnostic: (stage: string): void => { if (/^(relay-ready|peer-hello|keys-derived|finished-sent|peer-verified|frame-budget-rejected|handshake-deadline|closed|failure-(ready|hello|finished|data):(invalid|key-invalid|signature-denied|not-ready|sequence|capacity|closed|decrypt-failed|format|unexpected))$/.test(stage)) console.info('DSH_E2E_STAGE=phone-' + stage) }, controlDiagnostic: (stage: string): void => { if (/^(frame-received|frame-decoded|challenge-validated|identity-validated|sign-started|sign-completed|proof-queued|room-validated|challenge-deadline|trust-deadline|closed|failure-(wire|decode|challenge|identity|sign|send|room):(format|refused))$/.test(stage)) console.info('DSH_CONTROL_STAGE=phone-' + stage) }, signer: { publicSpki, sign: bytes => signer.signNative(authority, bytes) }, primitives: codec, remotePublicSpki: remoteDesktopSpki, scheduler: new Schedule(), clock: () => Date.now(), agreement: async () => { const key = new NativeTransientAgreement(authority); this.agreements.push(key); await key.initialize(authority); if (this.closed) { key.close(); throw new Error('native agreement closed') }; return { key: new Agreement(authority, key, codec), nonce: cryptoFramework.createRandom().generateRandomSync(32).data } }, data: async lease => { control.authenticated(); const port = new Port(authority, socketPolicy, this.policy.budgets.maxQueuedBytes, false); this.ports.push(port); this.currentData = port; await port.openRoom(lease); if (this.closed || lease.signal.aborted) { await port.close(); throw new Error('native room closed') }; return port } }
+      return ports
+    } catch (error) { void error; throw new Error('native paired ports unavailable') }
   }
+  private async connectOwned(authority: object, record: string, remoteDesktopSpki: string, status: (state: string) => void, received: (packet: string) => void): Promise<void> {
+    const ports = await this.acquirePorts(authority, remoteDesktopSpki)
+    this.core = new NativePairedCore(record, this.policy.budgets, ports, state => { if (this.closed) return; if (state === 'identity-authenticated') this.currentData?.authenticated(); status(state) }, packet => { if (!this.closed) received(packet) }, (stage: string) => { console.info('DSH_E2E_STAGE=phone-' + stage) }, (stage: string) => { console.info('DSH_CONTROL_STAGE=phone-' + stage + ' at=' + Date.now()) })
+    await this.openDeviceControlNative(authority)
+  }
+  /** Device mode reuses original-key and TLS/socket acquisition without constructing the legacy grant protocol. */
+  acquireDevicePortsNative(authority: object, remoteDesktopSpki: string, diagnostic?: (stage: string) => void): Promise<NativePorts> {
+    if (authority !== this.authority || this.closed || this.opening || this.policy.deviceApiVerified < 20) throw new Error('native device port activation denied')
+    this.opening = true; activeOwners.set(this, authority)
+    const operation = this.acquirePorts(authority, remoteDesktopSpki, diagnostic); this.acquisition = operation.then(() => {})
+    return operation.catch(async (error: Error) => { try { await this.closeNative(authority) } catch (cleanup) { void cleanup; diagnostic?.('cleanup-failed') }; throw error })
+  }
+  openDeviceControlNative(authority: object): Promise<void> { if (authority !== this.authority || this.closed || this.deviceControl === undefined) throw new Error('native device control denied'); return this.deviceControl.openPair(this.policy.pairId) }
+  authenticatedDeviceDataNative(authority: object): void { if (authority !== this.authority || this.closed) throw new Error('native device data denied'); this.currentData?.authenticated() }
   requestNative(authority: object, id: string, packet: string): Promise<void> { if (authority !== this.authority || this.closed || this.core === undefined) throw new Error('native paired request denied'); return this.core.request(id, packet) }
   followNative(authority: object, id: string, packet: string): Promise<void> { if (authority !== this.authority || this.closed || this.core === undefined) throw new Error('native paired follow denied'); return this.core.follow(id, packet) }
   stopNative(authority: object, id: string): Promise<void> { if (authority !== this.authority || this.closed || this.core === undefined) return Promise.resolve(); return this.core.stop(id) }

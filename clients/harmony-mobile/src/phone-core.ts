@@ -63,7 +63,14 @@ export class PhoneCore {
         if (policy.mode === 'bounded') await followPause(policy.retryDelayMs, signal)
       }
     } catch (error) {
-      if (!signal.aborted) { this.model.failFollow(error instanceof TransportError ? error.code : 'follow-failed'); throw error }
+      if (!signal.aborted) {
+        const code = error instanceof TransportError ? error.code : 'follow-failed'
+        this.model.failFollow(code)
+        const diagnostic = ['domain-too-large', 'domain-window-full', 'domain-live-gap', 'domain-gap', 'domain-invalid', 'domain-conflict', 'domain-rollback', 'follow-budget-exhausted', 'follow-recovery-exhausted', 'timeout', 'transport-lost', 'unknown-outcome', 'request-expired'].includes(code) ? code : 'follow-failed'
+        try { console.info('DSH_PHONE_READ_FAILURE=' + diagnostic) }
+        catch (error) { void error; /* The model retains the read failure when the diagnostic sink is unavailable. */ }
+        throw error
+      }
     }
     finally { this.model.disconnect() }
   }
@@ -156,12 +163,13 @@ export class PhoneCore {
     this.admission(value, requestId)
     this.model.admissionState(object(value).accepted === true ? 'accepted' : 'outcome_unknown', null, this.tasks.get(requestId)?.cut ?? this.model.view.cursor); this.model.verifiedConnection(); return value
   }
-  /** Cancel is a native user operation, never a side effect of losing the stream. @returns acknowledgement separate from terminal turn evidence. */
+  /** Cancel is a native user operation. Terminal events after invocation remain authoritative even when acknowledgement arrives later. @returns acknowledgement separate from terminal turn evidence. */
   async cancel(): Promise<void> {
     if (this.model.view.readOnly) throw new TransportError('read-only')
+    const cut = this.model.view.cursor
     const value = object(await this.provider.request(this.command('session.cancel', { sessionId: this.model.owner.sessionId })))
     if (value.accepted !== true) throw new TransportError('domain-invalid')
-    this.model.admissionState('cancel_requested')
+    this.model.admissionState('cancel_requested', null, cut)
   }
   /** @param reference - trusted persisted block. @returns fresh mount; history restoration never resubmits a task. */
   async mount(reference: RichReference): Promise<RichMountValue> {

@@ -7,8 +7,8 @@ import { spawnSync } from 'node:child_process'
 import {
   ATTEMPT_FILE, ATTEMPT_SCHEMA, AUTHORIZATION, CANDIDATE, COMMANDS, EVIDENCE_DIRECTORY, PHONE, PREVIOUS, SIGNING,
   assertAttempt, assertCandidateArtifact, assertCertificateChain, assertDeviceObservation, assertHdcInvocation,
-  assertInspectGuard, assertInstalledMetadata, assertInstallGuard, assertLaunchGuard, assertLaunchLayout, assertOwnedLayout,
-  assertPayload, assertPreflightGuard, assertPublicIdentity, assertSignGuard, assertUiGuard, assertVerifyExistingGuard,
+  assertInspectGuard, assertInstalledMetadata, assertInstallGuard, assertLaunchGuard, assessInactiveLayout, assertOwnedLayout,
+  assertPayload, assertPreflightGuard, assertPublicIdentity, assertSignGuard, assertUiGuard, assertVerifyExistingGuard, assertSameLayoutOwner,
   assessLayout, controlPoint, findSingleControl, identityCandidates, identityFromNodes, installedMetadata, nextCommands, nextRunLabel,
   parseBundleDump, sanitizeOutput, sha256, targetReference,
 } from './connection-deployment-lib.mjs'
@@ -317,11 +317,11 @@ async function layout() {
   assertUiGuard(attempt, 'layout', await claimedForAttempt(attempt.label))
   const view = await dumpLayout(attempt)
   assertOwnedLayout(view.assessment)
-  assertLaunchLayout(view.assessment, launchLabels(await labels()))
+  const readiness = assessInactiveLayout(view.assessment, launchLabels(await labels()))
   const at = new Date().toISOString()
   const path = evidencePath(attempt.label, 'layout-' + Date.now())
-  await writeExclusive(path, { schema: 'harmony-connection-deployment-layout/1', label: attempt.label, at, targetReference: PHONE.targetRef, owned: true, foreign: false, nodes: view.assessment.safe })
-  console.log(JSON.stringify({ mode: 'layout', evidence: clientPath(relative(project, path)), owned: true, foreign: false, nodes: view.assessment.safe }))
+  await writeExclusive(path, { schema: 'harmony-connection-deployment-layout/1', label: attempt.label, at, targetReference: PHONE.targetRef, owned: true, foreign: false, applicationWindowObserved: true, coverage: view.assessment.coverage, pid: view.pid, windowId: view.windowId, ...readiness, nodes: view.assessment.safe })
+  console.log(JSON.stringify({ mode: 'layout', evidence: clientPath(relative(project, path)), owned: true, foreign: false, applicationWindowObserved: true, coverage: view.assessment.coverage, pid: view.pid, windowId: view.windowId, ...readiness, nodes: view.assessment.safe }))
 }
 
 /**
@@ -372,8 +372,8 @@ export async function inputAlias(runtime = defaultActionRuntime()) {
   const publicLabels = await runtime.readLabels()
   const view = await runtime.dumpLayout(attempt)
   assertOwnedLayout(view.assessment)
-  assertLaunchLayout(view.assessment, launchLabels(publicLabels))
-  const input = findSingleControl(view.assessment.nodes, node => node.type === 'TextInput' && node.hint === publicLabels.get('product_identity_name'), 'identity name input')
+  assessInactiveLayout(view.assessment, launchLabels(publicLabels))
+  const input = findSingleControl(view.controls.nodes, node => node.type === 'TextInput' && node.hint === publicLabels.get('product_identity_name'), 'identity name input')
   if (input.text !== '' && input.text !== PHONE.alias) throw new Error('identity name input contains a different alias')
   if (input.text === '') await runOneShotUiInput(runtime, attempt, 'input-alias', () => runtime.inputText(attempt, view.serial, controlPoint(input.bounds), PHONE.alias))
   const at = runtime.now()
@@ -392,12 +392,21 @@ export async function existingIdentity(runtime = defaultActionRuntime()) {
   const attempt = await runtime.loadAttempt()
   assertUiGuard(attempt, 'existing-identity')
   const publicLabels = await runtime.readLabels()
-  const view = await runtime.dumpLayout(attempt)
-  assertOwnedLayout(view.assessment)
-  assertLaunchLayout(view.assessment, launchLabels(publicLabels))
-  const input = findSingleControl(view.assessment.nodes, node => node.type === 'TextInput' && node.hint === publicLabels.get('product_identity_name'), 'identity name input')
-  if (input.text !== PHONE.alias) throw new Error('the original alias is not entered; run input-alias first')
-  const button = findSingleControl(view.assessment.nodes, node => node.type === 'Button' && node.text === publicLabels.get('product_identity_existing'), 'existing public identity button')
+  const observe = async () => {
+    const view = await runtime.dumpLayout(attempt)
+    const stateLabels = launchLabels(publicLabels)
+    assessInactiveLayout(view.assessment, stateLabels)
+    assertOwnedLayout(view.controls)
+    if (view.controls.nodes.some(node => node.text === stateLabels.connected || node.text === stateLabels.connecting || node.type === 'Button' && node.text === stateLabels.connect && node.enabled !== 'false')) throw new Error('the current viewport shows an active or enabled connection')
+    const input = findSingleControl(view.controls.nodes, node => node.type === 'TextInput' && node.hint === publicLabels.get('product_identity_name'), 'identity name input')
+    if (input.text !== PHONE.alias) throw new Error('the original alias is not entered; run input-alias first')
+    const button = findSingleControl(view.controls.nodes, node => node.type === 'Button' && node.text === publicLabels.get('product_identity_existing'), 'existing public identity button')
+    return { ...view, button }
+  }
+  const before = await observe()
+  const view = await observe()
+  assertSameLayoutOwner(before, view)
+  const button = view.button
   await runOneShotUiInput(runtime, attempt, 'existing-identity', () => runtime.click(attempt, view.serial, controlPoint(button.bounds)))
   const at = runtime.now()
   await runtime.writeActionEvidence(attempt, 'existing-identity', { schema: 'harmony-connection-deployment-existing-identity/1', label: attempt.label, at, existingPublicIdentityRequested: true, identityCreated: false, connectInvoked: false })
@@ -413,7 +422,7 @@ async function readIdentity() {
   for (let index = 0; index < 20 && identity === null; index++) {
     const view = await dumpLayout(attempt)
     assertOwnedLayout(view.assessment)
-    assertLaunchLayout(view.assessment, launchLabels(await labels()))
+    assessInactiveLayout(view.assessment, launchLabels(await labels()))
     const found = identityCandidates(view.assessment.nodes, PHONE.alias)
     if (found.length === 0) { await delay(1000); continue }
     identity = found.length === 1 ? found[0] : identityFromNodes(view.assessment.nodes, PHONE.alias)
@@ -438,7 +447,7 @@ async function capture() {
   assertUiGuard(attempt, 'capture')
   const view = await dumpLayout(attempt)
   assertOwnedLayout(view.assessment)
-  assertLaunchLayout(view.assessment, launchLabels(await labels()))
+  assessInactiveLayout(view.assessment, launchLabels(await labels()))
   const sequence = Date.now(), remote = '/data/local/tmp/connection-deployment-capture-' + sequence + '.jpeg', local = join(project, attempt.ownedRun.directory, 'phone-' + sequence + '.jpeg')
   await runHdc([...base(view.serial), 'shell', 'snapshot_display', '-f', remote], { attempt, target: view.serial })
   await runHdc([...base(view.serial), 'file', 'recv', remote, local], { attempt, target: view.serial, runDirectory: join(project, attempt.ownedRun.directory) })
@@ -450,14 +459,33 @@ async function capture() {
   console.log(JSON.stringify({ mode: 'capture', ...report }))
 }
 
-/** @param {object} attempt - Fixed attempt journal. @returns {Promise<{serial: string, assessment: object, path: string}>} Owned layout. */
+/** @param {object} attempt - Fixed attempt journal. @returns {Promise<object>} Fresh complete original-app layout with unchanged device/process and a visible root window. */
 async function dumpLayout(attempt) {
   const serial = await verifiedTarget(attempt)
+  const pid = await safePid(attempt, serial)
+  if (!/^[1-9][0-9]*$/.test(pid)) throw new Error('the original application process is not running')
   const sequence = Date.now(), remote = '/data/local/tmp/connection-deployment-layout-' + sequence + '.json', local = join(project, attempt.ownedRun.directory, 'layout-' + sequence + '.json')
-  const output = await runHdc([...base(serial), 'shell', 'uitest', 'dumpLayout', '-b', CANDIDATE.bundleName, '-m', 'false', '-p', remote], { attempt, target: serial, runDirectory: join(project, attempt.ownedRun.directory) })
+  const output = await runHdc([...base(serial), 'shell', 'uitest', 'dumpLayout', '-b', CANDIDATE.bundleName, '-i', '-p', remote], { attempt, target: serial, runDirectory: join(project, attempt.ownedRun.directory) })
   if (!output.trim().startsWith('DumpLayout saved to:' + remote)) throw new Error('layout dump did not report the owned temporary path')
   await runHdc([...base(serial), 'file', 'recv', remote, local], { attempt, target: serial, runDirectory: join(project, attempt.ownedRun.directory) })
-  return { serial, assessment: assessLayout(await readJson(local), { bundle: CANDIDATE.bundleName }), path: local }
+  const assessment = assessLayout(await readJson(local), { bundle: CANDIDATE.bundleName, coverage: 'complete' })
+  assertOwnedLayout(assessment)
+  const windowId = view => {
+    assertOwnedLayout(view)
+    const roots = view.nodes.filter(node => node.bundleName === CANDIDATE.bundleName && node.type === 'root' && node.visible === 'true')
+    if (roots.length !== 1 || roots[0].abilityName !== 'EntryAbility' || roots[0].pagePath !== 'pages/Index' || typeof roots[0].hostWindowId !== 'string' || roots[0].hostWindowId.length === 0) throw new Error('one current original application root window is required')
+    return roots[0].hostWindowId
+  }
+  const owner = windowId(assessment)
+  // -i retains declared-visible offscreen nodes; action coordinates come only from a fresh clipped viewport.
+  const viewportRemote = '/data/local/tmp/connection-deployment-layout-' + sequence + '-viewport.json', viewportLocal = join(project, attempt.ownedRun.directory, 'layout-' + sequence + '-viewport.json')
+  const viewportOutput = await runHdc([...base(serial), 'shell', 'uitest', 'dumpLayout', '-b', CANDIDATE.bundleName, '-m', 'false', '-p', viewportRemote], { attempt, target: serial, runDirectory: join(project, attempt.ownedRun.directory) })
+  if (!viewportOutput.trim().startsWith('DumpLayout saved to:' + viewportRemote)) throw new Error('viewport dump did not report the owned temporary path')
+  await runHdc([...base(serial), 'file', 'recv', viewportRemote, viewportLocal], { attempt, target: serial, runDirectory: join(project, attempt.ownedRun.directory) })
+  const controls = assessLayout(await readJson(viewportLocal), { bundle: CANDIDATE.bundleName })
+  const currentSerial = await verifiedTarget(attempt)
+  if (windowId(controls) !== owner || currentSerial !== serial || await safePid(attempt, currentSerial) !== pid) throw new Error('the original device, application process or window changed during layout capture')
+  return { serial, targetReference: PHONE.targetRef, pid, windowId: owner, sequence, assessment, controls, path: local, viewportPath: viewportLocal }
 }
 
 /** @param {object} attempt - Fixed attempt journal. @returns {Promise<string>} Verified original-phone serial. */
@@ -573,7 +601,7 @@ async function verifySigned({ attempt, signedPath, recovered }) {
   if (profile.sha256 !== expectedProfile) throw new Error('extracted profile differs from the prepared original signing material')
   const payloadPath = join(directory, 'public-payload-report-' + sequence + '.json')
   const payloadRun = spawnSync(join(process.env.SystemRoot ?? 'C:/Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', resolve(project, 'scripts/phase59-hap-payload.ps1')], { env: { ...commandEnvironment(runDirectory), DSH_UNSIGNED_HAP: insideProject(attempt.candidate.path), DSH_SIGNED_HAP: signedPath, DSH_PUBLIC_PAYLOAD_REPORT: payloadPath }, windowsHide: true, encoding: 'utf8', timeout: 30000 })
-  if (payloadRun.status !== 0) throw new Error('public payload report exited ' + payloadRun.status)
+  if (payloadRun.status !== 0) throw withOutput(new Error('public payload report exited ' + payloadRun.status), String(payloadRun.stdout ?? '') + '\n' + String(payloadRun.stderr ?? ''))
   const payload = await readJson(payloadPath)
   assertInstalledMetadata(payload.metadata)
   const className = 'ConnectionDeploymentPageInfoVerify'
@@ -686,7 +714,7 @@ async function labels() {
 
 /** @param {Map<string, string>} values - Native labels. @returns {object} Launch-state labels. */
 function launchLabels(values) {
-  return { connected: requiredLabel(values, 'product_connected'), connecting: requiredLabel(values, 'product_connecting'), disconnected: requiredLabel(values, 'product_disconnected'), stopped: requiredLabel(values, 'product_connection_stopped'), connect: requiredLabel(values, 'product_connect'), failed: requiredLabel(values, 'product_operation_failed') }
+  return { connected: requiredLabel(values, 'product_connected'), connecting: requiredLabel(values, 'product_connecting'), disconnected: requiredLabel(values, 'product_disconnected'), stopped: requiredLabel(values, 'product_connection_stopped'), connect: requiredLabel(values, 'product_connect'), failed: requiredLabel(values, 'product_operation_failed'), expired: requiredLabel(values, 'product_successor_notice') }
 }
 
 /** @param {Map<string, string>} values - Native labels. @param {string} key - Label key. @returns {string} Label value. */

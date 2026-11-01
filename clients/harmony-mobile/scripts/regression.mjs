@@ -37,13 +37,15 @@ const collect = async directory => {
 }
 for (const directory of ['src', 'tests', 'integration', 'network-tests', 'native-network-tests', 'scripts']) await collect(directory)
 await collect('harmony/entry/src/main/ets')
-for (const path of ['AGENTS.md', 'package.json', 'source.json', 'harmony/platform.json', 'harmony/entry/src/main/module.json5']) frozenInputs[path] = createHash('sha256').update(await readFile(path)).digest('hex')
+for (const path of ['AGENTS.md', 'package.json', 'source.json', 'harmony/platform.json', 'harmony/entry/src/main/module.json5', 'operations/prepared-connection-start.mjs', 'operations/connection-ui-adapters.mjs', 'operations/connection-ui-start.mjs', 'operations/connection-hdc-port.mjs']) frozenInputs[path] = createHash('sha256').update(await readFile(path)).digest('hex')
 await writeFile(join(output, 'frozen-inputs.json'), JSON.stringify(frozenInputs, null, 2) + '\n')
 try {
   await run('continuity-archives', 'pwsh', ['-NoProfile', '-File', join(project, 'scripts/audit-continuity.ps1')])
   await run('inventory', process.execPath, ['scripts/test-inventory.mjs'])
   const inventory = JSON.parse(await readFile('evidence/test-inventory.json', 'utf8')); await copyFile('evidence/test-inventory.json', join(output, 'test-inventory.json'))
   await run('strict', process.execPath, ['scripts/check.mjs', '--integration'])
+  await run('route-restore-core', process.execPath, ['scripts/build-product-core.mjs', '--report=route-restore-core-build.json'])
+  await run('route-restore', process.execPath, ['scripts/check-route-restore.mjs'])
   await run('assets', process.execPath, ['scripts/assets.mjs'])
   await run('phase5-assets', process.execPath, ['scripts/phase5-assets.mjs'])
   await run('native-adapters', process.execPath, ['scripts/native-adapter-build.mjs'])

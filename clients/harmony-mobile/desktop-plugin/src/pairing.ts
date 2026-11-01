@@ -29,6 +29,8 @@ export type PairingOptions = z.infer<typeof settings>
 /** Default-disabled Cordis command entry. */
 export const name = '@deepseek-ai/dsh-experimental-harmony-mobile/pairing'
 const required = ['commands', 'userQuestions', 'connection', 'agents', 'sessionController', 'sessionPersistence', 'credentials', 'authorization', 'remoteAccess', 'profileContext', 'typert', 'typertGateway', 'richInline', 'workspaceRegistry', 'storageDomain'] as const
+/** Wait for the complete Host and isolated credential realm before command registration. */
+export const inject = [...required]
 interface Pending { readonly sessionId: SessionId; readonly owner: DesktopFirstUse; readonly context: Context; readonly dispose: () => Promise<void>; readonly signer: DesktopIdentitySigner; activated: boolean; confirmed?: { readonly input: string; readonly result: string } }
 /** Human command state and original authorization owner; no model/tool or phone RPC invokes these methods. */
 class PairingCommand {
@@ -98,7 +100,7 @@ class PairingCommand {
         this.stopProduct = () => plugin.dispose(); pending.activated = true
         return { kind: 'success', text: 'Desktop pairing transport started for the selected Session; task completion and phone authentication are separate.' }
       }
-      if (verb === 'stop' && raw === '') { await pending.owner.revoke(this.authority); await this.clear(); return { kind: 'success', text: 'Desktop grant revoked; relay public revocation remains separately owned.' } }
+      if (verb === 'stop' && raw === '') { const result = await pending.owner.stop(this.authority); await this.clear(); return { kind: 'success', text: result === 'challenge-cancelled' ? 'Desktop pairing challenge cancelled; no grant was created.' : 'Desktop grant revoked; relay public revocation remains separately owned.' } }
       return { kind: 'error', text: 'Use status, identity-create, start, confirm, connect or stop.' }
     } catch (error) {
       if (error instanceof DesktopIdentityError) return { kind: 'error', text: 'Desktop identity refused: ' + error.code + '. Keep existing records; create a new protected identity only after an explicit local decision.' }

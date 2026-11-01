@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { ProfilePeerAdmission } from './admission.ts'
 import { profileServicePorts, ProfileDesktopExecutor } from './ports.ts'
 import { openProfileJournal } from './journal.ts'
+import { deviceCommandStep } from './device-command-step.ts'
 import { MobileBffCore, FollowJournal } from '../../integration/mobile-bff.ts'
 import { parseCommand, text, LinkError, MOBILE_LINK_PROTOCOL } from '../../src/link-protocol.ts'
 import type { MobileOperation, LinkConfig, DeviceId } from '../../src/link-protocol.ts'
@@ -31,7 +32,7 @@ export interface Options {
   readonly enabled?: boolean; readonly desktopId?: string; readonly profileId?: string
   readonly sessionId?: string
   readonly relayEnabled?: boolean
-  readonly journalMode?: 'create' | 'reopen'
+  readonly journalMode?: 'create' | 'reopen' | 'create-or-reopen'
   readonly maxPacketBytes?: number; readonly maxEnvelopeBytes?: number; readonly commandTtlMs?: number; readonly maxCachedCommands?: number
   readonly maxMountedBlocks?: number; readonly maxAdmissionRecords?: number; readonly followTtlMs?: number; readonly maxFollowFrames?: number; readonly maxFollowBytes?: number; readonly maxSessions?: number; readonly maxPeers?: number
 }
@@ -40,13 +41,13 @@ export interface Spec {
   readonly enabled: boolean; readonly desktopId: DesktopId | null; readonly profileId: MobileProfileId | null
   readonly sessionId: SessionId | null
   readonly relayEnabled: boolean
-  readonly journalMode: 'create' | 'reopen'
+  readonly journalMode: 'create' | 'reopen' | 'create-or-reopen'
   readonly limits: LinkConfig; readonly maxEnvelopeBytes: number; readonly maxAdmissionRecords: number
   readonly followTtlMs: number; readonly maxFollowFrames: number; readonly maxFollowBytes: number; readonly maxSessions: number; readonly maxPeers: number
 }
 /** Validated defaults; no field grants access, selects a model or opens a transport. */
 export const Config = z.object({ enabled: z.boolean().default(false), relayEnabled: z.boolean().default(false), desktopId: z.string(), profileId: z.string(), sessionId: z.string().min(1).max(256),
-  journalMode: z.union(['create', 'reopen']).default('reopen'),
+  journalMode: z.union(['create', 'reopen', 'create-or-reopen']).default('reopen'),
   maxPacketBytes: z.number().min(1).max(1048576).default(1048576), maxEnvelopeBytes: z.number().min(1).default(2097152), commandTtlMs: z.number().min(1).default(60000),
   maxCachedCommands: z.number().min(1).default(256), maxMountedBlocks: z.number().min(1).default(8), maxAdmissionRecords: z.number().min(1).default(1024),
   followTtlMs: z.number().min(1).default(60000), maxFollowFrames: z.number().min(1).default(1024), maxFollowBytes: z.number().min(1).default(4194304), maxSessions: z.number().min(1).default(16), maxPeers: z.number().min(1).default(16) })
@@ -215,7 +216,8 @@ export async function apply(ctx: Context, request: Options = {}): Promise<void> 
   await ctx.inject([...required], async inner => {
     if (spec.desktopId === null || spec.profileId === null) throw new LinkError('invalid-packet')
     if (spec.sessionId !== null) await inner.sessionController.inspect(spec.sessionId)
-    const state = await openProfileJournal(inner, spec.maxAdmissionRecords, { mode: spec.journalMode, desktopId: spec.desktopId, profileId: spec.profileId })
-    try { new HarmonyDesktop(inner, spec, state); if (spec.relayEnabled) { const stop = await inner.harmonyRelayLifecycle.mount(inner); inner.effect(() => stop) } } catch (error) { await state.close(); throw error }
+    const desktopId = spec.desktopId, profileId = spec.profileId
+    const state = await deviceCommandStep('journal-open', () => openProfileJournal(inner, spec.maxAdmissionRecords, { mode: spec.journalMode, desktopId, profileId }))
+    await deviceCommandStep('executor-mount', async () => { new HarmonyDesktop(inner, spec, state); if (spec.relayEnabled) { const stop = await inner.harmonyRelayLifecycle.mount(inner); inner.effect(() => stop) } }, [() => state.close()])
   })
 }

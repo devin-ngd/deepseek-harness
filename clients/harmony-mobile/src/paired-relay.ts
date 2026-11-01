@@ -11,7 +11,11 @@ export interface PairedRelayPolicy { readonly maxProofs: number; readonly maxQue
 /** @param policy - explicit local limits. @returns after inert validation, before any transport or timer acquisition. */
 export function validatePairedRelayPolicy(policy: PairedRelayPolicy): void { if (![policy.maxProofs, policy.maxQueuedBytes, policy.maxChallengeTtlMs, policy.maxRoomTtlMs, policy.handshakeMs, ...Object.values(policy.e2e)].every(value => Number.isSafeInteger(value) && value > 0) || policy.e2e.maxFrames > 0xffffffff) throw new Error('invalid paired relay policy') }
 /** Endpoints supply platform IO and maintained crypto ports; source returns transient keys only, after a signed room exists. */
-export interface PairedRelayPorts { readonly control: RelaySocket; readonly signer: P256IdentitySigner; readonly primitives: E2EPrimitives; readonly remotePublicSpki: string; readonly scheduler: CleanupScheduler; readonly clock: () => number; agreement(): Promise<{ readonly key: P256Agreement; readonly nonce: Uint8Array }>; data(lease: EndpointRoomLease): Promise<RelaySocket> }
+export interface PairedRelayPorts { readonly control: RelaySocket; readonly signer: P256IdentitySigner; readonly primitives: E2EPrimitives; readonly remotePublicSpki: string; readonly scheduler: CleanupScheduler; readonly clock: () => number; readonly diagnostic?: (stage: E2EDiagnostic) => void; readonly controlDiagnostic?: (stage: ControlDiagnostic) => void; agreement(): Promise<{ readonly key: P256Agreement; readonly nonce: Uint8Array }>; data(lease: EndpointRoomLease): Promise<RelaySocket> }
+/** Protocol failure and uncertain resource release are independent outcomes. */
+export class PairedRelayFailure extends Error {
+  constructor(readonly protocolFailed: boolean, readonly cleanupFailed: boolean) { super('paired connection failed'); this.name = 'PairedRelayFailure' }
+}
 /** One control connection and its successive room generations. Transport loss never resubmits an application request. */
 export class PairedRelayEndpoint {
   private readonly controller: RelayControlClient
@@ -20,6 +24,7 @@ export class PairedRelayEndpoint {
   private closed = false
   private tail: Promise<void> = Promise.resolve()
   private failure = false
+  private protocolFailure = false
   private readonly dataConnections = new Set<EncryptedRelayConnection>()
   private stopControl: () => void = () => {}
   private release(actions: readonly (() => void)[]): void { for (const action of actions) { try { action() } catch (error) { void error; this.failure = true } } }
@@ -35,11 +40,11 @@ export class PairedRelayEndpoint {
         try {
           socket = await ports.data(lease); if (this.closed || lease.signal.aborted || generation !== this.generation) { const late = socket; this.release([() => late.terminate(), () => material.key.close()]); return }
           crypto = new P256SecureChannel(trust.role, lease.receipt.room, material.key, material.nonce, ports.remotePublicSpki, policy.e2e, ports.primitives)
-          const connection = new EncryptedRelayConnection(socket, crypto, ports.signer, policy.maxQueuedBytes, received, binding => { if (this.closed || lease.signal.aborted || generation !== this.generation) return; ready(binding, connection) }, ports.scheduler, policy.handshakeMs, lease.signal, diagnostic)
+          const connection = new EncryptedRelayConnection(socket, crypto, ports.signer, policy.maxQueuedBytes, received, binding => { if (this.closed || lease.signal.aborted || generation !== this.generation) return; ready(binding, connection) }, ports.scheduler, policy.handshakeMs, lease.signal, diagnostic ?? ports.diagnostic)
           this.current = connection; this.dataConnections.add(connection)
         } catch (error) { void error; const acquired = socket, channel = crypto; this.release([() => channel?.close(), () => material.key.close(), () => acquired?.terminate()]); throw new Error('paired data acquisition failed') }
-      }).catch(error => { void error; if (!this.closed) { this.failure = true; this.close(); this.release([() => this.notice('failed')]) } })
-    }, lifetime, controlDiagnostic)
+      }).catch(error => { void error; if (!this.closed) { this.protocolFailure = true; this.close(); this.release([() => this.notice('failed')]) } })
+    }, lifetime, controlDiagnostic ?? ports.controlDiagnostic)
     try { this.stopControl = ports.control.onEnd(() => { this.close() }) } catch (error) { void error; this.controller.close(); throw new Error('paired control acquisition failed') }
   }
   /** @param value - original application request, never automatically retried. @returns after authenticated bounded send; no task receipt is implied. */
@@ -47,5 +52,5 @@ export class PairedRelayEndpoint {
   /** @returns nothing; deny and close all generations before async teardown. */
   close(): void { if (this.closed) return; this.closed = true; this.generation++; this.release([this.stopControl, () => this.controller.close(), () => this.current?.close(), ...[...this.dataConnections].map(connection => () => connection.close()), () => this.notice('closed')]); this.current = undefined }
   /** @returns after pending native/crypto acquisitions and every encrypted queue settles; failures stay visible. */
-  async settled(): Promise<void> { await this.tail; const results = await Promise.allSettled([this.controller.settled(), ...[...this.dataConnections].map(connection => connection.settled())]); if (this.failure || results.some(value => value.status === 'rejected')) throw new Error('paired connection failed'); if (this.closed) this.dataConnections.clear() }
+  async settled(): Promise<void> { await this.tail; const results = await Promise.allSettled([this.controller.settled(), ...[...this.dataConnections].map(connection => connection.settled())]); const cleanupFailed = this.failure || results.some(value => value.status === 'rejected'); if (this.protocolFailure || cleanupFailed) throw new PairedRelayFailure(this.protocolFailure, cleanupFailed); if (this.closed) this.dataConnections.clear() }
 }

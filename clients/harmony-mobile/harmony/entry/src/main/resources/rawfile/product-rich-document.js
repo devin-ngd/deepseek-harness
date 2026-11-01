@@ -32,7 +32,7 @@ function canonical(value) {
   return encoded;
 }
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/validate.ts
+// ../../packages/experimental/rich-inline/src/shared/validate.ts
 var RICH_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 function isRichJson(value, depth = 0) {
   if (depth > 16) return false;
@@ -159,8 +159,8 @@ var RelayGuestGate = class {
     } catch (error51) {
       return Promise.reject(error51);
     }
-    const fingerprint = canonical(packet), old = this.replies.get(packet.packetId);
-    if (old !== void 0) return old.fingerprint === fingerprint ? old.result : Promise.reject(new MobileError("id-conflict"));
+    const fingerprint2 = canonical(packet), old = this.replies.get(packet.packetId);
+    if (old !== void 0) return old.fingerprint === fingerprint2 ? old.result : Promise.reject(new MobileError("id-conflict"));
     if (packet.seq !== this.sequence + 1) return Promise.reject(new MobileError("sequence-gap"));
     if (this.replies.size >= this.binding.maxPackets) return Promise.reject(new MobileError("forbidden"));
     const payload = { ...packet.payload, sessionId: this.binding.sessionId, mountId: this.binding.mountId };
@@ -206,7 +206,7 @@ var RelayGuestGate = class {
     };
     const result = this.tail.then(dispatch);
     this.tail = result.then(() => void 0, () => void 0);
-    this.replies.set(packet.packetId, { fingerprint, result });
+    this.replies.set(packet.packetId, { fingerprint: fingerprint2, result });
     return result;
   }
   /** Revoke local routing before awaiting in-flight requests and host disposal; never cancels durable actions. */
@@ -359,15 +359,19 @@ function guestSdk(mountId, renderRevision, guestPacketBytes = 128 * 1024) {
       },
     };
     Object.defineProperty(window, 'rich', { value: Object.freeze(sdk), writable: false, configurable: false });
-    let lastResize = -Infinity, resizeTimer = null, lastHeight = -1;
+    let lastResize = -Infinity, resizeTimer = null, lastHeight = -1, tall = false;
     const root = document.querySelector('[data-rich-content-root]') || document.body;
+    // Toggling the scrollbar inside the observer callback re-wraps the observed root in the same frame, which Chrome reports as a window error.
+    document.documentElement.style.overflowY = 'hidden';
     const resize = () => {
       if (stopped) return;
       const remaining = 100 - (performance.now() - lastResize);
-      if (remaining > 0) { if (!resizeTimer) resizeTimer = setTimeout(() => { resizeTimer = null; resize(); }, remaining); return; }
+      if (remaining > 0) { if (!resizeTimer) resizeTimer = setTimeout(() => { resizeTimer = null; lastResize = -Infinity; resize(); }, remaining); return; }
       lastResize = performance.now();
-      const height = Math.max(24, Math.min(12000, Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height))));
-      if (height !== lastHeight) { lastHeight = height; packet('resize', { height }); }
+      const raw = Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height));
+      if ((raw > 12000) !== tall) { tall = !tall; setTimeout(() => { if (!stopped) document.documentElement.style.overflowY = tall ? 'auto' : 'hidden'; }, 0); }
+      const height = Math.max(24, Math.min(12000, raw));
+      if (lastHeight < 0 || Math.abs(height - lastHeight) > 1) { lastHeight = height; packet('resize', { height }); }
     };
     new ResizeObserver(resize).observe(root);
     let contentFailed = false;
@@ -380,7 +384,8 @@ function guestSdk(mountId, renderRevision, guestPacketBytes = 128 * 1024) {
       if (snapshot && dirty.size) void save().then(() => report(false), error => { notifyFailure(error); report(true); });
       else report(false);
     };
-    window.addEventListener('error', event => reportFailure(event.message));
+    // Browsers raise this for harmless layout feedback loops, including ones caused by generated code's own observers; it is not a code failure.
+    window.addEventListener('error', event => { if (!/^ResizeObserver loop/.test(event.message)) reportFailure(event.message); });
     window.addEventListener('unhandledrejection', event => reportFailure(event.reason));
     packet('ready', { sdkVersion: '1', capabilities: ['draft', 'action', 'resize'] });
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -540,17 +545,18 @@ var baseSheet = (palette, accent, accent2) => String.raw`
   --rich-mono: ${MONO};
   --dsw-alias-label-primary: var(--rich-text); --dsw-alias-label-secondary: var(--rich-muted);
   --dsw-alias-interactive-bg-hover: var(--rich-surface-raised); --dsw-radius-sm: var(--rich-radius);
+  background-color: var(--rich-bg);
   scrollbar-color: var(--rich-border-strong) transparent; scrollbar-width: thin;
 }
 :where(*, *::before, *::after) { box-sizing: border-box; }
 body {
   margin: 0; color: var(--rich-text); color-scheme: dark;
-  background: radial-gradient(720px 220px at 0 0, color-mix(in srgb, var(--rich-accent) 6%, transparent), transparent 72%) no-repeat, var(--rich-bg);
+  background: radial-gradient(720px 220px at 0 0, color-mix(in srgb, var(--rich-accent) 6%, transparent), transparent 72%) 0 0 / 100% 300px no-repeat, var(--rich-bg);
   font: 14px/1.65 var(--rich-font); letter-spacing: .005em;
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-wrap: anywhere;
 }
 ::selection { background: color-mix(in srgb, var(--rich-accent) 34%, transparent); color: var(--rich-text-strong); }
-[data-rich-content-root] { padding: clamp(16px, 3vw, 22px); min-width: 0; display: flow-root; }
+[data-rich-content-root] { padding: clamp(16px, 3vw, 22px); min-width: 0; display: flow-root; contain: layout style; }
 [hidden] { display: none !important; }
 :where(h1, h2, h3, h4, h5, h6) { margin: 0 0 10px; color: var(--rich-text-strong); font-weight: 600; line-height: 1.35; letter-spacing: -.01em; text-wrap: balance; }
 :where(h1) { font-size: 22px; line-height: 1.3; letter-spacing: -.02em; }
@@ -802,11 +808,10 @@ body {
   background:
     ${BRACKET} right 10px top 10px / 14px 2px no-repeat, ${BRACKET} right 10px top 10px / 2px 14px no-repeat,
     ${BRACKET} right 10px bottom 10px / 14px 2px no-repeat, ${BRACKET} right 10px bottom 10px / 2px 14px no-repeat,
-    radial-gradient(760px 260px at 0 0, ${tint("accent", 16)}, transparent 72%) no-repeat,
-    radial-gradient(600px 240px at 100% 0, ${tint("accent-2", 13)}, transparent 72%) no-repeat,
-    linear-gradient(transparent, var(--rich-bg) 560px) no-repeat,
-    linear-gradient(${tint("accent", 9)} 1px, transparent 1px) 0 0 / 24px 24px,
-    linear-gradient(90deg, ${tint("accent", 9)} 1px, transparent 1px) 0 0 / 24px 24px,
+    radial-gradient(760px 260px at 0 0, ${tint("accent", 16)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    radial-gradient(600px 240px at 100% 0, ${tint("accent-2", 13)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    linear-gradient(transparent, var(--rich-bg) 560px) 0 0 / 100% 560px no-repeat,
+    linear-gradient(90deg, ${tint("accent", 9)} 1px, transparent 1px) 0 0 / 24px 560px repeat-x,
     var(--rich-bg);
 }
 ` + GRADIENT_TITLE;
@@ -814,9 +819,9 @@ var AURORA_OVERLAY = GLOW_OVERLAY + String.raw`
 :root { --rich-radius: 14px; --rich-radius-sm: 9px; }
 body {
   background:
-    radial-gradient(900px 300px at 12% -60px, ${tint("accent", 18)}, transparent 70%) no-repeat,
-    radial-gradient(700px 280px at 88% -40px, ${tint("accent-2", 16)}, transparent 72%) no-repeat,
-    radial-gradient(520px 220px at 50% -90px, ${tint("chart-2", 10)}, transparent 70%) no-repeat,
+    radial-gradient(900px 300px at 12% -60px, ${tint("accent", 18)}, transparent 70%) 0 0 / 100% 340px no-repeat,
+    radial-gradient(700px 280px at 88% -40px, ${tint("accent-2", 16)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    radial-gradient(520px 220px at 50% -90px, ${tint("chart-2", 10)}, transparent 70%) 0 0 / 100% 260px no-repeat,
     var(--rich-bg);
 }
 .rich-card, .rich-list, .rich-table-wrap { background-color: color-mix(in srgb, var(--rich-surface) 84%, transparent); }
@@ -828,10 +833,10 @@ var NEON_OVERLAY = GLOW_OVERLAY + CONSOLE_LABELS + String.raw`
 :root { --rich-radius: 8px; --rich-radius-sm: 5px; }
 body {
   background:
-    radial-gradient(900px 260px at 50% -120px, ${tint("accent", 22)}, transparent 70%) no-repeat,
-    radial-gradient(600px 240px at 100% 0, ${tint("accent-2", 14)}, transparent 72%) no-repeat,
-    linear-gradient(transparent, var(--rich-bg) 480px) no-repeat,
-    linear-gradient(90deg, ${tint("accent-2", 8)} 1px, transparent 1px) 0 0 / 40px 40px,
+    radial-gradient(900px 260px at 50% -120px, ${tint("accent", 22)}, transparent 70%) 0 0 / 100% 320px no-repeat,
+    radial-gradient(600px 240px at 100% 0, ${tint("accent-2", 14)}, transparent 72%) 0 0 / 100% 320px no-repeat,
+    linear-gradient(transparent, var(--rich-bg) 480px) 0 0 / 100% 480px no-repeat,
+    linear-gradient(90deg, ${tint("accent-2", 8)} 1px, transparent 1px) 0 0 / 40px 480px repeat-x,
     var(--rich-bg);
 }
 :where(h1) { color: var(--rich-text-strong); text-shadow: 0 0 2px ${tint("accent", 80)}, 0 0 18px ${tint("accent", 55)}; }
@@ -846,8 +851,9 @@ var TERMINAL_OVERLAY = GLOW_OVERLAY + CONSOLE_LABELS + String.raw`
 :root { --rich-radius: 4px; --rich-radius-sm: 3px; --rich-font: var(--rich-mono); }
 body {
   background:
-    repeating-linear-gradient(180deg, transparent 0 2px, ${tint("accent", 4)} 2px 3px),
-    radial-gradient(900px 320px at 0 0, ${tint("accent", 10)}, transparent 70%) no-repeat,
+    linear-gradient(transparent, var(--rich-bg) 320px) 0 0 / 100% 320px no-repeat,
+    repeating-linear-gradient(180deg, transparent 0 2px, ${tint("accent", 4)} 2px 3px) 0 0 / 100% 320px no-repeat,
+    radial-gradient(900px 320px at 0 0, ${tint("accent", 10)}, transparent 70%) 0 0 / 100% 320px no-repeat,
     var(--rich-bg);
 }
 :where(h1, h2, h3) { color: color-mix(in srgb, var(--rich-accent) 72%, var(--rich-text-strong)); letter-spacing: 0; }
@@ -2546,13 +2552,13 @@ function time(args) {
   return new RegExp(`^${timeSource(args)}$`);
 }
 function datetime(args) {
-  const time3 = timeSource({ precision: args.precision });
+  const time4 = timeSource({ precision: args.precision });
   const opts = ["Z"];
   if (args.local)
     opts.push("");
   if (args.offset)
     opts.push(`([+-](?:[01]\\d|2[0-3]):[0-5]\\d)`);
-  const timeRegex = `${time3}(?:${opts.join("|")})`;
+  const timeRegex = `${time4}(?:${opts.join("|")})`;
   return new RegExp(`^${dateSource}T(?:${timeRegex})$`);
 }
 var string = (params) => {
@@ -15423,10 +15429,66 @@ function date4(params) {
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 config(en_default());
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/limits.ts
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/validate.ts
+var RICH_ID2 = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+function isRichJson2(value, depth = 0) {
+  if (depth > 16) return false;
+  if (value === null || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value) && !Object.is(value, -0);
+  if (typeof value === "string") return value.length <= 131072;
+  if (Array.isArray(value)) return value.length <= 2e3 && value.every((item) => isRichJson2(item, depth + 1));
+  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return false;
+  const entries = Object.entries(value);
+  return entries.length <= 500 && entries.every(([key, item]) => key !== "__proto__" && key !== "constructor" && key !== "prototype" && key.length <= 128 && isRichJson2(item, depth + 1));
+}
+function isRichValues2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && isRichJson2(value);
+}
+function typedRichValuesValid2(values2) {
+  const check2 = (value) => {
+    if (Array.isArray(value)) return value.every(check2);
+    if (value === null || typeof value !== "object") return true;
+    const kind = value.type;
+    if (kind === "number" && (typeof value.value !== "number" || !Number.isFinite(value.value))) return false;
+    if (kind === "decimal" && (typeof value.value !== "string" || !/^-?(0|[1-9]\d*)(\.\d+)?$/.test(value.value))) return false;
+    if (kind === "text" && typeof value.value !== "string" || kind === "boolean" && typeof value.value !== "boolean" || kind === "null" && value.value !== null) return false;
+    if (kind === "date") {
+      if (typeof value.value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.value)) return false;
+      const date5 = /* @__PURE__ */ new Date(`${value.value}T00:00:00.000Z`);
+      if (!Number.isFinite(date5.getTime()) || date5.toISOString().slice(0, 10) !== value.value) return false;
+    }
+    if (kind === "option" && (typeof value.id !== "string" || !RICH_ID2.test(value.id))) return false;
+    if (kind === "selection" && (!Array.isArray(value.ids) || !value.ids.every((id2) => typeof id2 === "string" && RICH_ID2.test(id2)) || new Set(value.ids).size !== value.ids.length)) return false;
+    if (kind === "object" && !isRichValues2(value.value)) return false;
+    if (kind === "list" && !Array.isArray(value.value)) return false;
+    if (kind === "asset" || kind === "media") {
+      const ref = value.ref;
+      if (ref === null || typeof ref !== "object" || Array.isArray(ref) || typeof ref.grantId !== "string" || !RICH_ID2.test(ref.grantId) || typeof ref.assetId !== "string" || typeof ref.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(ref.sha256) || typeof ref.sizeBytes !== "number" || !Number.isSafeInteger(ref.sizeBytes) || ref.sizeBytes < 0 || ref.purpose !== "agent-input") return false;
+      if (kind === "media" && (typeof value.kind !== "string" || !["image", "audio", "video", "document"].includes(value.kind) || value.startMs !== void 0 && (typeof value.startMs !== "number" || value.startMs < 0) || value.endMs !== void 0 && (typeof value.endMs !== "number" || value.endMs < 0) || typeof value.startMs === "number" && typeof value.endMs === "number" && value.endMs < value.startMs)) return false;
+    }
+    if (kind === "table") {
+      if (!Array.isArray(value.columns) || value.columns.length > 100 || !Array.isArray(value.rows) || value.rows.length > 2e3) return false;
+      const columns = /* @__PURE__ */ new Map();
+      for (const col of value.columns) {
+        if (col === null || typeof col !== "object" || Array.isArray(col) || typeof col.id !== "string" || !RICH_ID2.test(col.id) || typeof col.label !== "string" || typeof col.valueType !== "string" || !["null", "text", "number", "decimal", "boolean", "date", "option", "selection", "object", "list", "asset", "media", "table"].includes(col.valueType) || columns.has(col.id)) return false;
+        columns.set(col.id, col.valueType);
+      }
+      const rows = /* @__PURE__ */ new Set();
+      for (const row of value.rows) {
+        if (row === null || typeof row !== "object" || Array.isArray(row) || typeof row.rowId !== "string" || !RICH_ID2.test(row.rowId) || rows.has(row.rowId) || !isRichValues2(row.cells)) return false;
+        rows.add(row.rowId);
+        if (Object.keys(row.cells).length !== columns.size || Object.entries(row.cells).some(([key, cell]) => cell === null || typeof cell !== "object" || Array.isArray(cell) || cell.type !== columns.get(key) || !check2(cell))) return false;
+      }
+    }
+    return Object.values(value).every(check2);
+  };
+  return Object.values(values2).every(check2);
+}
+
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/limits.ts
 var RICH_MAX_CONTENT_BYTES2 = 2097152;
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/authored.ts
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/authored.ts
 function authoredContent(source) {
   if (new TextEncoder().encode(source).byteLength > RICH_MAX_CONTENT_BYTES2) return null;
   let value;
@@ -15437,7 +15499,7 @@ function authoredContent(source) {
   }
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value;
-  if (Object.keys(value).some((key) => !["key", "html", "css", "js", "fallbackText", "stateSchemaVersion", "values"].includes(key)) || typeof item.key !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/u.test(item.key) || typeof item.html !== "string" || typeof item.css !== "string" || typeof item.js !== "string" || typeof item.fallbackText !== "string" || item.fallbackText.trim() === "" || !Number.isSafeInteger(item.stateSchemaVersion) || Number(item.stateSchemaVersion) < 1 || item.values !== void 0 && (!isRichValues(item.values) || !typedRichValuesValid(item.values))) return null;
+  if (Object.keys(value).some((key) => !["key", "html", "css", "js", "fallbackText", "stateSchemaVersion", "values"].includes(key)) || typeof item.key !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/u.test(item.key) || typeof item.html !== "string" || typeof item.css !== "string" || typeof item.js !== "string" || typeof item.fallbackText !== "string" || item.fallbackText.trim() === "" || !Number.isSafeInteger(item.stateSchemaVersion) || Number(item.stateSchemaVersion) < 1 || item.values !== void 0 && (!isRichValues2(item.values) || !typedRichValuesValid2(item.values))) return null;
   return item;
 }
 function authoredBlockId(messageId, key) {
@@ -15447,7 +15509,7 @@ function authoredFences(text3) {
   return [...text3.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
 }
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/source-projection.ts
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/source-projection.ts
 var index = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 var targetSchema = external_exports.object({
   seq: index.transform(SessionSeq),
@@ -15506,7 +15568,7 @@ function createRichSourceProjection(hash2) {
   };
 }
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/tool-source-projection.ts
+// .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/tool-source-projection.ts
 var index2 = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 var revision = index2.min(1);
 var blockId = external_exports.string().min(1).transform((value) => brandString(value));
@@ -16197,11 +16259,13 @@ var helloSchema = external_exports.object({ protocol: external_exports.literal(E
 var frameSchema = external_exports.object({ protocol: external_exports.literal(E2E_PROTOCOL), bindingId: external_exports.string().transform((value) => id(value)), role: external_exports.enum(["phone", "desktop"]), sequence: external_exports.number().int().nonnegative(), kind: external_exports.enum(["finished", "data"]), ciphertext: external_exports.string() }).strict();
 var encoder = new TextEncoder();
 
+// src/device-operations.ts
+var deviceGrantOperations = ["task.submit", "task.receipt", "session.cancel", "session.sync", "rich.mount", "rich.snapshot", "rich.saveDraft", "rich.invoke", "rich.status", "rich.dispose"];
+
 // src/pairing-protocol.ts
 var identifier = external_exports.string().min(1).max(256);
 var enrollmentChallengeSchema = external_exports.object({ protocol: external_exports.literal("dsh-mobile-enrollment/1"), challengeId: identifier.transform((value) => id(value)), desktopId: identifier.transform((value) => id(value)), profileId: identifier.transform((value) => id(value)), deviceId: identifier.transform((value) => id(value)), credentialId: identifier.transform((value) => id(value)), publicSpki: external_exports.string().min(1).max(342), nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), expiresAt: external_exports.number().int().nonnegative() }).strict();
 var deviceChallengeSchema = external_exports.object({ protocol: external_exports.literal("dsh-mobile-device-auth/1"), challengeId: identifier.transform((value) => id(value)), desktopId: identifier.transform((value) => id(value)), profileId: identifier.transform((value) => id(value)), deviceId: identifier.transform((value) => id(value)), credentialId: identifier.transform((value) => id(value)), epoch: external_exports.number().int().positive(), expiresAt: external_exports.number().int().nonnegative(), channelBindingId: identifier.transform((value) => id(value)) }).strict();
-var deviceGrantOperations = ["task.submit", "task.receipt", "session.cancel", "session.sync", "rich.mount", "rich.snapshot", "rich.saveDraft", "rich.invoke", "rich.status", "rich.dispose"];
 var pairedGrantSchema = external_exports.object({ protocol: external_exports.literal("dsh-mobile-device-auth/1"), desktopId: identifier.transform((value) => id(value)), profileId: identifier.transform((value) => id(value)), deviceId: identifier.transform((value) => id(value)), credentialId: identifier.transform((value) => id(value)), epoch: external_exports.number().int().positive().max(Number.MAX_SAFE_INTEGER - 1), sessions: external_exports.array(identifier.transform((value) => id(value))).min(1).max(16).refine((value) => !value.some((session) => session === "*") && new Set(value).size === value.length), operations: external_exports.array(external_exports.enum(deviceGrantOperations)).min(1).max(deviceGrantOperations.length).refine((value) => new Set(value).size === value.length), expiresAt: external_exports.number().int().nonnegative(), revoked: external_exports.literal(false) }).strict();
 var readOnlyGrantSchema = pairedGrantSchema.extend({ operations: external_exports.array(external_exports.enum(["session.sync", "task.receipt"])).min(1).max(2) });
 
@@ -16240,6 +16304,83 @@ var firstUseReplySchema = external_exports.object({ schema: external_exports.lit
 var text2 = external_exports.string().min(1).max(256);
 var descriptor = external_exports.object({ key: external_exports.string().regex(/^[a-f0-9]{64}$/).transform((value) => id(value)), desktopId: text2.transform((value) => id(value)), profileId: text2.transform((value) => id(value)), sessions: external_exports.array(text2.transform((value) => id(value))).min(1) }).strict();
 var catalog = external_exports.object({ schema: external_exports.literal("harmony-product-scopes/1"), scopes: external_exports.array(descriptor).refine((values2) => new Set(values2.map((value) => value.key)).size === values2.length) }).strict();
+
+// src/device-binding-protocol.ts
+var identifier4 = external_exports.string().min(1).max(256).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
+var fingerprint = external_exports.string().regex(/^p256-sha256-[a-f0-9]{64}$/);
+var publicSpki2 = external_exports.string().regex(/^[A-Za-z0-9_-]{1,342}$/);
+var signature2 = external_exports.string().regex(/^[A-Za-z0-9_-]{1,192}$/);
+var natural2 = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1);
+var operations = external_exports.array(external_exports.enum(deviceGrantOperations)).min(1).max(deviceGrantOperations.length).refine((values2) => new Set(values2).size === values2.length);
+var deviceSessionScopeSchema = external_exports.object({ kind: external_exports.literal("all-visible-sessions"), profileId: external_exports.literal("desktop") }).strict();
+var registrationBody = external_exports.object({
+  schema: external_exports.literal("harmony-device-binding/1"),
+  bindingId: identifier4,
+  desktopId: identifier4,
+  profileId: external_exports.literal("desktop"),
+  deviceId: identifier4,
+  identityAlias: external_exports.string().regex(/^[a-z][a-z0-9-]{0,126}$/),
+  desktopPublicSpki: publicSpki2,
+  phonePublicSpki: publicSpki2,
+  desktopCredentialId: fingerprint,
+  credentialId: fingerprint,
+  audience: external_exports.string().max(253).regex(/^[a-z0-9.-]+$/).refine((value) => !value.endsWith(".invalid")),
+  scope: deviceSessionScopeSchema,
+  operations,
+  epoch: natural2.refine((value) => value > 0),
+  createdAt: natural2,
+  revoked: external_exports.boolean()
+}).strict();
+var deviceBindingSchema = registrationBody.extend({ signature: signature2 }).strict();
+var deviceBindingOfferSchema = external_exports.object({ schema: external_exports.literal("harmony-device-binding-offer/1"), registration: registrationBody, challengeId: identifier4, nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), expiresAt: natural2, signature: signature2 }).strict();
+var deviceBindingReplySchema = external_exports.object({ schema: external_exports.literal("harmony-device-binding-reply/1"), offer: deviceBindingOfferSchema, signature: signature2 }).strict();
+var deviceRouteContextSchema = external_exports.object({ routeId: identifier4, routeEpoch: external_exports.literal(1), expiresAt: natural2 }).strict();
+var connectionBody = external_exports.object({
+  schema: external_exports.literal("harmony-device-connection-challenge/1"),
+  bindingId: identifier4,
+  desktopId: identifier4,
+  profileId: external_exports.literal("desktop"),
+  deviceId: identifier4,
+  credentialId: fingerprint,
+  epoch: natural2.refine((value) => value > 0),
+  challengeId: identifier4,
+  nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  channelBindingId: identifier4,
+  expiresAt: natural2,
+  route: deviceRouteContextSchema.optional()
+}).strict();
+var deviceConnectionChallengeSchema = connectionBody.extend({ signature: signature2 }).strict();
+var ticketBody = external_exports.object({
+  schema: external_exports.literal("harmony-device-ticket/1"),
+  ticketId: identifier4,
+  bindingId: identifier4,
+  desktopId: identifier4,
+  profileId: external_exports.literal("desktop"),
+  deviceId: identifier4,
+  credentialId: fingerprint,
+  epoch: natural2.refine((value) => value > 0),
+  channelBindingId: identifier4,
+  scope: deviceSessionScopeSchema,
+  operations,
+  issuedAt: natural2,
+  expiresAt: natural2,
+  route: deviceRouteContextSchema.optional()
+}).strict();
+var deviceConnectionTicketSchema = ticketBody.extend({ signature: signature2 }).strict().refine((value) => value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 18e5);
+
+// src/device-route-protocol.ts
+var identifier5 = external_exports.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
+var signature3 = external_exports.string().regex(/^[A-Za-z0-9_-]{1,192}$/);
+var time3 = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1);
+var body = external_exports.object({ schema: external_exports.literal("harmony-device-route-offer/1"), binding: deviceBindingSchema, routeId: identifier5, routeEpoch: external_exports.literal(1), nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), issuedAt: time3, expiresAt: time3 }).strict();
+var deviceRouteOfferSchema = body.extend({ signature: signature3 }).strict().refine((value) => !value.binding.revoked && value.routeId !== value.binding.bindingId && value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 18e5);
+var deviceRouteSchema = external_exports.object({ schema: external_exports.literal("harmony-device-route/1"), offer: deviceRouteOfferSchema, signature: signature3 }).strict();
+
+// src/native-device-bridge.ts
+var route = external_exports.object({ desktopId: external_exports.string().min(1).max(256), profileId: external_exports.literal("desktop"), sessionId: external_exports.string().min(1).max(256) }).strict();
+
+// src/device-route-owner.ts
+var ledger = external_exports.object({ schema: external_exports.literal("harmony-device-route-ledger/1"), offers: external_exports.array(deviceRouteOfferSchema).max(64), routes: external_exports.array(deviceRouteSchema).max(64), retired: external_exports.array(external_exports.string()).max(64) }).strict();
 
 // src/native-product-facade.ts
 var positive = external_exports.number().int().positive().max(2147483647);

@@ -1,6 +1,6 @@
 # alpha.4 适配与 unsigned 候选
 
-泛型诊断已在独立源码工作区修复；历史投影由当前 alpha.4 Host 实现抽出，Host 与浏览器共用验证逻辑，没有复制旧 v15 产物。主仓未应用该补丁，安装中的 desktop 和 rich-inline 未改动。源码基线为 b23972eb7145ab0bb923c45dc28ffcd9f6556412，后续主仓 UI 提交没有改变 core/api/typert/rich-inline 接口。
+泛型诊断已在独立源码工作区修复；历史投影由当前 alpha.4 Host 实现抽出，Host 与浏览器共用验证逻辑，没有复制旧 v15 产物。主仓未应用该补丁，安装中的 desktop 和 rich-inline 未改动。源码基线固定在 [projection-source.json](../projection-source.json) 的 `baseCommit`，后续主仓 UI 提交没有改变 core/api/typert/rich-inline 接口。
 
 实际验证：100 项源码回归、82 项核心/guest/profile 回归、151 模块严格检查、Host/Client 聚合 2 项均通过；新子路径的 Node 导入与浏览器 bundle smoke、本次两包的客户端独立打包及官方导出文档定向检查通过，双语配对一致。持久化 67 根类型匹配，结构变化为 0；生成目录只更新声明位置等元数据。
 

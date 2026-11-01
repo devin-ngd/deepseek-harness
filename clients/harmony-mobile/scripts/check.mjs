@@ -51,10 +51,11 @@ if (diagnostics.length > 0) {
     await emit(join(rich, source), join(project, '.build', target))
   }
   await emit(join(root, 'vitest.shared.ts'), join(project, '.build', 'upstream-vitest-shared.js'))
-  await writeFile(join(project, '.build', 'upstream.js'), "export { isRichJson, parseActionRequest, parseInvokeRequest, parseSaveDraftRequest } from './upstream-validate.js';\n")
+  await writeFile(join(project, '.build', 'upstream.js'), "export { isRichJson, parseActionRequest, parseInvokeRequest, parseSaveDraftRequest } from './upstream-validate.js';\nexport { isJsonValue } from './upstream-values.js';\n")
   const esbuild = require(require.resolve('esbuild', { paths: [join(root, 'node_modules/.pnpm')] }))
   const domainBuild = await esbuild.build({ entryPoints: [join(project, 'src/upstream-domain.ts')], outfile: join(project, '.build/upstream-domain.js'), bundle: true, format: 'esm', platform: 'browser', target: 'es2022', tsconfig: await projectionTsconfig(project, root), absWorkingDir: root, metafile: true })
-  for (const input of Object.keys(domainBuild.metafile.inputs)) { const path = resolve(root, input); hashes[path] = createHash('sha256').update(await readFile(path)).digest('hex') }
+  const valuesBuild = await esbuild.build({ entryPoints: [join(root, 'packages/util/values/src/index.ts')], outfile: join(project, '.build/upstream-values.js'), bundle: true, format: 'esm', platform: 'browser', target: 'es2022', absWorkingDir: root, metafile: true })
+  for (const input of new Set([...Object.keys(domainBuild.metafile.inputs), ...Object.keys(valuesBuild.metafile.inputs)])) { const path = resolve(root, input); hashes[path] = createHash('sha256').update(await readFile(path)).digest('hex') }
   await emit(join(root, 'packages/typert/protocol/src/json-value.ts'), join(project, '.build', 'upstream-remote-json.js'))
   await emit(join(root, 'packages/api/gateway/src/stream-protocol.ts'), join(project, '.build', 'upstream-stream-protocol.js'))
   const streamPath = join(project, '.build', 'upstream-stream-protocol.js')

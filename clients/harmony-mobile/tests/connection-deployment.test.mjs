@@ -9,11 +9,11 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import {
-  ATTEMPT_SCHEMA, AUTHORIZATION, CANDIDATE, PHONE, SIGNING,
+  ATTEMPT_FILE, ATTEMPT_SCHEMA, AUTHORIZATION, CANDIDATE, PHONE, SIGNING,
   assertAttempt, assertCandidateArtifact, assertCertificateChain, assertDeviceFields, assertDeviceObservation,
   assertHdcInvocation, assertInspectGuard, assertInstalledMetadata, assertInstallGuard, assertLaunchGuard, assertLaunchLayout,
   assertOwnedLayout, assertPayload, assertPreflightGuard, assertPublicIdentity, assertSignGuard, assertUiGuard,
-  assertVerifyExistingGuard, assessLayout, controlPoint, findSingleControl, identityCandidates, identityFromNodes,
+  assertVerifyExistingGuard, assertSameLayoutOwner, assessInactiveLayout, assessLayout, controlPoint, findSingleControl, identityCandidates, identityFromNodes,
   installedMetadata, nextCommands, nextRunLabel, parseBundleDump, parseLayoutTree, sanitizeOutput, sha256, targetReference,
 } from '../scripts/connection-deployment-lib.mjs'
 import { existingIdentity, inputAlias } from '../scripts/connection-deployment.mjs'
@@ -21,7 +21,7 @@ import { claimAction, claimedActions } from '../scripts/connection-deployment-cl
 
 const project = resolve('.')
 const bundle = CANDIDATE.bundleName
-const labels = { connected: '已连接电脑', connecting: '正在连接或恢复', disconnected: '未连接', stopped: '连接已停止。请退出后检查配对、网络和授权状态。', connect: '连接电脑', failed: '操作未确认完成。请查看状态；任务可以查询原回执，避免重复发送。' }
+const labels = { connected: '已连接电脑', connecting: '正在连接或恢复', disconnected: '未连接', stopped: '连接已停止。请退出后检查配对、网络和授权状态。', connect: '连接电脑', failed: '操作未确认完成。请查看状态；任务可以查询原回执，避免重复发送。', expired: '旧授权已过期。续接需要新签名授权和重新确认；原身份与历史记录会保留。' }
 const execFileAsync = promisify(execFile)
 
 test('the fixed constants match the reviewed candidate evidence and recorded toolchain', async () => {
@@ -267,6 +267,7 @@ const uiLabels = new Map([
   ['product_connection_stopped', labels.stopped],
   ['product_connect', labels.connect],
   ['product_operation_failed', labels.failed],
+  ['product_successor_notice', labels.expired],
 ])
 
 function launchedFixture() {
@@ -292,10 +293,11 @@ function uiActionTree(inputText = '') {
 function uiActionRuntime(tree, failure = null) {
   const attempt = launchedFixture()
   const calls = { claims: [], statuses: [], inputText: [], click: [], evidence: [] }
+  let sequence = 0
   const runtime = {
     loadAttempt: async () => attempt,
     readLabels: async () => uiLabels,
-    dumpLayout: async () => ({ serial: 'synthetic-serial', assessment: assessLayout(tree, { bundle }) }),
+    dumpLayout: async () => ({ serial: 'synthetic-serial', targetReference: PHONE.targetRef, pid: '123', windowId: '456', sequence: ++sequence, assessment: assessLayout(tree, { bundle, coverage: 'complete' }), controls: assessLayout(tree, { bundle }) }),
     claim: async (action, value) => { calls.claims.push([action, value.label]); if (failure?.claim !== undefined) throw failure.claim },
     recordAction: async (value, action, status, extra = {}) => { calls.statuses.push([action, status]); value.actions[action] = { status, ...extra } },
     writeActionEvidence: async (value, action, record) => { calls.evidence.push([action, record]) },
@@ -383,6 +385,7 @@ test('the HDC allowlist admits only the documented read-only, in-place install a
     [['shell', 'pidof', bundle], 'process-id'],
     [['shell', 'aa', 'start', '-b', bundle, '-m', 'entry', '-a', 'EntryAbility'], 'launch'],
     [['shell', 'uitest', 'dumpLayout', '-b', bundle, '-m', 'false', '-p', '/data/local/tmp/connection-deployment-layout-123.json'], 'layout'],
+    [['shell', 'uitest', 'dumpLayout', '-b', bundle, '-i', '-p', '/data/local/tmp/connection-deployment-layout-123.json'], 'layout-complete'],
     [['file', 'recv', '/data/local/tmp/connection-deployment-layout-123.json', join(runDirectory, 'layout.json')], 'receive-file'],
     [['shell', 'snapshot_display', '-f', '/data/local/tmp/connection-deployment-capture-123.jpeg'], 'capture'],
     [['shell', 'uitest', 'uiInput', 'inputText', '10', '20', PHONE.alias], 'input-text'],
@@ -504,7 +507,7 @@ test('the plan CLI writes nothing and reports the fixed reviewed candidate', asy
   assert.equal(plan.mode, 'plan'); assert.equal(plan.action, 'none')
   assert.equal(plan.candidate.sha256, CANDIDATE.sha256); assert.equal(plan.candidate.bytes, CANDIDATE.bytes); assert.equal(plan.candidate.matchesReviewed, true)
   assert.equal(plan.authorization.sentinelApproval, null); assert.equal(plan.authorization.fabricatedToken, false)
-  assert.deepEqual(plan.next.slice(0, 3), ['prepare', 'preflight', 'sign'])
+  assert.deepEqual(plan.next, plan.attempt === null ? ['prepare', 'preflight', 'sign', 'install', 'inspect', 'launch', 'layout', 'input-alias', 'existing-identity', 'read-identity', 'capture'] : nextCommands(JSON.parse(await readFile(join(project, ATTEMPT_FILE), 'utf8')), new Set(plan.claimed)))
   assert.equal(plan.notExecuted.length, 4)
   assert.deepEqual(await deploymentSnapshot(), before)
   const explicitPlan = await runCli(['plan'])
@@ -557,3 +560,126 @@ async function deploymentSnapshot() {
     candidate: sha256(await readFile('.build/native-controls-connection-202610180825353-facc28ee/entry/build/default/outputs/default/entry-default-unsigned.hap')),
   }
 }
+
+function expiredIdentityTree(alias = '') {
+  const tree = uiActionTree(alias)
+  tree.children.push(
+    { attributes: { bundleName: bundle, type: 'Text', text: labels.failed, visible: 'true' } },
+    { attributes: { bundleName: bundle, type: 'Text', text: labels.expired, visible: 'true' } },
+    { attributes: { bundleName: bundle, type: 'Button', text: 'create a new identity', visible: 'true', enabled: 'true', bounds: '[200,160][300,220]' } },
+  )
+  return tree
+}
+
+test('expired trust permits public identity recovery but never successful launch readiness', () => {
+  const view = assessLayout(expiredIdentityTree(), { bundle })
+  assert.deepEqual(assessInactiveLayout(view, labels), { inactive: true, recovery: 'public-trust-expired', readyForPairing: false })
+  assert.throws(() => assertLaunchLayout(view, labels), /expired public trust/)
+})
+
+test('expired recovery refuses active connections, enabled connect and foreign UI', () => {
+  for (const mutate of [
+    tree => { tree.children[0].attributes.text = labels.connected },
+    tree => { tree.children[0].attributes.text = labels.connecting },
+    tree => { tree.children[0].attributes.text = 'unknown connection state' },
+    tree => { tree.children[1].attributes.enabled = 'true' },
+    tree => { tree.children.push({ attributes: { bundleName: 'other.overlay', visible: 'true' } }) },
+  ]) { const tree = expiredIdentityTree(); mutate(tree); assert.throws(() => assessInactiveLayout(assessLayout(tree, { bundle }), labels)) }
+  const failed = uiActionTree()
+  failed.children.push({ attributes: { bundleName: bundle, type: 'Text', text: labels.failed, visible: 'true' } })
+  assert.throws(() => assessInactiveLayout(assessLayout(failed, { bundle }), labels), /unclassified UI error/)
+})
+
+test('public identity actions recover with the original alias and never select identity creation', async () => {
+  const input = uiActionRuntime(expiredIdentityTree())
+  await inputAlias(input.runtime)
+  assert.equal(input.calls.inputText[0].alias, PHONE.alias)
+  assert.equal(input.calls.click.length, 0)
+  const existing = uiActionRuntime(expiredIdentityTree(PHONE.alias))
+  await existingIdentity(existing.runtime)
+  assert.deepEqual(existing.calls.click.map(call => call.point), [['60', '190']])
+})
+
+test('complete current trees distinguish offscreen state evidence from visible public-key controls', async () => {
+  const tree = expiredIdentityTree(PHONE.alias)
+  tree.children[0].attributes.visible = 'false'
+  tree.children[1].attributes.visible = 'false'
+  tree.children[4].attributes.visible = 'false'
+  tree.children[5].attributes.visible = 'false'
+  assert.throws(() => assessInactiveLayout(assessLayout(tree, { bundle }), labels), /disconnected or stopped/)
+  const view = assessLayout(tree, { bundle, coverage: 'complete' })
+  assert.deepEqual(assessInactiveLayout(view, labels), { inactive: true, recovery: 'public-trust-expired', readyForPairing: false })
+  assert.throws(() => assertLaunchLayout(view, labels), /expired public trust/)
+  const run = uiActionRuntime(tree)
+  await existingIdentity(run.runtime)
+  assert.equal(run.calls.click.length, 1)
+})
+
+test('complete observations refuse offscreen active, enabled, unknown and contradictory states', () => {
+  for (const mutate of [
+    tree => { tree.children.push({ attributes: { bundleName: bundle, type: 'Text', text: labels.connected, visible: 'false' } }) },
+    tree => { tree.children[0].attributes.text = labels.connecting; tree.children[0].attributes.visible = 'false' },
+    tree => { tree.children[1].attributes.enabled = 'true'; tree.children[1].attributes.visible = 'false' },
+    tree => { tree.children[0].attributes.text = 'unknown connection state' },
+    tree => { tree.children.push({ attributes: { bundleName: bundle, type: 'Text', text: labels.stopped, visible: 'false' } }) },
+    tree => { tree.children.push({ attributes: { bundleName: 'other.overlay', visible: 'false' } }) },
+    tree => { tree.children.splice(5, 1) },
+    tree => { tree.children.splice(1, 1) },
+  ]) { const tree = expiredIdentityTree(PHONE.alias); mutate(tree); assert.throws(() => assessInactiveLayout(assessLayout(tree, { bundle, coverage: 'complete' }), labels)) }
+})
+
+test('complete state evidence does not permit hidden, ambiguous or wrong-alias public-key actions', async () => {
+  for (const mutate of [
+    tree => { tree.children[2].attributes.text = 'another-phone' },
+    tree => { tree.children[2].attributes.visible = 'false' },
+    tree => { tree.children[3].attributes.visible = 'false' },
+    tree => { tree.children.push(structuredClone(tree.children[3])) },
+  ]) {
+    const tree = expiredIdentityTree(PHONE.alias); mutate(tree)
+    const run = uiActionRuntime(tree)
+    await assert.rejects(existingIdentity(run.runtime))
+    assert.equal(run.calls.claims.length, 0); assert.equal(run.calls.click.length, 0)
+  }
+})
+
+test('fresh public-key observation refuses changed device process window or reused history before a claim', async () => {
+  for (const mutate of [
+    view => { view.targetReference = 'another-target' },
+    view => { view.pid = '999' },
+    view => { view.windowId = 'another-window' },
+    view => { view.sequence = 1 },
+    view => { view.assessment.coverage = 'viewport' },
+    view => { view.serial = 'another-serial' },
+  ]) {
+    const run = uiActionRuntime(expiredIdentityTree(PHONE.alias)), collect = run.runtime.dumpLayout
+    let calls = 0
+    run.runtime.dumpLayout = async () => { const view = await collect(); if (++calls === 2) mutate(view); return view }
+    await assert.rejects(existingIdentity(run.runtime))
+    assert.equal(run.calls.claims.length, 0); assert.equal(run.calls.click.length, 0)
+  }
+})
+
+test('full-tree command scope excludes other bundles flags paths and devices', () => {
+  for (const rest of [
+    ['shell', 'uitest', 'dumpLayout', '-b', 'other.bundle', '-i', '-p', '/data/local/tmp/connection-deployment-layout-123.json'],
+    ['shell', 'uitest', 'dumpLayout', '-b', bundle, '-i', '-a', '-p', '/data/local/tmp/connection-deployment-layout-123.json'],
+    ['shell', 'uitest', 'dumpLayout', '-b', bundle, '-i', '-p', '/data/local/tmp/other.json'],
+  ]) assert.throws(() => assertHdcInvocation(hdcBase(rest), hdcContext))
+  assert.throws(() => assertHdcInvocation(hdcBase(['shell', 'uitest', 'dumpLayout', '-b', bundle, '-i', '-p', '/data/local/tmp/connection-deployment-layout-123.json'], 'other-device'), hdcContext))
+  assert.throws(() => assessLayout(launchTree, { bundle, coverage: 'history' }))
+})
+
+test('declared-visible nodes in a full tree cannot replace a fresh visible action viewport', async () => {
+  const run = uiActionRuntime(expiredIdentityTree(PHONE.alias)), collect = run.runtime.dumpLayout
+  run.runtime.dumpLayout = async () => {
+    const view = await collect()
+    view.controls.nodes = view.controls.nodes.filter(node => node.text !== 'existing public identity')
+    return view
+  }
+  await assert.rejects(existingIdentity(run.runtime), /exactly one visible enabled control/)
+  assert.equal(run.calls.claims.length, 0); assert.equal(run.calls.click.length, 0)
+  const changed = uiActionRuntime(expiredIdentityTree(PHONE.alias)), capture = changed.runtime.dumpLayout
+  changed.runtime.dumpLayout = async () => { const view = await capture(); view.controls.nodes.push({ type: 'Text', text: labels.connected, visible: 'true' }); return view }
+  await assert.rejects(existingIdentity(changed.runtime), /current viewport/)
+  assert.equal(changed.calls.click.length, 0)
+})

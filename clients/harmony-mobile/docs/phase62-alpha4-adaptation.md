@@ -1,6 +1,6 @@
 # alpha.4 手机适配与离线验证
 
-本轮按 `mobile-alpha4-handoff.md` 核实 DSH 与 rich-inline 均为 `0.2.1-alpha.4`，审计起点为 `9053da6635c9f3e179e20fe7a2e23015b6f581fd`，包含目标提交 `86a402200d95fecef4529d969836f1fe13c6cb0d`。验证期间用户提交了 `b23972eb7145ab0bb923c45dc28ffcd9f6556412`，仅将 safe-external-research 的版本对齐到 alpha.4；本轮没有修改该包、根锁文件或用户的 Web 测试。
+本轮按 `mobile-alpha4-handoff.md` 核实 DSH 与 rich-inline 均为 `0.2.1-alpha.4`，审计起点见[阶段 62 记录的 auditedCommit](../scripts/phase62-finalize.mjs)，包含发布标签 `dsh-v0.2.1-alpha.4`。验证期间用户提交了 [projection-source.json](../projection-source.json) 所记录的源码基线，仅将 safe-external-research 的版本对齐到 alpha.4；本轮没有修改该包、根锁文件或用户的 Web 测试。
 
 ## 已实现的适配
 

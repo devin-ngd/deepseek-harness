@@ -1,7 +1,7 @@
 /** Inactive mobile protocol with explicit fixture transport. It is not a network authentication scheme. */
 import { id } from './protocol.ts'
 import type { DesktopId, SessionId } from './protocol.ts'
-import { isRichJson } from './upstream.ts'
+import { isJsonValue, isRichJson } from './upstream.ts'
 import { isWireNatural, isWireText } from './wire-fields.ts'
 import type { Branded, SessionFollowFrame } from './upstream.ts'
 
@@ -74,15 +74,15 @@ export interface LinkConfig {
 }
 
 /**
- * Admit only lossless JSON objects with the exact operation fields.
+ * Admit lossless JSON objects with exact operation fields. Callers own byte and domain limits; rich commands validate their input separately.
  * @param candidate - untrusted JSON value.
  * @param expected - required names; extras and omissions are rejected.
  * @returns validated field map.
  */
 export function fields(candidate: unknown, expected: readonly string[]): Record<string, unknown> {
-  if (!isRichJson(candidate) || candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)
+  if (!isJsonValue(candidate) || candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)
     || Object.keys(candidate).length !== expected.length || Object.keys(candidate).some(key => !expected.includes(key))) throw new LinkError('invalid-packet')
-  return candidate
+  return candidate as Record<string, unknown>
 }
 /** @param value - wire field. @returns finite nonnegative integer, or throws before dispatch. */
 export function natural(value: unknown): number {

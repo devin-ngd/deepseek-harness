@@ -7,7 +7,9 @@ description: Native Harmony client development, offline checks and current quali
 
 English | [中文](README.zh.md)
 
-On-site deployment and activation remain stopped at the user's request. The [developer handoff](docs/HANDOFF-2026-10-18.md) records the installed historical phone and desktop packages, disabled activation, retained identities, unstarted grant window and remaining work. The installed original-certificate HAP remains the historical default-disabled build, not this round's candidate. The separate [offline connection candidate](docs/connection-candidate.md) completed one official API26 unsigned compile: [candidate evidence](evidence/connection-candidate/2026-10-18T08-25-35-312Z-facc28ee.json) records exit0 over 70 input files and a 5,219,694-byte unsigned HAP with SHA-256 `8671f7fdfcba320739e15d2e0fc0309faa176137f5d2a2dbbaddf3bc1c7ded02`; the [build report](evidence/native-build/2026-10-18T08-25-38-344Z.json) and [log](evidence/native-build/2026-10-18T08-25-38-344Z.log) are retained. That candidate is unsigned, not installed, not paired and not device-API-confirmed; read-only re-verification is `node scripts/check-connection-candidate.mjs --audit=evidence/connection-candidate/2026-10-18T08-25-35-312Z-facc28ee.json`. Its native UI and HUKS evidence do not qualify a live link.
+The [original-device MVP passed](docs/mvp-rc227-a2-20261101.md) on installed desktop rc2.23 and phone rc2.27: the phone selected a real Session, received a new reply, stopped the next running generation and stayed connected across 181.8 seconds of observation. Exactly two phone messages were sent, without reinstalling or clearing pairing/data. Both endpoints stopped, the temporary route was revoked, relay/proxy bytes were restored and the original screen timeout was restored. Reply and cancellation confirmation still have noticeable waits; this finite test does not qualify long-term reliability. The temporary connection is now closed.
+
+The following baseline describes 2026-10-18, when on-site deployment and activation were stopped. The [developer handoff](docs/HANDOFF-2026-10-18.md) records the installed historical phone and desktop packages, disabled activation, retained identities, unstarted grant window and remaining work. The then-installed original-certificate HAP was the historical default-disabled build, not that round's candidate. The separate [offline connection candidate](docs/connection-candidate.md) completed one official API26 unsigned compile: [candidate evidence](evidence/connection-candidate/2026-10-18T08-25-35-312Z-facc28ee.json) records exit0 over 70 input files and a 5,219,694-byte unsigned HAP with SHA-256 `8671f7fdfcba320739e15d2e0fc0309faa176137f5d2a2dbbaddf3bc1c7ded02`; the [build report](evidence/native-build/2026-10-18T08-25-38-344Z.json) and [log](evidence/native-build/2026-10-18T08-25-38-344Z.log) are retained. That candidate is unsigned, not installed, not paired and not device-API-confirmed; read-only re-verification is `node scripts/check-connection-candidate.mjs --audit=evidence/connection-candidate/2026-10-18T08-25-35-312Z-facc28ee.json`. Its native UI and HUKS evidence do not qualify a live link.
 
 ## Summary
 
@@ -40,6 +42,8 @@ node scripts/phase73-port-build.mjs
 node --test tests/phase35-native-crypto.test.mjs tests/phase73-agreement-vector.test.mjs tests/phase73-transport.test.mjs tests/phase73-diagnostic-lines.test.mjs tests/phase73-port-order.test.mjs
 node scripts/product-check.mjs
 pnpm run test:control
+pnpm run test:route-restore
+pnpm run test:session-json
 ```
 
 `node scripts/phase73-integration.mjs --ordered` uses new synthetic worlds, a scrubbed environment and the existing four-response guard. Each invocation retains unique reports. Its loopback/browser fixtures cannot qualify real NetworkKit TLS, HUKS, ArkWeb or a phone. Record sandbox failures before the same check receives a narrow host escalation. The compiled connection candidate is re-verified without rebuilding by `node scripts/check-connection-candidate.mjs --audit=evidence/connection-candidate/2026-10-18T08-25-35-312Z-facc28ee.json`; [connection candidate](docs/connection-candidate.md) owns plan, compile and audit behavior. See [acceptance](docs/acceptance.md) and [tasks](docs/tasks.md).
@@ -51,3 +55,5 @@ The repair selects documented `ECC256` agreement parameters and reports fixed ha
 Physical operations follow the [recorded approval and deployment status](docs/normal-controls-deployment.md). Preserve the original HUKS/DPAPI identities, revoked scopes and historical evidence. Do not delete locks, clear data, reset identities, replay old proofs or reuse scripts pinned to consumed grants. Changes outside the recorded target and scope require their own authorization.
 
 Native compilation, SDK substitutes, browser fixtures and physical-device behavior are distinct evidence levels. The complete task/stream/ArkWeb/action/deduplication/reconnect/cancel journey remains unqualified until the approved physical run passes it.
+
+The [local log self-check](docs/local-log-selfcheck-rc2.15.md) provides a fixed native logging probe; physical collection is qualified separately from compilation.

@@ -18,6 +18,20 @@ function fixture(follow, policy = { mode: 'bounded', maxSegments: 4, maxFailures
   return { core, model, reads, writes, abort, clock, elapse: delta => { now += delta } }
 }
 
+test('read failure diagnostics contain fixed codes and cannot replace the original failure', async t => {
+  const messages = [], observer = t.mock.method(console, 'info', message => { messages.push(message) })
+  for (const [code, diagnostic] of [['domain-too-large', 'domain-too-large'], ['not-a-diagnostic-code', 'follow-failed']]) {
+    const error = new TransportError(code), f = fixture(async function* () { yield reset(); throw error })
+    await assert.rejects(async () => { for await (const view of f.core.follow(f.abort.signal)) void view }, actual => actual === error)
+    assert.equal(f.model.view.readOnly, true)
+    assert.equal(messages.at(-1), 'DSH_PHONE_READ_FAILURE=' + diagnostic)
+  }
+  observer.mock.mockImplementation(() => { throw Error('diagnostic unavailable') })
+  const error = new TransportError('domain-too-large'), f = fixture(async function* () { yield reset(); throw error })
+  await assert.rejects(async () => { for await (const view of f.core.follow(f.abort.signal)) void view }, actual => actual === error)
+  assert.equal(f.model.view.error, 'domain-too-large')
+})
+
 test('recovery mints a new deadline after the previous request expires and rejects the old envelope', async () => {
   const f = fixture(async function* (at, signal, abort) {
     if (at === 1) { yield reset(); f.elapse(2000); throw new TransportError('transport-lost') }

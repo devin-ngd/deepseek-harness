@@ -1,6 +1,6 @@
 /** First-use rejection evidence with fixed synthetic identities only; no real identity initialization or dial. */
 import { FixedIdentityProtection, fixedProtectedIdentity } from './fixed-identity-protection.ts'
-import { it, expect } from 'vitest'
+import { it, expect, vi } from 'vitest'
 import { mkdir, readFile, access } from 'node:fs/promises'
 import { join } from 'node:path'
 import Authorization from '@deepseek-ai/dsh-authorization'
@@ -15,6 +15,7 @@ import { resolveFieldConfig } from '../replay-profile/src/field-config.ts'
 import { fieldSession, firstUseOfferSchema } from '../src/first-use-protocol.ts'
 import { desktopKey, phoneKey } from './phase39-fixture.ts'
 import { p256CredentialId } from './p256-public.ts'
+import { enrollmentProofBytes } from '../src/pairing-protocol.ts'
 import { id } from '../src/protocol.ts'
 import { NativeProductOwner, context, resetProductSdk, network, sdk } from '../tests/helpers/product-native-harness.mjs'
 import { relayEndpointTimers } from '../standalone-relay/src/endpoint-timers.ts'
@@ -42,4 +43,34 @@ it('actual isolated file credentials reopen a fixed fixture signer without ident
   const proposal=new URL('../standalone-relay/config.first-use.proposal.json',import.meta.url),template=JSON.parse(await readFile(proposal,'utf8')),pair={pairId:'fixture-public-pair',desktopPublicSpki:desktopKey.publicSpki,phonePublicSpki:phoneKey.publicSpki,epoch:1,expiresAt:Date.now()+60000,revoked:false},path=join(world,'public-state.jsonl'),prepared=prepareFirstUseRelayConfig(template,pair,path,endpointTimers);expect(prepared).toMatchObject({publicTrust:{path},broker:{maxPairs:1,pairs:[pair]}});expect(()=>prepareFirstUseRelayConfig(template,{...pair,expiresAt:1},path,endpointTimers)).toThrow();expect(()=>prepareFirstUseRelayConfig(template,pair,'relative',endpointTimers)).toThrow();expect(await access(path).then(()=>true,()=>false)).toBe(false)
   const preview=firstUseRelayPreview(prepared,pair,endpointTimers);expect(preview).toMatchObject({desktopFingerprint:p256CredentialId(desktopKey.publicSpki),phoneFingerprint:p256CredentialId(phoneKey.publicSpki),trustPath:path});expect(JSON.stringify(preview)).not.toContain(desktopKey.publicSpki);expect(()=>firstUseRelayPreview({...prepared,privatePkcs8:'synthetic-invalid-extra'},pair,endpointTimers)).toThrow();expect(()=>firstUseRelayPreview(prepared,{...pair,privatePkcs8:'synthetic-invalid-extra'},endpointTimers)).toThrow()
   const { writeFile }=await import('node:fs/promises'),pairPath=join(world,'pair.json'),output=join(world,'prepared.json'),limitsPath=join(world,'limits.json');await writeFile(pairPath,JSON.stringify(pair));await writeFile(limitsPath,JSON.stringify(endpointTimers));const args=['--config',proposal.pathname.slice(1),'--pair',pairPath,'--state',path,'--output',output,'--limits',limitsPath];await preparePublicConfig(args);expect(JSON.parse(await readFile(output,'utf8'))).toEqual(prepared);await expect(preparePublicConfig(args)).rejects.toThrow();expect(await access(path).then(()=>true,()=>false)).toBe(false)
+})
+
+it('offer cancellation does not invent a grant; unknown authorization and real revocation failures remain blocked', async () => {
+  const config = resolveFieldConfig(JSON.parse(await readFile(new URL('../replay-profile/field.enabled.example.json', import.meta.url), 'utf8')))
+  if (!config.enabled) throw new Error('fixture policy missing')
+  const world = join(process.env.DSH_HARMONY_INTEGRATION_WORLD!, 'stop-outcomes'); await mkdir(world)
+  const ctx = await sourceComposition(world); await ctx.plugin(MemoryCredentials); await ctx.plugin(Authorization)
+  await ctx.sessionController.create({ sessionId: id<'SessionId'>(fieldSession), cwd: world })
+  const authority = {}, first = new DesktopFirstUse(ctx, authority, config.policy, desktopKey), phone = { identityAlias: 'fixture-phone', publicSpki: phoneKey.publicSpki, credentialId: p256CredentialId(phoneKey.publicSpki) }
+  try {
+    const offer = await first.issue(authority, phone), reply = { schema: 'harmony-first-use-reply/1', offer, proof: { challenge: offer.ticket, signature: Buffer.from(await phoneKey.sign(enrollmentProofBytes(offer.ticket))).toString('base64url') } }
+    const begin = vi.spyOn(ctx.authorization, 'begin').mockRejectedValue(new Error('synthetic authorization outcome unknown'))
+    await expect(first.confirm(authority, reply, { notify: () => {}, prompt: async () => 'allow' })).rejects.toThrow('unknown')
+    begin.mockRestore()
+    await expect(first.stop(authority)).rejects.toThrow('authorization outcome unknown')
+    expect(await ctx.credentials.listRecords()).toHaveLength(0)
+  } finally { await first.close(); await ctx.fiber.dispose() }
+  const otherWorld = join(world, 'committed'); await mkdir(otherWorld)
+  const other = await sourceComposition(otherWorld); await other.plugin(MemoryCredentials); await other.plugin(Authorization)
+  await other.sessionController.create({ sessionId: id<'SessionId'>(fieldSession), cwd: otherWorld })
+  const second = new DesktopFirstUse(other, authority, config.policy, desktopKey)
+  try {
+    const offer = await second.issue(authority, phone), reply = { schema: 'harmony-first-use-reply/1', offer, proof: { challenge: offer.ticket, signature: Buffer.from(await phoneKey.sign(enrollmentProofBytes(offer.ticket))).toString('base64url') } }
+    await second.confirm(authority, reply, { notify: () => {}, prompt: async () => 'allow' })
+    const revoke = vi.spyOn(second.owner, 'revoke').mockRejectedValue(new Error('synthetic durable revoke failure'))
+    await expect(second.stop(authority)).rejects.toThrow('durable revoke failure')
+    revoke.mockRestore()
+    await expect(second.stop(authority)).resolves.toBe('grant-revoked')
+    expect((await second.owner.storedGrant(authority, config.policy.deviceId))?.revoked).toBe(true)
+  } finally { await second.close(); await other.fiber.dispose() }
 })

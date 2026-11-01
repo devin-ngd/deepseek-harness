@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-harmony-mobile",
-  "version": "0.0.0-normal-controls.1",
+  "version": "0.0.0-rc2.23",
   "private": true,
   "type": "module",
   "description": "Default-disabled private Harmony mobile profile adapter with independent authenticated peer admission",
@@ -32,6 +32,14 @@
     "./test-session": {
       "types": "./lib/types/desktop-plugin/src/test-session.d.ts",
       "default": "./lib/test-session.js"
+    },
+    "./client": {
+      "types": "./lib/client-types/desktop-plugin/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./device": {
+      "types": "./lib/types/desktop-plugin/src/device-binding-command.d.ts",
+      "default": "./lib/device.js"
     }
   },
   "files": [
@@ -42,11 +50,22 @@
     "licenses",
     "build-info.json",
     "pairing.enabled.example.json",
-    "test-session.enabled.example.json"
+    "test-session.enabled.example.json",
+    "device.enabled.example.json"
   ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-ui-commands",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
     }
   },
   "engines": {
@@ -56,34 +75,43 @@
     "ws": "8.21.3"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.5-alpha.2",
-    "@deepseek-ai/schemastery": "3.18.5-alpha.2",
-    "@deepseek-ai/dsh": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-app-boot": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-credentials": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-authorization": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-scope": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-api-session-controller": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-experimental-rich-inline": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-typert-protocol": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-typert-registry": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-storage-domain": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-agent": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-brand": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-util-values": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-user-approval": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-client-connection": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-api-gateway": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-api-workspace-controller": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-attachment": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-workspace": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-session-persistence": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-commands": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-user-questions": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-llm": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-system-prompt": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-tools": "0.2.1-alpha.4",
-    "@deepseek-ai/dsh-session-projection": "0.2.1-alpha.4"
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/schemastery": "~3.18.5",
+    "@deepseek-ai/dsh": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-app-boot": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-authorization": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-scope": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-experimental-rich-inline": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-typert-registry": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-brand": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-util-values": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-user-approval": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-gateway": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-workspace-controller": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-attachment": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-workspace": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-session-persistence": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-commands": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-user-questions": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-session-projection": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-commands": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-remotes": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.2"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.2",
+    "react": "^18.2.0"
   }
 }

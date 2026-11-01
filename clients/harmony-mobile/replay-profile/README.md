@@ -1,5 +1,7 @@
 # Isolated source replay profile
 
+English | [中文](README.zh.md)
+
 The portable candidate runs the public `dsh --profile harmony-mobile-replay` entry through `node launch.mjs`. It creates a new isolated home/agents/temp directory, rejects overrides, registers only fixed four-response replay and permits no real model or upload. The current candidate is Windows x64 and was executed with Node24.13.0. No package install or current desktop restart is needed.
 
 The profile uses canonical source Session/rich services with a synthetic mobile adapter and fixture grant. It does not connect a real phone or activate pairing/broker. The separately compiled phone project has native first-identity UI and INTERNET only; signing/install/real HUKS remain separately approved operations.

@@ -1,6 +1,6 @@
 # 接口审计
 
-审计基线是 `lumina` 的 `9fa2f1f705`，包含官方 alpha.2 的合入。主工作区有五个已修改文件和一个新增测试：Web rich-native 测试、rich-inline 双语 README、两个离线回放测试，以及 persona cwd 迁移测试。本实验未写入主工作区，未操作另一个实现线程，未重启或覆盖已安装 DSH。审计读取根 AGENTS、架构、文档标准、错误处理、prose 标准及 defensive patterns；只读取相关工具位置和 memory_summary，没有读取账户密钥、手机号、签名资料或私人文件树。
+审计基线由只读 [source.json](../source.json) 的 `auditedCommit` 固定，属于 `lumina`，包含官方 alpha.2 的合入。主工作区有五个已修改文件和一个新增测试：Web rich-native 测试、rich-inline 双语 README、两个离线回放测试，以及 persona cwd 迁移测试。本实验未写入主工作区，未操作另一个实现线程，未重启或覆盖已安装 DSH。审计读取根 AGENTS、架构、文档标准、错误处理、prose 标准及 defensive patterns；只读取相关工具位置和 memory_summary，没有读取账户密钥、手机号、签名资料或私人文件树。
 
 | 现有接口 | 实际语义与证据 | 手机端处理 |
 | --- | --- | --- |

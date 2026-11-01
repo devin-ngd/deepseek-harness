@@ -5,12 +5,18 @@ export interface ProductMessage { id: string; role: string; text: string }
 /** Saved range label; only an explicit selection and fresh confirmation can activate its original grant. */
 export interface ProductSavedScope { key: string; desktopId: string; profileId: string; sessions: string[] }
 /** Explicit comparison fields contain only public fingerprints and the local selected grant scope. */
-export class ProductPairingPreview { renewal: boolean = false; grantEpoch: number = 0; pairId: string = ''; desktopFingerprint: string = ''; phoneFingerprint: string = ''; desktopId: string = ''; profileId: string = ''; sessions: string[] = []; operations: string[] = []; audience: string = ''; identityAlias: string = ''; expiresAt: number = 0; grantTtlMs: number = 0 }
+export class ProductPairingPreview { deviceBinding: boolean = false; renewal: boolean = false; grantEpoch: number = 0; pairId: string = ''; desktopFingerprint: string = ''; phoneFingerprint: string = ''; desktopId: string = ''; profileId: string = ''; sessions: string[] = []; operations: string[] = []; audience: string = ''; identityAlias: string = ''; expiresAt: number = 0; grantTtlMs: number = 0 }
 /** Initial state has no connected claim, selected scope or executable rich publication. */
 export class ProductView {
+  connectionGeneration: number = 0
   pairing: string = 'unpaired'
   connection: string = 'disabled'
   error: string = ''
+  connectionDiagnostic: string = ''
+  startupDiagnostic: string = ''
+  startupStorage: string = ''
+  storageRecovery: string = ''
+  storageRecoveryAudit: string = ''
   projects: ProductProject[] = []
   sessions: ProductSession[] = []
   selected: string = ''

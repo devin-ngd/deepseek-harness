@@ -4,7 +4,7 @@ import { canonical, id } from './protocol.ts'
 import type { DesktopId, SessionId } from './protocol.ts'
 import type { DeviceId, CommandId } from './link-protocol.ts'
 import type { Branded, JsonValue } from './upstream.ts'
-import { isRichJson as boundedJson } from './upstream.ts'
+import { isJsonValue } from './upstream.ts'
 import { isWireCursor } from './wire-fields.ts'
 
 function relayCursor(value: unknown): number {
@@ -55,15 +55,10 @@ export function parseWireItem(candidate: unknown): WireItem {
     sessionId: id<'SessionId'>(text(value.sessionId)), instance: id<'mobile-wire-instance'>(text(value.instance)),
     relayCursor: relayCursor(value.relayCursor), payload: jsonPayload(payload) }
 }
-/** @param candidate - parsed JSON value. @returns bounded payload, without promoting it to a domain type. */
+/** @param candidate - parsed JSON value within the caller's byte limit. @returns lossless JSON; resource and domain admission remain with the consumer. */
 export function jsonPayload(candidate: unknown): JsonValue {
-  // Wrapping uses the same canonical bounded JSON validator as other mobile envelopes.
-  const value = fields({ payload: candidate }, ['payload'])
-  const checked = value.payload
-  if (checked === undefined) throw new TransportError('invalid-frame')
-  // JSON validation narrows through the exported upstream predicate rather than a type assertion.
-  if (!boundedJson(checked)) throw new TransportError('invalid-frame')
-  return checked
+  if (!isJsonValue(candidate)) throw new TransportError('invalid-frame')
+  return candidate as JsonValue
 }
 /** @param candidate - untrusted unary frame. @param commandId - expected in-flight command. @returns exact response or remote failure. */
 export function parseWireReply(candidate: unknown, commandId: CommandId): WireReply {

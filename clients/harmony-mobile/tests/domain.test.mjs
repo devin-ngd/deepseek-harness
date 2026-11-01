@@ -73,6 +73,49 @@ test('live revisions, durable commits, disconnect and turn failures remain disti
   assert.equal(model.view.task, 'failed'); assert.equal(model.view.error, '')
   model.admissionState('outcome_unknown'); assert.equal(model.view.task, 'outcome_unknown')
 })
+
+test('fragmented reasoning does not exhaust the content-block limit before the reply arrives', () => {
+  const model = new SemanticPhone(owner, limits, 256)
+  model.accept(item(snapshot([])))
+  let cursor = 0, revision = 0, index = 0
+  const live = frame => model.accept(item({ type: 'assistant-stream', frame: { ...frame, attemptId: 'fragmented-attempt', revision: ++revision } }, ++cursor, 'event'))
+  live({ type: 'start', startedAfterSeq: -1, turn: 1, step: 1 })
+  for (let at = 0; at < limits.maxBlocks + 1; at++) live({ type: 'chunk', index: index++, time: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'r' } })
+  live({ type: 'chunk', index: index++, time: 1, chunk: { type: 'text-delta', index: 1, text: 'Hello' } })
+  assert.equal(model.view.liveText, 'Hello')
+  assert.equal(model.view.readOnly, false)
+  model.accept(item({ type: 'event', event: assistant(0, [{ type: 'reasoning', text: 'r'.repeat(limits.maxBlocks + 1) }, { type: 'text', text: 'Hello' }]) }, ++cursor, 'event'))
+  live({ type: 'end', index, outcome: { kind: 'committed', eventType: 'assistant/message', seq: 0 } })
+  model.accept(item({ type: 'event', event: evt('turn/end', { turn: 1, reason: { kind: 'completed' } }, 1) }, ++cursor, 'event'))
+  assert.equal(model.view.task, 'completed')
+  assert.equal(model.view.messages.at(-1).parts.at(-1).text, 'Hello')
+})
+
+test('an active snapshot with many small stream fragments retains its reply and still enforces bytes', () => {
+  const model = new SemanticPhone(owner, limits, 256)
+  const stream = [...Array.from({ length: limits.maxBlocks + 1 }, () => ({ type: 'reasoning-delta', index: 0, text: 'r' })), { type: 'text-delta', index: 1, text: 'Hello' }]
+  const opening = { ...snapshot([]), assistantStream: { revision: stream.length + 1, activeAttempt: { attemptId: 'fragmented-attempt', startedAfterSeq: -1, turn: 1, step: 1, nextIndex: stream.length, stream } } }
+  model.accept(item(opening))
+  assert.equal(model.view.liveText, 'Hello')
+  assert.equal(model.view.readOnly, false)
+  const small = new SemanticPhone(owner, { ...limits, maxBytes: 128 }, 256)
+  assert.throws(() => small.accept(item(opening)), error => error.code === 'domain-too-large')
+  assert.equal(small.view.cursor, -1)
+  assert.deepEqual(small.resume, { instance: null, relayCursor: -1 })
+})
+
+test('cumulative live bytes reject before replacing the last admitted reply or cursor', () => {
+  const model = new SemanticPhone(owner, { ...limits, maxBytes: 1024 }, 256)
+  model.accept(item(snapshot([])))
+  model.accept(item({ type: 'assistant-stream', frame: { type: 'start', attemptId: 'bytes', revision: 1, startedAfterSeq: -1, turn: 1, step: 1 } }, 1, 'event'))
+  const chunk = index => item({ type: 'assistant-stream', frame: { type: 'chunk', attemptId: 'bytes', revision: index + 2, index, time: 1, chunk: { type: 'text-delta', index: 0, text: 'x'.repeat(400) } } }, index + 2, 'event')
+  model.accept(chunk(0)); model.accept(chunk(1))
+  const before = model.view, resume = model.resume
+  assert.throws(() => model.accept(chunk(2)), error => error.code === 'domain-too-large')
+  assert.deepEqual(model.view, before); assert.deepEqual(model.resume, resume)
+  const blocks = Array.from({ length: limits.maxBlocks + 1 }, () => ({ type: 'text', text: '' }))
+  assert.throws(() => new SemanticPhone(owner, limits, 256).accept(item(snapshot([assistant(0, blocks)]))), error => error.code === 'domain-invalid')
+})
 test('future Session version provides metadata downgrade without interpreting records', () => {
   const model = new SemanticPhone(owner, limits, 256)
   model.accept(item({ ...snapshot([]), header: { ...header, version: 5 }, cursor: 7, records: [{ future: true }], projections: { asOfSeq: 7, values: {} } }))
@@ -116,6 +159,31 @@ test('lost native task receipt never resends, read-only reconciliation preserves
   await assert.rejects(core.submit('intent', 'task')); await assert.rejects(core.submit('intent', 'task')); assert.equal(calls, 1)
   await core.receipt('intent'); assert.equal(calls, 2); assert.equal(model.view.task, 'outcome_unknown')
   await assert.rejects(core.submit('intent', 'changed'), error => error.code === 'id-conflict')
+})
+
+for (const [kind, expected] of [['aborted', 'cancelled'], ['completed', 'completed']]) {
+  test(`cancel acknowledgement preserves the ${kind} turn received while the request is pending`, async () => {
+    const model = new SemanticPhone(owner, limits, 256), calls = []
+    model.accept(item(snapshot([evt('turn/start', { turn: 1 }, 0)])))
+    const { promise, resolve } = Promise.withResolvers()
+    const provider = { request(command) { calls.push(command.operation); return promise }, async *follow() {}, async close() {} }
+    const core = new PhoneCore(provider, model, { follow: { mode: 'once' }, grantEpoch: 1, ttlMs: 1000, clock: () => 1, nextCommandId: () => 'cancel-command', maxMounts: 4, maxIntents: 8 })
+    const pending = core.cancel()
+    model.accept(item({ type: 'event', event: evt('turn/end', { turn: 1, reason: { kind } }, 1) }, 1, 'event'))
+    assert.equal(model.view.task, expected)
+    resolve({ accepted: true }); await pending
+    assert.equal(model.view.task, expected)
+    assert.deepEqual(calls, ['session.cancel'])
+  })
+}
+
+test('cancel acknowledgement cannot use a historical terminal turn as cancellation evidence', async () => {
+  const model = new SemanticPhone(owner, limits, 256)
+  model.accept(item(snapshot([evt('turn/start', { turn: 1 }, 0), evt('turn/end', { turn: 1, reason: { kind: 'aborted' } }, 1)])))
+  const provider = { async request() { return { accepted: true } }, async *follow() {}, async close() {} }
+  const core = new PhoneCore(provider, model, { follow: { mode: 'once' }, grantEpoch: 1, ttlMs: 1000, clock: () => 1, nextCommandId: () => 'cancel-command', maxMounts: 4, maxIntents: 8 })
+  await core.cancel()
+  assert.equal(model.view.task, 'cancel_requested')
 })
 test('minimal native port rejects fake approvals, host execution, wrong carrier and authority fields', async () => {
   const source = {}, binding = { source, sessionId: 'domain-session', mountId: 'mount', renderRevision: 1, packetBytes: 1024, maxPackets: 8 }, calls = []

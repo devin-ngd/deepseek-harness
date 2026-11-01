@@ -11,8 +11,11 @@ import { NativeDeviceKeys, NativeDeviceKeyPolicy } from '../native/NativeDeviceK
 import { NativeExistingIdentitySigner } from '../native/NativeExistingIdentitySigner'
 import { NativeCryptoPrimitives } from '../native/NativeCryptoPrimitives'
 import { NativeFailure } from '../native/NativeFailure'
+import { NativeDeviceProductOwner } from './NativeDeviceProductOwner'
+import { NativeProductRichPort } from './NativeProductRichOwner'
 /** Deployment inputs must be supplied locally; device API 0 keeps the source app inactive. */
-export interface NativeProductConfiguration { enabled: boolean; approvedHost: string; identityAlias: string; deviceApiVerified: number; maxCryptoBytes: number; maxTotalSendBytes: number; publicTrustMaxBytes: number; corePolicyJson: string; relay: NativeRelayBudgets }
+export interface NativeDeviceRecoveryPolicy { bindingId: string; epoch: number; desktopCredentialId: string; credentialId: string; identityAlias: string; retiredRoutes: string[] }
+export interface NativeProductConfiguration { deviceRecovery?: NativeDeviceRecoveryPolicy; deviceBindingMode?: boolean; deviceRoutingTtlMs?: number; deviceCatalogRefreshMs?: number; enabled: boolean; approvedHost: string; identityAlias: string; deviceApiVerified: number; maxCryptoBytes: number; maxTotalSendBytes: number; publicTrustMaxBytes: number; corePolicyJson: string; relay: NativeRelayBudgets }
 interface GrantRecord { credentialId: string }
 interface PairedRecord { pairId: string; audience: string; credentialId: string; desktopCredentialId: string; grant: GrantRecord }
 interface PublicRecord { identityAlias: string; desktopPublicSpki: string; paired: PairedRecord }
@@ -23,7 +26,9 @@ interface RenewalVerification { bytes: number[]; signature: string; previousCano
 interface CommandIdentity { commandPrefix: string; enabled: boolean; trustMaxBytes: number }
 interface SavedScope { key: string; desktopId: string; profileId: string; sessions: string[] }
 /** Native-owned public storage is injectable for SDK-substitute acceptance; no secret-store or network fallback exists. */
-export interface NativeProductPublicStorage extends ProductStorage {}
+/** Metadata contains no paths or stored content; inspection never acquires or releases the refusal lock. */
+export interface NativeProductStorageMetadata { file: string; size: number; lock: string; held: boolean }
+export interface NativeProductPublicStorage extends ProductStorage { inspect?(): NativeProductStorageMetadata; recoveryRequired?(): boolean }
 class ProductAuthority { readonly label: string = 'native-product' }
 /** Each acquired ETS connection has its exact native authority; generated rich HTML cannot obtain it. */
 class Connection implements ProductConnection {
@@ -36,7 +41,8 @@ class Connection implements ProductConnection {
   close(): Promise<void> { return this.owner.closeNative(this.authority) }
 }
 /** ArkUI alone selects pair/connect/session/task/revoke. Native lifecycle closes the shared product plus all late connections. */
-export class NativeProductOwner {
+export class NativeProductOwner implements NativeProductRichPort {
+  private device: NativeDeviceProductOwner | undefined = undefined
   private authority: object = new ProductAuthority()
   private config: NativeProductConfiguration
   private product: NativeProductFacade | undefined = undefined
@@ -51,9 +57,12 @@ export class NativeProductOwner {
   private selectedScope: string = ''
   private scopeBlocked: boolean = false
   private listedScopes: Map<string, string> = new Map()
-  constructor(config: NativeProductConfiguration) { this.config = config }
-  async initialize(context: common.UIAbilityContext, publish: (view: string) => void): Promise<void> { this.filesDir = context.filesDir; await this.start(new NativePublicTrustFile(context.filesDir, this.config.publicTrustMaxBytes, this.selectedScope), publish) }
-  async start(storage: NativeProductPublicStorage, publish: (view: string) => void): Promise<void> {
+  constructor(config: NativeProductConfiguration) { this.config = config; if (config.deviceBindingMode === true) this.device = new NativeDeviceProductOwner(config) }
+  async recoverDeviceStorage(confirmed: boolean): Promise<void> { if (this.device === undefined) throw new Error('device mode required'); await this.device.recoverStorage(confirmed) }
+  deviceBindingMode(): boolean { return this.device !== undefined }
+  async initialize(context: common.UIAbilityContext, publish: (view: string) => void): Promise<void> { if (this.device !== undefined) { activeProducts.add(this); await this.device.initialize(context, publish); return }; this.filesDir = context.filesDir; await this.start(new NativePublicTrustFile(context.filesDir, this.config.publicTrustMaxBytes, this.selectedScope), publish) }
+  async start(storage: NativeProductPublicStorage, publish: (view: string) => void, routeStorage?: NativeProductPublicStorage): Promise<void> {
+    if (this.device !== undefined) { activeProducts.add(this); await this.device.start(storage, publish, routeStorage); return }
     if (this.scopeBlocked || this.product !== undefined || this.starting) throw new Error('native product already started or scope storage blocked'); this.starting = true; const generation = ++this.generation; try { await this.closing; if (generation !== this.generation) throw new Error('native product start retired'); this.storage = storage; this.publish = publish; this.closing = undefined
     const ports: ProductPorts = { storage, scheduler: { after: (ms: number, callback: () => void): () => void => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } }, clock: () => Date.now(), verifyTrust: (raw: string, previous?: string) => this.verify(raw, previous), connect: async (raw: string, status: (state: string) => void, received: (packet: string) => void): Promise<ProductConnection> => { await this.verify(raw); const record = JSON.parse(this.core().trustInput(raw)) as PublicRecord, authority = new ProductAuthority(), owner = new NativePairedConnectionOwner(authority, new NativePairedPolicy(this.config.approvedHost, record.paired.pairId, this.config.identityAlias, huks.HuksAuthStorageLevel.HUKS_AUTH_STORAGE_LEVEL_ECE, this.config.deviceApiVerified, this.config.maxCryptoBytes, this.config.maxTotalSendBytes, this.config.relay)); try { await owner.connectNative(authority, JSON.stringify(record.paired), record.desktopPublicSpki, status, received); return new Connection(owner, authority) } catch (error) { await owner.closeNative(authority); throw new Error('native product connection failed') } } }
     const settings = JSON.parse(this.config.corePolicyJson) as CommandIdentity
@@ -79,7 +88,9 @@ export class NativeProductOwner {
     } finally { signer.closeNative(authority) }
   }
   private core(): NativeProductFacade { if (this.product === undefined) throw new Error('native product not started'); return this.product }
-  connectionEnabled(): boolean { return this.config.enabled && this.product !== undefined }
+  connectionEnabled(): boolean { if (this.device !== undefined) return this.device.connectionEnabled(); return this.config.enabled && this.product !== undefined }
+  /** Original verified host disclosure; this getter never grants a connection. */
+  connectionHost(): string { if (this.device !== undefined) return this.device.connectionHost(); return this.connectionEnabled() ? this.config.approvedHost : '' }
   private enrollmentFailure(stage: string, error: Error): void {
     let failure: string = 'native-error'
     if (error instanceof NativeFailure) { const allowed: string[] = ['crypto-input-invalid', 'crypto-public-key-invalid', 'crypto-verify-failed', 'crypto-hash-failed', 'key-public-export-failed', 'key-public-export-invalid']; failure = allowed.includes(error.code) ? error.code : 'native-failure' }
@@ -105,19 +116,21 @@ export class NativeProductOwner {
     } catch (error) { this.enrollmentFailure(stage, error); throw new Error('native enrollment refused at ' + stage) }
   }
   /** Native preview validates the exact existing phone key and desktop signature without creating a grant or connection. */
-  async previewEnrollment(raw: string): Promise<string> { const input = await this.enrollmentInput(raw); try { const crypto = new NativeCryptoPrimitives(this.config.maxCryptoBytes), base64 = new util.Base64Helper(), digest = await crypto.hash(base64.decodeSync(input.desktopPublicSpki, util.Type.BASIC_URL_SAFE)); let fingerprint: string = 'p256-sha256-'; for (const byte of digest) fingerprint += byte.toString(16).padStart(2, '0'); const result = JSON.stringify({ desktopFingerprint: fingerprint, phoneFingerprint: (JSON.parse(await this.publicIdentity(input.identityAlias)) as PublicIdentity).credentialId, desktopId: input.ticket.desktopId, profileId: input.ticket.profileId, sessions: input.sessions, operations: input.operations, audience: input.audience, identityAlias: input.identityAlias, expiresAt: input.expiresAt, grantTtlMs: input.grantTtlMs }); console.info('DSH_ENROLLMENT_STAGE=preview-complete'); return result } catch (error) { this.enrollmentFailure('publish-preview', error); throw new Error('native enrollment preview unavailable') } }
+  async previewEnrollment(raw: string): Promise<string> { if (this.device !== undefined) return this.device.previewEnrollment(raw); const input = await this.enrollmentInput(raw); try { const crypto = new NativeCryptoPrimitives(this.config.maxCryptoBytes), base64 = new util.Base64Helper(), digest = await crypto.hash(base64.decodeSync(input.desktopPublicSpki, util.Type.BASIC_URL_SAFE)); let fingerprint: string = 'p256-sha256-'; for (const byte of digest) fingerprint += byte.toString(16).padStart(2, '0'); const result = JSON.stringify({ desktopFingerprint: fingerprint, phoneFingerprint: (JSON.parse(await this.publicIdentity(input.identityAlias)) as PublicIdentity).credentialId, desktopId: input.ticket.desktopId, profileId: input.ticket.profileId, sessions: input.sessions, operations: input.operations, audience: input.audience, identityAlias: input.identityAlias, expiresAt: input.expiresAt, grantTtlMs: input.grantTtlMs }); console.info('DSH_ENROLLMENT_STAGE=preview-complete'); return result } catch (error) { this.enrollmentFailure('publish-preview', error); throw new Error('native enrollment preview unavailable') } }
   /** Explicit native comparison signs one canonical enrollment challenge only; does not pair, store trust or activate IO. */
   async signEnrollment(raw: string, compared: boolean): Promise<string> {
+    if (this.device !== undefined) return this.device.signEnrollment(raw, compared)
     this.core(); if (!compared) throw new Error('native enrollment comparison required'); const generation = this.generation, input = await this.enrollmentInput(raw)
     if (generation !== this.generation || this.enrollmentSigned.has(input.ticket.challengeId)) throw new Error('native enrollment retired'); this.enrollmentSigned.add(input.ticket.challengeId)
     const authority = new ProductAuthority(), crypto = new NativeCryptoPrimitives(this.config.maxCryptoBytes), signer = new NativeExistingIdentitySigner(authority, new NativeDeviceKeys(new NativeDeviceKeyPolicy(authority, input.identityAlias, huks.HuksAuthStorageLevel.HUKS_AUTH_STORAGE_LEVEL_ECE, this.config.maxCryptoBytes)), crypto), base64 = new util.Base64Helper()
     try { await signer.initializeNative(authority); const signature = await signer.signNative(authority, Uint8Array.from(input.phoneBytes)); if (generation !== this.generation || input.expiresAt <= Date.now()) throw new Error('native enrollment signature retired'); return '{"schema":"harmony-first-use-reply/1","offer":' + raw + ',"proof":{"challenge":' + JSON.stringify(input.ticket) + ',"signature":' + JSON.stringify(base64.encodeToStringSync(signature, util.Type.BASIC_URL_SAFE)) + '}}' } finally { signer.closeNative(authority) }
   }
   /** Selected saved public record is read only after a native decision; default boot remains IO-free and never connects automatically. */
-  async savedPairing(confirmed: boolean): Promise<string> { this.core(); if (!confirmed || this.filesDir === '') throw new Error('native saved pairing decision required'); const file = new NativePublicTrustFile(this.filesDir, this.config.publicTrustMaxBytes, this.selectedScope); try { const raw = await file.read(this.config.publicTrustMaxBytes); if (raw === null) throw new Error('native saved pairing absent'); this.core().preview(raw); return raw } finally { await file.close() } }
+  async savedPairing(confirmed: boolean): Promise<string> { if (this.device !== undefined) return this.device.savedPairing(confirmed); this.core(); if (!confirmed || this.filesDir === '') throw new Error('native saved pairing decision required'); const file = new NativePublicTrustFile(this.filesDir, this.config.publicTrustMaxBytes, this.selectedScope); try { const raw = await file.read(this.config.publicTrustMaxBytes); if (raw === null) throw new Error('native saved pairing absent'); this.core().preview(raw); return raw } finally { await file.close() } }
   private disableConnection(): void { const previous = this.config, settings = JSON.parse(previous.corePolicyJson) as CommandIdentity; settings.enabled = false; this.config = { enabled: false, approvedHost: previous.approvedHost, identityAlias: previous.identityAlias, deviceApiVerified: previous.deviceApiVerified, maxCryptoBytes: previous.maxCryptoBytes, maxTotalSendBytes: previous.maxTotalSendBytes, publicTrustMaxBytes: previous.publicTrustMaxBytes, corePolicyJson: JSON.stringify(settings), relay: previous.relay } }
   /** Explicit range management stops the old owner; listing saved labels neither selects nor authorizes a range. */
   async listSavedScopes(confirmed: boolean): Promise<string> {
+    if (this.device !== undefined) return this.device.listSavedScopes(confirmed)
     const parser = this.core(); if (!confirmed || this.filesDir === '' || this.scopeBlocked) throw new Error('native scope selection denied')
     await this.close(); this.disableConnection(); this.listedScopes.clear(); const rows: SavedScope[] = []
     try {
@@ -130,6 +143,7 @@ export class NativeProductOwner {
   }
   /** Explicit selection reads only the listed range and returns its public preview input; network remains disabled. */
   async selectSavedScope(key: string, confirmed: boolean): Promise<string> {
+    if (this.device !== undefined) return this.device.selectSavedScope(key, confirmed)
     const parser = this.core(), expected = this.listedScopes.get(key)
     if (!confirmed || expected === undefined || this.filesDir === '' || this.scopeBlocked) throw new Error('native scope selection denied')
     await this.close(); this.disableConnection(); const scope = key === 'legacy' ? '' : key, file = new NativePublicTrustFile(this.filesDir, this.config.publicTrustMaxBytes, scope)
@@ -138,6 +152,7 @@ export class NativeProductOwner {
   }
   /** A separately confirmed scope uses its own public file; existing scope/history is never replaced and no connection starts. */
   async saveNewScope(raw: string, compared: boolean, networkApproved: boolean): Promise<void> {
+    if (this.device !== undefined) throw new Error('device mode does not promote legacy Session scopes')
     const parser = this.core(), scope = JSON.parse(parser.scopeInput(raw)) as SavedScope
     if (!compared || !networkApproved || this.filesDir === '' || this.scopeBlocked) throw new Error('native new scope confirmation denied')
     await this.close(); this.disableConnection()
@@ -156,6 +171,7 @@ export class NativeProductOwner {
   }
   /** Native comparison additionally approves the exact public host; actual API is read locally, then the shared core performs initial confirmation, exact saved resume or explicit signed expiry continuation. No socket opens here. */
   async pairWithConnection(raw: string, compared: boolean, networkApproved: boolean): Promise<void> {
+    if (this.device !== undefined) return this.device.pairWithConnection(raw, compared, networkApproved)
     if (this.selectedScope !== '' && (JSON.parse(this.core().scopeInput(raw)) as SavedScope).key !== this.selectedScope) throw new Error('native selected scope mismatch')
     this.core().preview(raw); if (!compared || !networkApproved || deviceInfo.sdkApiVersion < 20 || this.filesDir === '') throw new Error('native connection configuration denied'); const record = JSON.parse(this.core().trustInput(raw)) as PublicRecord, previous = this.config, settings = JSON.parse(previous.corePolicyJson) as CommandIdentity; settings.enabled = true
     this.config = { enabled: true, approvedHost: record.paired.audience, identityAlias: record.identityAlias, deviceApiVerified: deviceInfo.sdkApiVersion, maxCryptoBytes: previous.maxCryptoBytes, maxTotalSendBytes: previous.maxTotalSendBytes, publicTrustMaxBytes: previous.publicTrustMaxBytes, corePolicyJson: JSON.stringify(settings), relay: previous.relay }
@@ -164,6 +180,7 @@ export class NativeProductOwner {
   }
   /** @param alias - identity name entered in the native UI. @param confirmed - explicit native UI decision for this alias, never a guest request. @returns public identity JSON after one absent-alias creation; unknown outcomes retain the key for local review. */
   async initializeIdentity(alias: string, confirmed: boolean): Promise<string> {
+    if (this.device !== undefined) return this.device.initializeIdentity(alias, confirmed)
     this.core()
     if (!confirmed || deviceInfo.sdkApiVersion < 20 || this.identityCreating) throw new Error('native identity initialization denied')
     const generation = this.generation, authority = new ProductAuthority(), keys = new NativeDeviceKeys(new NativeDeviceKeyPolicy(authority, alias, huks.HuksAuthStorageLevel.HUKS_AUTH_STORAGE_LEVEL_ECE, this.config.maxCryptoBytes))
@@ -173,24 +190,29 @@ export class NativeProductOwner {
   }
   /** @param alias - explicitly selected identity name. @returns public SPKI and fingerprint for the selected existing alias only; does not create keys, pair or connect. */
   async publicIdentity(alias: string): Promise<string> {
+    if (this.device !== undefined) return this.device.publicIdentity(alias)
     this.core()
     if (deviceInfo.sdkApiVersion < 20) throw new Error('native identity inspection denied')
     const generation = this.generation, authority = new ProductAuthority(), crypto = new NativeCryptoPrimitives(this.config.maxCryptoBytes), keys = new NativeDeviceKeys(new NativeDeviceKeyPolicy(authority, alias, huks.HuksAuthStorageLevel.HUKS_AUTH_STORAGE_LEVEL_ECE, this.config.maxCryptoBytes)), signer = new NativeExistingIdentitySigner(authority, keys, crypto), base64 = new util.Base64Helper()
     try { const spki = await signer.initializeNative(authority), digest = await crypto.hash(spki); let credentialId: string = 'p256-sha256-'; for (const byte of digest) credentialId += byte.toString(16).padStart(2, '0'); if (generation !== this.generation) throw new Error('native identity inspection retired'); return JSON.stringify({ identityAlias: alias, publicSpki: base64.encodeToStringSync(spki, util.Type.BASIC_URL_SAFE), credentialId }) }
     finally { signer.closeNative(authority) }
   }
-  preview(raw: string): string { return this.core().preview(raw) }
-  pair(raw: string, compared: boolean): Promise<void> { return this.core().pair(this.authority, raw, compared) }
-  connect(): Promise<void> { return this.core().connect(this.authority) }
-  select(session: string): Promise<void> { return this.core().select(this.authority, session) }
-  submit(request: string, text: string): Promise<string> { return this.core().submit(this.authority, request, text) }
-  receipt(request: string): Promise<string> { return this.core().receipt(this.authority, request) }
-  cancel(): Promise<void> { return this.core().cancel(this.authority) }
-  richRequest(packet: string): Promise<string> { return this.core().richRequest(packet) }
-  richRefusal(packet: string): string { return this.core().richRefusal(packet) }
-  revoke(): Promise<void> { return this.core().revoke(this.authority) }
-  async foreground(): Promise<void> { await this.closing; if (this.product !== undefined) return; const storage = this.storage; if (this.filesDir !== '') await this.start(new NativePublicTrustFile(this.filesDir, this.config.publicTrustMaxBytes, this.selectedScope), this.publish); else if (storage !== undefined) await this.start(storage, this.publish) }
-  close(): Promise<void> { if (this.closing !== undefined) return this.closing; const generation = ++this.generation, product = this.product; this.product = undefined; this.closing = (async () => { try { await product?.close() } finally { if (generation === this.generation) activeProducts.delete(this) } })(); return this.closing }
+  preview(raw: string): string { if (this.device !== undefined) return this.device.preview(raw); return this.core().preview(raw) }
+  pair(raw: string, compared: boolean): Promise<void> { if (this.device !== undefined) return Promise.reject(new Error('device network comparison required')); return this.core().pair(this.authority, raw, compared) }
+  /** @param networkApproved - fresh native host consent in device mode; legacy scopes retain their confirmation path. @returns after explicit connection only. */
+  connect(networkApproved: boolean = false): Promise<void> { if (this.device !== undefined) return this.device.connect(networkApproved); return this.core().connect(this.authority) }
+  previewRoute(raw: string): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device route mode required')); return this.device.previewRoute(raw) }
+  signRoute(raw: string, approved: boolean): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device route mode required')); return this.device.signRoute(raw, approved) }
+  stopRoute(): Promise<void> { if (this.device === undefined) return Promise.reject(new Error('device route mode required')); return this.device.stopRoute() }
+  select(session: string): Promise<void> { if (this.device !== undefined) return this.device.select(session); return this.core().select(this.authority, session) }
+  submit(request: string, text: string): Promise<string> { if (this.device !== undefined) return this.device.submit(request, text); return this.core().submit(this.authority, request, text) }
+  receipt(request: string): Promise<string> { if (this.device !== undefined) return this.device.receipt(request); return this.core().receipt(this.authority, request) }
+  cancel(): Promise<void> { if (this.device !== undefined) return this.device.cancel(); return this.core().cancel(this.authority) }
+  richRequest(packet: string): Promise<string> { if (this.device !== undefined) return this.device.richRequest(packet); return this.core().richRequest(packet) }
+  richRefusal(packet: string): string { if (this.device !== undefined) return this.device.richRefusal(packet); return this.core().richRefusal(packet) }
+  revoke(): Promise<void> { if (this.device !== undefined) return this.device.revoke(); return this.core().revoke(this.authority) }
+  async foreground(): Promise<void> { if (this.device !== undefined) { activeProducts.add(this); await this.device.foreground(); return }; await this.closing; if (this.product !== undefined) return; const storage = this.storage; if (this.filesDir !== '') await this.start(new NativePublicTrustFile(this.filesDir, this.config.publicTrustMaxBytes, this.selectedScope), this.publish); else if (storage !== undefined) await this.start(storage, this.publish) }
+  close(): Promise<void> { if (this.device !== undefined) return this.device.close().finally(() => activeProducts.delete(this)); if (this.closing !== undefined) return this.closing; const generation = ++this.generation, product = this.product; this.product = undefined; this.closing = (async () => { try { await product?.close() } finally { if (generation === this.generation) activeProducts.delete(this) } })(); return this.closing }
 }
 const activeProducts: Set<NativeProductOwner> = new Set()
 /** Ability background/destroy has no automatic task cancellation or foreground reconnection. */

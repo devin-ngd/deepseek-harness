@@ -32,6 +32,7 @@ export class DesktopFirstUse {
   private readonly verifier: P256EnrollmentVerifier
   private offer: FirstUseOffer | undefined
   private approved: ProductTrustRecord | undefined
+  private confirmationState: 'not-started' | 'denied' | 'unknown' | 'committed' | 'revoked' = 'not-started'
   private installed = false
   private closed = false
   private renewal: { previous: PublicTrustDocument; revokedEpoch: number } | undefined
@@ -65,17 +66,17 @@ export class DesktopFirstUse {
   /** @param authority - exact local owner. @param response - native signed response copied back, never a public RPC. @param interaction - existing explicit desktop authorization prompts. @returns phone public record and relay public pair only after original grant commit. */
   async confirm(authority: object, response: unknown, interaction: AuthorizationInteraction): Promise<{ phone: ProductTrustRecord; publicDocument: PublicTrustDocument; relayPair: { pairId: string; desktopPublicSpki: string; phonePublicSpki: string; epoch: number; expiresAt: number; revoked: false } }> {
     this.local(authority); await this.selectedSession(); const reply = firstUseReplySchema.parse(response), offer = this.offer; if (offer === undefined || this.approved !== undefined || JSON.stringify(reply.offer) !== JSON.stringify(offer) || JSON.stringify(reply.proof.challenge) !== JSON.stringify(offer.ticket)) throw new Error('first-use response denied')
-    this.offer = undefined; let committed = false
+    this.offer = undefined; this.confirmationState = 'unknown'; let committed = false
     try {
     const flow = this.owner.offerPairing(authority, { deviceId: this.policy.deviceId, credentialId: offer.ticket.credentialId, proof: JSON.stringify(reply.proof), sessions: offer.sessions, operations: offer.operations, grantTtlMs: offer.grantTtlMs }), stop = this.ctx.authorization.registerFlow(flow)
-    try { const outcome = await this.ctx.authorization.begin({ key: flow.key, interaction }); if (outcome.status !== 'authorized') throw new Error('first-use confirmation denied'); committed = true } finally { stop() }
+    try { const outcome = await this.ctx.authorization.begin({ key: flow.key, interaction }); if (outcome.status !== 'authorized') { this.confirmationState = 'denied'; throw new Error('first-use confirmation denied') }; committed = true; this.confirmationState = 'committed' } finally { stop() }
     this.local(authority); const record = await this.ctx.credentials.readRecord(flow.key); if (record?.kind !== 'grant') throw new Error('first-use grant unavailable')
     const phone = productTrustSchema.parse({ schema: 'harmony-product-public-trust/1', revoked: false, identityAlias: offer.identityAlias, desktopPublicSpki: offer.desktopPublicSpki, paired: { pairId: offer.pairId, epoch: 1, audience: offer.audience, credentialId: offer.ticket.credentialId, desktopCredentialId: p256CredentialId(offer.desktopPublicSpki), expiresAt: this.clock() + offer.grantTtlMs, grant: record.payload } })
     phone.paired.expiresAt = Math.min(phone.paired.expiresAt, phone.paired.grant.expiresAt); this.approved = phone; this.phonePublicSpki = offer.ticket.publicSpki
     let document: PublicTrustDocument = phone
     if (this.renewal !== undefined) { if (phone.paired.grant.epoch !== this.renewal.revokedEpoch + 1) throw new Error('renewal grant epoch denied'); const unsigned = { schema: 'harmony-product-public-trust/2' as const, revoked: false, record: phone, history: successorHistory(this.renewal.previous), previousDigest: createHash('sha256').update(canonicalPublicTrust(this.renewal.previous)).digest('hex'), revokedEpoch: this.renewal.revokedEpoch }; document = publicTrustRenewalSchema.parse({ ...unsigned, signature: Buffer.from(await this.signer.sign(publicTrustRenewalBytes(unsigned))).toString('base64url') }) }
     return { phone: structuredClone(phone), publicDocument: structuredClone(document), relayPair: { pairId: offer.pairId, desktopPublicSpki: offer.desktopPublicSpki, phonePublicSpki: offer.ticket.publicSpki, epoch: phone.paired.epoch, expiresAt: phone.paired.expiresAt, revoked: false } }
-    } catch (error) { if (committed) { try { await this.owner.revoke(authority, this.policy.deviceId) } catch (revocationError) { throw new AggregateError([error, revocationError], 'first-use postcommit failure; revocation outcome unknown') } }; throw error }
+    } catch (error) { if (committed) { try { await this.owner.revoke(authority, this.policy.deviceId); this.confirmationState = 'revoked' } catch (revocationError) { throw new AggregateError([error, revocationError], 'first-use postcommit failure; revocation outcome unknown') } }; throw error }
   }
   /** @param authority - separately approved local activation. @returns after installing both existing providers; network starts only when the existing desktop plugin is explicitly mounted. */
   install(authority: object): void {
@@ -90,6 +91,19 @@ export class DesktopFirstUse {
     this.local(authority); this.selection(); const grant = this.approved?.paired.grant
     if (grant === undefined || !this.owner.hasLocalGrant(this.policy.deviceId) || grant.profileId !== this.policy.profileId || JSON.stringify(grant.sessions) !== JSON.stringify([this.policy.sessionId])) throw new Error('first-use product selection denied')
     return { enabled: true, relayEnabled: true, desktopId: grant.desktopId, profileId: grant.profileId, sessionId: grant.sessions[0]!, journalMode }
+  }
+  /** @param authority - local stop decision. @returns after cancelling a never-authorized offer or verifying durable grant revocation; uncertain authorization and cleanup failures retain the pending owner. */
+  async stop(authority: object): Promise<'challenge-cancelled' | 'grant-revoked'> {
+    this.local(authority)
+    const grant = await this.owner.storedGrant(authority, this.policy.deviceId)
+    if (grant === undefined) {
+      if (this.confirmationState !== 'not-started' && this.confirmationState !== 'denied') throw new Error('first-use authorization outcome unknown')
+      this.verifier.revoke(this.policy.deviceId); this.offer = undefined
+      return 'challenge-cancelled'
+    }
+    if (!grant.revoked) await this.owner.revoke(authority, this.policy.deviceId)
+    this.verifier.revoke(this.policy.deviceId); this.offer = undefined; this.confirmationState = 'revoked'
+    return 'grant-revoked'
   }
   /** @param authority - local revoke decision. @returns after original grant denial and durable tombstone; relay revocation remains separately owned. */
   revoke(authority: object): Promise<void> { this.local(authority); return this.owner.revoke(authority, this.policy.deviceId) }

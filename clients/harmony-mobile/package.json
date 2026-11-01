@@ -10,6 +10,11 @@
     "check:connection-deployment": "node scripts/connection-deployment.mjs",
     "test:connection-candidate": "node --test tests/connection-candidate.test.mjs",
     "test:connection-deployment": "node --test tests/connection-deployment.test.mjs",
+    "test:connection-start": "node --test tests/connection-stagger.test.mjs tests/prepared-connection-start.test.mjs tests/connection-observation.test.mjs tests/connection-ui-start.test.mjs tests/desktop-confirmation.test.mjs tests/connection-hdc-port.test.mjs",
+    "test:desktop-submission": "node scripts/check-desktop-submission.mjs",
+    "test:route-restore": "node scripts/build-product-core.mjs --report=route-restore-core-build.json && node scripts/check-route-restore.mjs",
+    "test:session-json": "node scripts/check.mjs && node --test tests/session-json.test.mjs tests/native-session-presentation.test.mjs tests/follow-recovery.test.mjs tests/domain.test.mjs tests/wire.test.mjs tests/link.test.mjs",
+    "test:mvp-messages": "node scripts/check-mvp-messages.mjs",
     "test:integration": "node scripts/check.mjs --integration && node scripts/integration-check.mjs",
     "test:product-entry": "node scripts/test-normal-product.mjs",
     "build:product-entry": "node scripts/build-normal-product.mjs",
@@ -22,6 +27,11 @@
     "test:control": "node scripts/phase76-control-build.mjs && node scripts/product-native-substitute.mjs && node scripts/phase73-port-build.mjs && node --test tests/phase76-control.test.mjs tests/phase76-diagnostic-lines.test.mjs tests/phase73-http-refusal.test.mjs tests/phase73-port-order.test.mjs && node scripts/phase76-integration.mjs",
     "test:phase76-operations": "node scripts/phase76-build-operations.mjs && node scripts/phase76-control-build.mjs && node --test tests/phase76-operations.test.mjs && node scripts/phase76-closed-control-test.mjs",
     "demo:link": "node scripts/check.mjs && node scripts/demo-link.mjs",
-    "test:browser": "node scripts/check.mjs && node scripts/assets.mjs && node scripts/browser-check.mjs"
+    "test:browser": "node scripts/check.mjs && node scripts/assets.mjs && node scripts/browser-check.mjs",
+    "check:installed": "node scripts/check-installed-rc2.mjs",
+    "check:installed-package": "node scripts/check-installed-rc2.mjs --package",
+    "check:isolation": "node scripts/check-rc2-isolation.mjs",
+    "test:controls": "node scripts/test-rc2-controls.mjs",
+    "package:desktop": "node scripts/package-rc2-controls.mjs"
   }
 }

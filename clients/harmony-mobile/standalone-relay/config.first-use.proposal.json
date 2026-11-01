@@ -12,7 +12,7 @@
   "connectionCheckIntervalMs": 1000,
   "maxHeaderBytes": 8192,
   "maxRooms": 2,
-  "maxRoomTtlMs": 30000,
+  "maxRoomTtlMs": 600000,
   "pairTimeoutMs": 30000,
   "maxFrameBytes": 2097152,
   "maxBufferedBytes": 4194304,
@@ -21,7 +21,7 @@
   "broker": {
     "maxOwnerRoomIssues": 64,
     "pairs": [],
-    "roomTtlMs": 30000,
+    "roomTtlMs": 600000,
     "maxPairs": 1,
     "issueWindowMs": 60000,
     "maxControlPayloadBytes": 16384,

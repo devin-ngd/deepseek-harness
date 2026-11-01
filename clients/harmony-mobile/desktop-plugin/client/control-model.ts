@@ -1,0 +1,111 @@
+/** Session-owned transaction state for the fixed Harmony controls; no IO on construction. */
+import type { CommandResult } from '@deepseek-ai/dsh-commands/types'
+import { deviceRouteSchema, type DeviceRouteOffer } from '../../src/device-route-protocol.ts'
+import { publicDeviceFeedback } from './feedback.ts'
+
+export const controlCommands = ['status', 'route-status', 'route-start', 'route-confirm', 'connect', 'reconnect', 'stop'] as const
+export type ControlCommand = typeof controlCommands[number]
+export type ControlFailure = 'rejected' | 'unknown' | 'invalidInput' | 'unavailable' | 'stale'
+export interface ControlSnapshot {
+  readonly phase: 'idle' | 'pending' | 'settled' | 'disposed'
+  readonly pending: ControlCommand | null
+  readonly notice: ControlFailure | null
+  readonly firstFailure: ControlFailure | null
+  readonly uncertain: boolean
+  readonly publicText: string
+  readonly publicState: string | null
+  readonly allowed: readonly ControlCommand[]
+}
+export interface ControlPort {
+  readonly sessionId: string
+  readonly isCurrent: () => boolean
+  readonly execute: (line: string) => Promise<CommandResult | undefined>
+}
+
+/** Owns one retained Session's requests; remounts share its lock and disposed scopes ignore late replies. */
+export class ControlModel {
+  private closed = false
+  private busy = false
+  private uncertain = false
+  private firstFailure: ControlFailure | null = null
+  private offer: DeviceRouteOffer | undefined
+  private readonly listeners = new Set<() => void>()
+  private value: ControlSnapshot = { phase: 'idle', pending: null, notice: null, firstFailure: null, uncertain: false, publicText: '', publicState: null, allowed: ['status', 'route-status', 'stop'] }
+  readonly source = {
+    getSnapshot: (): ControlSnapshot => this.value,
+    subscribe: (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener) } },
+  }
+  /** @param port - adapter to the original authenticated Session command API. */
+  constructor(private readonly port: ControlPort) {}
+
+  private allowed(): readonly ControlCommand[] {
+    if (this.closed || this.busy) return []
+    const result: ControlCommand[] = ['status', 'route-status', 'stop']
+    if (this.uncertain) return result
+    if (['bound', 'route-required', 'stopped'].includes(this.value.publicState ?? '')) result.push('route-start')
+    if (this.offer !== undefined && this.value.publicState === 'route-offered') result.push('route-confirm')
+    if (['route-ready', 'transport-closed', 'transport-failed'].includes(this.value.publicState ?? '')) result.push('connect')
+    if (this.value.publicState === 'transport-started') result.push('reconnect')
+    return result
+  }
+  private publish(patch: Partial<ControlSnapshot>): void {
+    this.value = { ...this.value, ...patch, uncertain: this.uncertain, firstFailure: this.firstFailure, allowed: this.allowed() }
+    // Eligibility reads the newly settled public state.
+    this.value = { ...this.value, allowed: this.allowed() }
+    for (const listener of this.listeners) listener()
+  }
+  private fail(code: ControlFailure, mutation: boolean): false {
+    this.firstFailure ??= code
+    this.uncertain ||= mutation
+    this.busy = false
+    this.publish({ phase: 'settled', pending: null, notice: code })
+    return false
+  }
+
+  /** @param command - one fixed control. @param input - public phone reply for route-confirm only. @returns whether a reviewed success was received; never retries. */
+  async run(command: ControlCommand, input = ''): Promise<boolean> {
+    if (this.closed || this.busy) return false
+    if (!this.port.isCurrent()) { this.dispose(); return false }
+    if (!this.allowed().includes(command)) return false
+    let line = '/harmony-device ' + command
+    if (command === 'route-confirm') {
+      if (new TextEncoder().encode(input).length > 16384) return this.fail('invalidInput', false)
+      let candidate: unknown
+      try { candidate = JSON.parse(input) } catch (error) { if (!(error instanceof SyntaxError)) throw error; return this.fail('invalidInput', false) }
+      const route = deviceRouteSchema.safeParse(candidate)
+      if (!route.success || this.offer === undefined || JSON.stringify(route.data.offer) !== JSON.stringify(this.offer)) return this.fail('invalidInput', false)
+      line += ' ' + JSON.stringify(route.data)
+    } else if (input !== '') return this.fail('invalidInput', false)
+    const mutation = command !== 'status' && command !== 'route-status'
+    this.busy = true
+    this.publish({ phase: 'pending', pending: command, notice: null })
+    let reply: CommandResult | undefined
+    try { reply = await this.port.execute(line) } catch (error) {
+      // A lost response cannot establish whether the Host already changed state.
+      if (this.closed) return false
+      if (!this.port.isCurrent()) { this.dispose(); return false }
+      return this.fail('unknown', mutation)
+    }
+    if (this.closed || !this.port.isCurrent()) { this.dispose(); return false }
+    if (reply === undefined || reply.kind !== 'success') return this.fail('rejected', mutation)
+    const result = publicDeviceFeedback(reply.text, this.port.sessionId)
+    if (result === undefined) return this.fail('unavailable', mutation)
+    const body = result.publicResult
+    if (body?.schema === 'harmony-device-route-offer/1') this.offer = body
+    if (body?.schema === 'harmony-device-route/1') this.offer = body.offer
+    if (result.state === 'stopped' || result.state === 'route-required') this.offer = undefined
+    if (command === 'stop' && result.state === 'stopped') this.uncertain = false
+    this.busy = false
+    this.publish({ phase: 'settled', pending: null, notice: null, publicText: JSON.stringify(result, null, 2), publicState: result.state })
+    return true
+  }
+
+  /** Release local observers only; disposal does not claim to cancel or undo a Host request. */
+  dispose(): void {
+    if (this.closed) return
+    this.closed = true
+    this.value = { ...this.value, phase: 'disposed', pending: null, allowed: [], publicText: '' }
+    for (const listener of this.listeners) listener()
+    this.listeners.clear()
+  }
+}

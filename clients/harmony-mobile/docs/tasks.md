@@ -1,3 +1,19 @@
+> 当前任务（2026-11-01 rc2.27 MVP）：[原机 MVP 已通过](mvp-rc227-a2-20261101.md)：手机从真实目录进入“手机MVP体验”，两次发送分别完成新回复及运行态停止，50 次观察覆盖 181.8 秒连续连接。沿用桌面 rc2.23／手机 rc2.27，未重装，原配对、UID 和数据保留。双端停止、路由撤销、中继／代理原字节恢复及亮屏恢复均已核验；窗口已关闭。下一步优先定位回复、取消确认等待和减少连接准备步骤，单次成功不等于长期稳定性通过。下文为阶段历史。
+
+> 当前任务（2026-10-30 UI 适配器）：[桌面与手机适配器](connection-ui-adapters-20261030.md)已接入启动协调逻辑，完成双端连续提交、各阶段取消、迟到调用、超时及 pending／failed 收尾的离线回归；正常产品确认和原对象核对保留，等待原调用完成后才执行独立停止验证。本轮未操作已安装应用、HDC、原配对、数据或中继，没有重开窗口；实际 UI 与持续连接仍未验收。
+
+> 当前任务（2026-10-30 实机窗口）：[本轮唯一连接](rc216-window-20261030.md)已执行并关闭，首次明确失败为 control-handshake/timeout，目录 0，未重连或调用模型。手机已完成挑战/身份校验、原签名及发送，未观察到房间回执；双端启动至少错开 21.797 秒，超过中继 10 秒挑战期限，属已知操作干扰，不能认定唯一产品根因。原配对保留，双端停止、route 独立撤销、中继配置恢复、5 个 reader 退出及输入核空均通过。本轮授权已消耗；先离线验证启动时序，再决定新窗口。
+
+> 本地准备（2026-10-30）：[本地只读核对](../evidence/rc216-offline-preflight-20261030.json)通过：桌面实际 rc2.16，device 与 feedback 运行，108 个安装文件匹配候选；原手机 rc2.16、原 UID、同一进程，已配对未连接、连接禁用，候选哈希未变。仅恢复已授权的 HDC 查询，没有连接、配置修改或重装。连接观察回归 4/4 通过；[下一轮限时验收范围](rc216-next-window.md)已准备，原中继当前状态尚未核对，窗口未获新授权。
+
+> 安装记录（2026-10-29）：[rc2.16 授权安装和离线核对](rc216-installation-20261029.md)完成：桌面 Harmony rc2.16，device 与 feedback 运行；手机复用原证书原位安装 rc2.16，UID 不变，两端冷启动通过，桌面状态 bound、手机已配对且未连接。绑定和历史文件大小一致，原配置与现有改动保留。未准备路由、连接、重配或提交模型任务；稳定连接及真机交互仍待新窗口授权。
+
+> 历史任务（2026-10-28）：用户确认[已安装 `.2`](installer-repaint-20261028.md)正常启动。权限持久处理已补入安装器源码，解压前准备暂存目录 RX，失败保留旧安装；原生回归、10 项 NSIS 场景及 14 项单元测试通过，尚未重打完整候选。现安装版、原 profile 和配对未改动；原配对恢复与 rc2.16 实际激活仍未核验，安装器启动来源登记差异尚未解决。未改手机／中继或开启实机窗口，旧窗口见[主交接](HANDOFF-2026-10-28.md)。下文保留阶段历史。
+
+- [x] rc2.14 原存储锁恢复、原签名原位更新及正常冷启动配对复用已通过；未重配、未联网。[验收与剩余范围](storage-lock-recovery-rc2.14.md)。
+
+- [x] rc2.13 启动只读诊断、定向回归与未签名候选封存完成；[验收范围与限制](acceptance.md)。实际安装和真机原因核实尚未执行。
+
 - [x] 当前 Host 的 /harmony-pair 与原生旧/新范围管理已实现；新增4项检查含历史防绕过均通过，断线轮整轮11/12（一个既有用例超时），不重复已完成的12项/187模块检查。官方复编与剩余30分钟限制见[接入记录](normal-product-entry.md)及[本轮验证](../evidence/normal-product-controls-validation.json)。
 - [x] 原超时用例按原限制单独重跑通过；29个精确peer、独立测试入口、显式新会话命令及5项隔离检查已完成。安装版alpha.4公开API和实际插件包均完成三响应/rich合成闭环；[当前产物](../evidence/normal-controls-artifacts.json)与[首次真机清单](first-device-acceptance.md)齐备，未安装、签名或激活。
 - [ ] 审阅新构建、确定实际普通 Session 与一次部署授权；固定两条 nginx 路由可避免每轮切换，但现有静态 relay pair 续期仍需维护/重启。无实际配对/安装/网络操作，保持撤销10/活动0。
@@ -325,3 +341,83 @@ The default-disabled package artifact is complete in [phase32](phase32-installab
 - [ ] 通过受信任的系统管理方式解决校验脚本执行权限，用户恢复后仅验证既有签名输出；完整验证通过后才可保留数据安装并检查新界面与原公开指纹。不得重签、重建attempt、删除claim或绕过执行策略；见[签装状态](connection-deployment.md)。
 
 用户已要求停止并交给专人，以上未完成项仅作待办，不授权自动继续。当前状态、产物、安全收尾及逐步验收见[完整交接](HANDOFF-2026-10-18.md)。
+
+## rc.2 对齐（2026-10-22）
+
+当前候选、针对性验证及现场阻塞统一见[rc.2 手机桌面插件对齐](rc2-alignment.md)。源码与打包入口验证通过不等于部署或真机验收；旧授权不复用。
+
+Harmony 命令结果显示修复的当前状态、独立版本证据和人工验收边界见 [rc.2 对齐记录](rc2-alignment.md#2026-10-23-命令结果显示修复)。
+
+## 公开配对维护准备（2026-10-24）
+
+公开登记与显式撤销工具已独立打包，Windows 和 Linux 定向测试均为 9/9，Linux 使用真实文件及目录 fsync；过期固定公开样本的 TTY 撤销、严格重读及原服务器库兼容性验证通过。单目录临时写权限已安装、自检并撤回，最终服务停止、原启动配置与只读权限恢复，真实配对日志未创建；独立测试配置保持禁用。完整证据及回执采集限制见[维护准备记录](../evidence/public-maintenance-preparation-20261024.json)。本轮未创建 grant、未开启授权窗口、未读取凭据库、未生成身份或调用模型；真实配对、连接和功能验收仍待当前会话 status 与手机前台复核后进行。
+
+## 2026-10-24 设备绑定源码阶段
+
+结果显示过滤按字段位置接受 enrollment ticket；`stop` 可取消未确认挑战，授权结果不明或持久撤销失败仍拒绝清理。显示源构建 9/9、严格客户端类型检查通过；命令及授权隔离测试 10/10，原记录见 `D:/Temp/harmony-binding-tests-4Weemp/report-v3.json`。
+
+新增设备绑定协议、桌面生命周期、原手机签名客户端和原生会话状态核心。持久策略仅允许 desktop profile 的动态可见会话；短票据绑定原加密通道对象，逐请求及结果交付前重新验证撤销、到期和当前可见性。旧单会话记录不解析为设备登记。固定密钥/模拟存储及通道测试 15/15，四个新核心模块严格类型检查零诊断；Node 与无外部运行时依赖的中立 JS 构建通过。可复验入口为 `node scripts/check-device-binding.mjs`，本轮证据为 [核心资格记录](../evidence/device-binding-core-1792812714703.json)。
+
+这些核心尚未接入正常 CLI、既有 WSS/relay carrier 或 ETS 页面，不能据此声称设备级产品完成或真机可用。设备级持久存储及真实 SessionController/Gateway 适配已应用；[真实服务阶段证据](../evidence/device-binding-real-services-20261024-stage.json)记录 3 项隔离测试通过。profile 适配草稿已修正官方 title projection 与 Peer disposal 用法后接入，不再是未应用草稿。桌面新 carrier、手机加密桥、按视图相关的 RPC 和复用原 MobileProduct/PhoneCore/rich owner 的适配已写入，六个集成模块严格类型检查零诊断；加密 carrier 全链路测试、正常命令入口、ETS 委派与完整候选仍待完成。`D:/Temp/harmony-native-device-product-20261024.ts` 为未应用的 native facade 草稿，未通过集成验证。未生成新版可安装插件或 HAP，未安装、启动 relay、访问真实身份库、创建真实绑定/grant/票据或调用模型；当前安装保持 rc2.4。
+
+## Device binding candidate closeout (2026-10-24)
+
+The source-only stage is now superseded by the [rc2.5 candidate reference](device-binding-rc2.5.md) and [exact artifact/evidence manifest](../evidence/device-binding-candidates-rc2.5.json). Device integration 6/6, affected legacy controls 6/6, protocol lifecycle 15/15, packaged feedback 10/10, strict type diagnostics 0, packaged rc.2 public API and official unsigned SDK compile passed. The independent candidates remain uninstalled; persistent device access, original signing material, real relay/WSS/ArkWeb and model task acceptance remain pending explicit approval and physical validation. Manual finite-ticket reconnect and the prior SSH access blocker are documented.
+
+## rc2.5 approved in-place installation (2026-10-24)
+
+Both rc2.5 packages are installed. Original signing verification/payload comparison passed; desktop 88-file integrity, unrelated dependencies/configuration and phone bundle/UID preservation are confirmed. Both apps remain stopped under the no-restricted-vault-read/no-authorization-restoration boundary. Public phone archive readback failed with no retained detailed error and was not retried; direct on-device hash remains unverified. No new identity, binding/grant/ticket, relay/SSH action or model call. See the [installation receipt](../evidence/device-binding-installation-rc2.5.json) and [precise limits](device-binding-rc2.5.md#approved-installation-follow-up-2026-10-24-0539-utc).
+
+## Offline connection recovery candidate (2026-10-24)
+
+The [rc2.6 recovery reference](connection-recovery-rc2.6.md) records 21 targeted and 7 integration passes, zero strict type diagnostics and a successful official unsigned SDK build. Relay deny-policy serialization and cold-start host permission/manual retry are repaired in source; installed rc2.5 and the existing persistent binding remain unchanged. Signing, installation, native Origin-compatible relay review and physical list/switch/sync/rich acceptance remain pending. No real identity store, remote service, authorization or model was used in this stage.
+
+## Connection feasibility after retained revocation (2026-10-24)
+
+The [feasibility review](connection-feasibility-rc2.6.md) identifies a remaining product lifecycle defect: relay pair/epoch are coupled to persistent bindingId/epoch, while the former temporary route is terminally revoked at epoch2. The local candidate alone cannot safely restore actual connectivity. Selected Origin regressions 18/18 and public-state regressions 10/10 pass; these retain strict rejection and do not implement successive routing windows. Complete a signed independent routing descriptor and crash-safe public registration/history lifecycle before successor deployment. No installation, remote operation or actual authorization was performed.
+
+## rc2.7 route candidates sealed offline (2026-10-24)
+
+The [route migration and rollback reference](device-route-rc2.7.md) supersedes the rc2.6 source blocker with a separate dual-signed finite route lifecycle, durable endpoint and relay ledgers, normal route commands and native page/carrier integration. The original binding epoch1 and old relay epoch2 tombstone remain independent. A second clock read in room publication was reproduced extending a deadline by one millisecond; the final issuer now caps it at the signed absolute deadline, without weakening client checks.
+
+Completed: integration 11/11 including two windows and restart/revocation; finite binding/ticket lifecycle 15/15; Origin 18 selected passes and public-history 10/10; ordinary controls 5/5; packaged feedback 11/11; packaged rc.2 public API; strict types with zero diagnostics; official API26 unsigned SDK build. Detached relay/tools imports, disabled CLI startup, public preparation/exclusive output and no-TTY mutation refusals pass. Nine fixed-public loopback admission cases retain exact Origin/role/Host/path/subprotocol and Cookie restrictions, with no room issued. Four matching rc2.7 archives and their current source hashes are recorded in the [final manifest](../evidence/device-route-candidates-rc2.7.json).
+
+Pending: separately approved original-material signing/in-place installation; exact relay code/config and new anchored journal migration; bounded physical connection/list/switch/sync/rich/reconnect acceptance and explicit route revoke/readback/service restoration. Actual phone Origin, HUKS, ArkWeb, public TLS and Linux durability are not established by offline tests. Installed rc2.5, original pairing and retained rc2.5/rc2.6 artifacts are untouched. No real identity, authorization, remote service or model operation occurred in this sealing stage.
+
+## rc2.7 approved in-place update completed (2026-10-24)
+
+Both original endpoints are now rc2.7. The [installation and passive startup receipt](../evidence/device-route-installation-rc2.7-complete.json) records original-material official signature/profile verification, exact 23-entry application payload parity, phone UID20020297 preservation, official desktop CLI exit0 and 93 matching installed files. Other manifest/lock entries and runtime/isolation/supply-chain configuration remain unchanged; the Host descriptor and rich-inline remain rc.2.
+
+After a verified complete desktop exit, the normal fresh app showed rc2.7 in its plugin detail, the new route command hint and an actually executed public `harmony-device status` result of desktop/bound. The actual phone showed paired/disconnected with connection/send controls disabled. No re-enrollment, route, ticket, relay operation, model call or private-state export was performed. The earlier screen-lock/window-readiness blockers are resolved. Physical relay/NetworkKit/ArkWeb/control acceptance is still pending separate migration and finite-window approval; no remote status was rechecked in this update.
+
+## Desktop diagnostic candidate
+
+The rc2.9 desktop diagnostic candidate passes first-error/cleanup failure, closed error categories and synthetic journal create/reopen/cold ownership checks; the prior candidate remains retained. After separate deployment authorization, verify the installed package and use its safe failure phase to choose the next bounded acceptance step. Do not switch live journal mode or retry a public window merely because an offline recovery test passes.
+
+- 2026-10-25 rc2.10: repair device-entry admission lifecycle after the actual journal-open/journal-already-exists failure. Preserve strict create/reopen and resolve device create to owner-validated create-or-reopen; retain receipts, schema, domain exclusion and first-error cleanup. Qualification and independent desktop candidate only; no installation, real route, configuration change or model call in this phase.
+
+rc2.10 final offline result: device integration 23/23, shared legacy 6/6, controls 5/5, feedback source/package 11/11 each, strict types zero diagnostics, and all five packaged installed-Host public API entries passed. The same current command regression fails on the backed-up rc2.9 sources with journal-open/journal-already-exists, then passes on the repair. The independent desktop archive is `D:/Temp/dsh-experimental-harmony-mobile-0.0.0-rc2.10.tgz`, SHA256 `360e03c9cf202c5c001384feb8b0e1f9c25f106126d30133fd0ac29074b6ce65`; complete evidence is `evidence/admission-lifecycle-rc2.10.json`. Phone/relay rc2.7 need no protocol update. No installation or new live test was performed.
+
+### 2026-10-25 rc2.11 phone connection diagnostics (offline only)
+
+Phone diagnostics now use closed stage/category codes for original identity reads, route validation, native channel acquisition, control/E2E handshake, tickets and the first catalogue. Actual NativePorts forward allowlisted content-free facts; earlier failure evidence survives cleanup errors. Uncertain cleanup remains fail-closed. Exceptions, causes, keys, credentials, tickets and protocol payloads never enter the diagnostic UI. Existing identity/signature, host consent, scope, expiry and revocation checks remain in force.
+
+Qualification: isolated fault regressions 17/17 including actual ETS owners with fixed-key SDK substitutes; device integration 23/23 with synthetic Sessions/loopback; lifecycle 15/15; page permission/layout 9/9; strict types zero diagnostics; official API26 compile and native import audit pass. A memory overlay of the backed-up shared sources fails 12 new diagnostic assertions, demonstrating missing diagnostics/error masking rather than the live connection cause. Two initial SDK builds rejected the catch syntax; the final supported Error cast preserves the exception and compiles. The unsigned HAP contains 23 unique CRC-checked entries and only the existing INTERNET permission.
+
+Candidate: `D:/Temp/dsh-harmony-mobile-0.0.0-rc2.11-device-diagnostics-unsigned.hap`, SHA256 `b67ccee1029da27a75e8e67a1be129dca14dc353fb497ba063a5027021a2b189`. Full evidence: [phone-diagnostics-rc2.11.json](../evidence/phone-diagnostics-rc2.11.json). No signing, installation, public network test, relay access or actual identity/binding/log/permission change occurred. Desktop rc2.10 and relay rc2.7 need no protocol change. Physical HUKS/NetworkKit, displayed diagnostics and connectivity remain unverified.
+
+Earlier test cleanup is still incomplete locally: the route was durably revoked and remote service/permissions restored, but desktop `harmony-device stop` awaits foreground recovery. No activation/input retry occurred during this offline work. Do not describe the earlier test as fully cleaned locally or connectivity as fixed.
+
+### 2026-10-26 rc2.11 phone in-place deployment
+
+Original-material official signing, verify-app, verify-profile, original certificate-chain pin and exact 23-entry application payload parity passed. Signed archive `D:/Temp/dsh-harmony-mobile-0.0.0-rc2.11-device-signed.hap`, SHA256 `12124fa41986e5baa8989a9bb9b6c500f85b5c926d1380735ea90d09837e6341`. The original phone was CMM-AL10/API26; official HDC replace install updated rc2.7 to rc2.11 with UID20020297 unchanged. No uninstall, data clear, new permission, new identity or pairing action occurred. Existing HDC was normally started at its original loopback address using unchanged existing key-file metadata; no trust/key reset or new trust acceptance occurred.
+
+Normal app startup and two fresh owned-layout observations in one process/window show paired/disconnected, with connect/send disabled. This confirms public paired state survived the update; private binding storage and the installed HAP were not read back. No desktop, relay, route/ticket or model operation was performed. Earlier local stop was separately confirmed by the user before this deployment; it was not replayed. Full [installation evidence](../evidence/phone-diagnostics-installation-rc2.11.json) and [passive phone evidence](../evidence/device-binding-passive-phone-rc2.11.json) are retained. Physical network/basic-control and actual failure-diagnostic display remain unverified; signing/install success is not a connectivity fix.
+
+## rc2.12 lifecycle follow-up
+
+Reuse the existing fixed phone/desktop binding. Qualify post-catalogue asynchronous close, reconnect connecting-to-timeout, primary error preservation and desktop terminal state offline, then build independent candidates. Physical session switching, message synchronization and rich interaction remain unverified; no new connection window is authorized by the offline work.
+
+## Local log self-check
+
+The [local-only diagnostic probe](local-log-selfcheck-rc2.15.md) has matching native/page regressions, strict types, official compilation and original-certificate signed payload checks. Original-phone in-place installation and paired/disconnected startup verification passed. The single approved no-network probe now has physical output-to-filtered-collection proof: exactly one fixed record from the same App PID, the page acknowledgement, and an exited owned reader. Pairing and public storage-size metadata are unchanged. Earlier empty isolated-client checks are superseded as host USB evidence. Real control-handshake and network functionality remain unverified.

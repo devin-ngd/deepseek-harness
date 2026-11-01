@@ -14,3 +14,13 @@
       disabled: true
       config:
         enabled: false
+    - id: harmony-mobile-feedback
+      name: '@deepseek-ai/dsh-experimental-harmony-mobile'
+      disabled: false
+      config:
+        enabled: false
+    - id: harmony-mobile-device
+      name: '@deepseek-ai/dsh-experimental-harmony-mobile/device'
+      disabled: true
+      config:
+        enabled: false

@@ -29,7 +29,7 @@
     "maxProofs": 64,
     "maxQueuedBytes": 4194304,
     "maxChallengeTtlMs": 15000,
-    "maxRoomTtlMs": 60000,
+    "maxRoomTtlMs": 600000,
     "handshakeMs": 10000,
     "e2e": {
       "maxFrameBytes": 2097152,

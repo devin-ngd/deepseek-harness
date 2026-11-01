@@ -1,8 +1,33 @@
 [
   {
-    "resource": "app.string.cancel",
-    "enabled": "(this.view.selected.length > 0 && !this.view.readOnly && !this.busy)",
-    "onClick": "(() => this.run(() => this.product.cancel()))"
+    "resource": "app.string.mvp_back",
+    "enabled": null,
+    "onClick": "(() => { this.page = 'sessions'; })"
+  },
+  {
+    "resource": "app.string.mvp_device",
+    "enabled": "(this.page !== 'device')",
+    "onClick": "(() => { this.page = 'device'; })"
+  },
+  {
+    "resource": "app.string.mvp_diagnostics",
+    "enabled": null,
+    "onClick": "(() => { this.showDiagnostics = !this.showDiagnostics; })"
+  },
+  {
+    "resource": "app.string.mvp_go_connect",
+    "enabled": null,
+    "onClick": "(() => { this.page = 'device'; })"
+  },
+  {
+    "resource": "app.string.mvp_sessions",
+    "enabled": "(this.page !== 'sessions')",
+    "onClick": "(() => { this.page = 'sessions'; })"
+  },
+  {
+    "resource": "app.string.mvp_setup",
+    "enabled": null,
+    "onClick": "(() => { this.showSetup = !this.showSetup; })"
   },
   {
     "resource": "app.string.product_all_sessions",
@@ -12,7 +37,7 @@
   {
     "resource": "app.string.product_confirm_pair",
     "enabled": "(this.networkApproved && this.compared && this.preview.desktopFingerprint.length > 0 && !this.busy)",
-    "onClick": "(() => this.run(async () => { await this.product.pairWithConnection(this.publicOffer, this.compared, this.networkApproved); this.connectionEnabled = this.product.connectionEnabled(); }))"
+    "onClick": "(() => this.run(() => this.savePairing()))"
   },
   {
     "resource": "app.string.product_confirm_revoke",
@@ -21,8 +46,8 @@
   },
   {
     "resource": "app.string.product_connect",
-    "enabled": "(this.connectionEnabled && this.view.pairing === 'paired' && this.view.connection === 'disconnected' && !this.busy)",
-    "onClick": "(() => this.run(() => this.product.connect()))"
+    "enabled": "(this.connectionEnabled && this.networkApproved && this.view.pairing === 'paired' && (this.view.connection === 'disconnected' || this.view.connection === 'blocked' && this.view.error === 'connection-unavailable') && !this.busy)",
+    "onClick": "(() => this.run(() => this.product.connect(this.networkApproved)))"
   },
   {
     "resource": "app.string.product_enrollment_preview",
@@ -65,6 +90,11 @@
     "onClick": "(() => { this.revokePending = false; })"
   },
   {
+    "resource": "app.string.product_log_selfcheck",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.logSelfCheck())"
+  },
+  {
     "resource": "app.string.product_reconcile",
     "enabled": "(this.lastRequest.length > 0 && this.view.selected.length > 0 && !this.busy)",
     "onClick": "(() => this.run(async () => { await this.product.receipt(this.lastRequest); }))"
@@ -80,8 +110,43 @@
     "onClick": "(() => { this.revokePending = true; })"
   },
   {
-    "resource": "app.string.send",
+    "resource": "app.string.product_route_preview",
+    "enabled": "(!this.busy && this.routeOffer.length > 0)",
+    "onClick": "(() => this.run(async () => { this.routeSummary = await this.product.previewRoute(this.routeOffer); this.routeApproved = false; }))"
+  },
+  {
+    "resource": "app.string.product_route_sign",
+    "enabled": "(!this.busy && this.routeApproved && this.routeSummary.length > 0)",
+    "onClick": "(() => this.run(async () => { this.routeReply = await this.product.signRoute(this.routeOffer, this.routeApproved); this.routeApproved = false; this.refreshConnectionControls(); }))"
+  },
+  {
+    "resource": "app.string.product_route_stop",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(async () => { await this.rich.close(); await this.product.stopRoute(); this.networkApproved = false; this.routeReply = ''; this.refreshConnectionControls(); await this.rich.foreground(); }))"
+  },
+  {
+    "resource": "app.string.product_scope_manage",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(async () => { await this.rich.close(); this.savedScopes = JSON.parse(await this.product.listSavedScopes(true)) as ProductSavedScope[]; this.connectionEnabled = false; this.lastRequest = ''; this.scopeEntry = true; await this.rich.foreground(); }))"
+  },
+  {
+    "resource": "app.string.product_scope_save_new",
+    "enabled": "(this.networkApproved && this.compared && this.preview.desktopFingerprint.length > 0 && !this.busy)",
+    "onClick": "(() => this.run(async () => { await this.rich.close(); await this.product.saveNewScope(this.publicOffer, this.compared, this.networkApproved); this.connectionEnabled = this.product.connectionEnabled(); this.savedScopes = []; this.compared = false; this.networkApproved = false; this.lastRequest = ''; this.scopeEntry = false; await this.rich.foreground(); }))"
+  },
+  {
+    "resource": "app.string.product_send",
     "enabled": "(this.view.selected.length > 0 && !this.view.readOnly && this.view.connection === 'connected' && !this.busy && this.draft.trim().length > 0)",
     "onClick": "(() => this.run(async () => { this.lastRequest = util.generateRandomUUID(false); await this.product.submit(this.lastRequest, this.draft); this.draft = ''; }))"
+  },
+  {
+    "resource": "app.string.product_stop",
+    "enabled": "(this.view.selected.length > 0 && !this.view.readOnly && this.view.connection === 'connected' && !this.busy)",
+    "onClick": "(() => this.run(() => this.product.cancel()))"
+  },
+  {
+    "resource": "app.string.product_storage_recover",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.product.recoverDeviceStorage(true)))"
   }
 ]

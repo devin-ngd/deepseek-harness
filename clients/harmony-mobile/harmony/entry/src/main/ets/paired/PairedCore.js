@@ -14788,7 +14788,7 @@ function date4(params) {
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 config(en_default());
 
-// ../../../../../Temp/dsh-harmony-alpha4-source-20261016/packages/experimental/rich-inline/src/shared/validate.ts
+// ../../packages/experimental/rich-inline/src/shared/validate.ts
 function isRichJson(value, depth = 0) {
   if (depth > 16) return false;
   if (value === null || typeof value === "boolean") return true;
@@ -15233,6 +15233,16 @@ var EncryptedRelayConnection = class {
 function validatePairedRelayPolicy(policy) {
   if (![policy.maxProofs, policy.maxQueuedBytes, policy.maxChallengeTtlMs, policy.maxRoomTtlMs, policy.handshakeMs, ...Object.values(policy.e2e)].every((value) => Number.isSafeInteger(value) && value > 0) || policy.e2e.maxFrames > 4294967295) throw new Error("invalid paired relay policy");
 }
+var PairedRelayFailure = class extends Error {
+  constructor(protocolFailed, cleanupFailed) {
+    super("paired connection failed");
+    this.protocolFailed = protocolFailed;
+    this.cleanupFailed = cleanupFailed;
+    this.name = "PairedRelayFailure";
+  }
+  protocolFailed;
+  cleanupFailed;
+};
 var PairedRelayEndpoint = class {
   /** @param trust - locally confirmed routing identity. @param policy - explicit bounds. @param ports - native/Node owner ports. @param received - authenticated plaintext delivery. @param ready - exact new binding and encrypted connection. @param notice - content-free closure/failure sink; no pending request success is implied. @param lifetime - pairing/device policy lifetime. @param diagnostic - optional fixed handshake facts; omission emits nothing. @param controlDiagnostic - optional fixed control facts; omission emits nothing and no payload reaches this sink. */
   constructor(trust, policy, ports, received, ready, notice, lifetime, diagnostic, controlDiagnostic) {
@@ -15261,7 +15271,7 @@ var PairedRelayEndpoint = class {
           const connection = new EncryptedRelayConnection(socket, crypto, ports.signer, policy.maxQueuedBytes, received, (binding) => {
             if (this.closed || lease.signal.aborted || generation !== this.generation) return;
             ready(binding, connection);
-          }, ports.scheduler, policy.handshakeMs, lease.signal, diagnostic);
+          }, ports.scheduler, policy.handshakeMs, lease.signal, diagnostic ?? ports.diagnostic);
           this.current = connection;
           this.dataConnections.add(connection);
         } catch (error51) {
@@ -15273,12 +15283,12 @@ var PairedRelayEndpoint = class {
       }).catch((error51) => {
         void error51;
         if (!this.closed) {
-          this.failure = true;
+          this.protocolFailure = true;
           this.close();
           this.release([() => this.notice("failed")]);
         }
       });
-    }, lifetime, controlDiagnostic);
+    }, lifetime, controlDiagnostic ?? ports.controlDiagnostic);
     try {
       this.stopControl = ports.control.onEnd(() => {
         this.close();
@@ -15296,6 +15306,7 @@ var PairedRelayEndpoint = class {
   closed = false;
   tail = Promise.resolve();
   failure = false;
+  protocolFailure = false;
   dataConnections = /* @__PURE__ */ new Set();
   stopControl = () => {
   };
@@ -15326,10 +15337,14 @@ var PairedRelayEndpoint = class {
   async settled() {
     await this.tail;
     const results = await Promise.allSettled([this.controller.settled(), ...[...this.dataConnections].map((connection) => connection.settled())]);
-    if (this.failure || results.some((value) => value.status === "rejected")) throw new Error("paired connection failed");
+    const cleanupFailed = this.failure || results.some((value) => value.status === "rejected");
+    if (this.protocolFailure || cleanupFailed) throw new PairedRelayFailure(this.protocolFailure, cleanupFailed);
     if (this.closed) this.dataConnections.clear();
   }
 };
+
+// src/device-operations.ts
+var deviceGrantOperations = ["task.submit", "task.receipt", "session.cancel", "session.sync", "rich.mount", "rich.snapshot", "rich.saveDraft", "rich.invoke", "rich.status", "rich.dispose"];
 
 // src/pairing-protocol.ts
 var identifier = external_exports.string().min(1).max(256);
@@ -15338,7 +15353,6 @@ var deviceChallengeSchema = external_exports.object({ protocol: external_exports
 function deviceChallengeBytes(challenge) {
   return transcriptBytes(["dsh-mobile-p256-proof/1", challenge.protocol, challenge.challengeId, challenge.desktopId, challenge.profileId, challenge.deviceId, challenge.credentialId, challenge.epoch, challenge.expiresAt, challenge.channelBindingId]);
 }
-var deviceGrantOperations = ["task.submit", "task.receipt", "session.cancel", "session.sync", "rich.mount", "rich.snapshot", "rich.saveDraft", "rich.invoke", "rich.status", "rich.dispose"];
 var pairedGrantSchema = external_exports.object({ protocol: external_exports.literal("dsh-mobile-device-auth/1"), desktopId: identifier.transform((value) => id(value)), profileId: identifier.transform((value) => id(value)), deviceId: identifier.transform((value) => id(value)), credentialId: identifier.transform((value) => id(value)), epoch: external_exports.number().int().positive().max(Number.MAX_SAFE_INTEGER - 1), sessions: external_exports.array(identifier.transform((value) => id(value))).min(1).max(16).refine((value) => !value.some((session) => session === "*") && new Set(value).size === value.length), operations: external_exports.array(external_exports.enum(deviceGrantOperations)).min(1).max(deviceGrantOperations.length).refine((value) => new Set(value).size === value.length), expiresAt: external_exports.number().int().nonnegative(), revoked: external_exports.literal(false) }).strict();
 var readOnlyGrantSchema = pairedGrantSchema.extend({ operations: external_exports.array(external_exports.enum(["session.sync", "task.receipt"])).min(1).max(2) });
 

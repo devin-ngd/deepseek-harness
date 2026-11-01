@@ -7,12 +7,12 @@ export const productConfiguration: NativeProductConfiguration = {
   "deviceApiVerified": 0,
   "maxCryptoBytes": 2097152,
   "maxTotalSendBytes": 16777216,
-  "publicTrustMaxBytes": 32768,
+  "publicTrustMaxBytes": 524288,
   "relay": {
     "maxProofs": 64,
     "maxQueuedBytes": 4194304,
     "maxChallengeTtlMs": 15000,
-    "maxRoomTtlMs": 60000,
+    "maxRoomTtlMs": 600000,
     "handshakeMs": 10000,
     "e2e": {
       "maxFrameBytes": 2097152,
@@ -20,5 +20,5 @@ export const productConfiguration: NativeProductConfiguration = {
       "maxFrames": 4096
     }
   },
-  "corePolicyJson": "{\"enabled\":false,\"trustMaxBytes\":32768,\"transport\":{\"maxPending\":8,\"maxQueuedFrames\":256,\"maxPacketBytes\":2097152,\"timeoutMs\":10000,\"recovery\":{\"maxAttempts\":8,\"retryDelayMs\":500}},\"domain\":{\"maxBytes\":1048576,\"maxEvents\":512,\"maxBlocks\":256,\"maxText\":262144,\"maxRichBlocks\":8},\"duplicateCap\":512,\"core\":{\"ttlMs\":30000,\"maxMounts\":4,\"maxIntents\":128,\"follow\":{\"mode\":\"bounded\",\"maxSegments\":32,\"maxFailures\":8,\"retryDelayMs\":500}},\"commandPrefix\":\"native-product\"}"
+  "corePolicyJson": "{\"enabled\":false,\"trustMaxBytes\":524288,\"transport\":{\"maxPending\":8,\"maxQueuedFrames\":256,\"maxPacketBytes\":2097152,\"timeoutMs\":10000,\"recovery\":{\"maxAttempts\":8,\"retryDelayMs\":500}},\"domain\":{\"maxBytes\":1048576,\"maxEvents\":512,\"maxBlocks\":256,\"maxText\":262144,\"maxRichBlocks\":8},\"duplicateCap\":512,\"core\":{\"ttlMs\":30000,\"maxMounts\":4,\"maxIntents\":128,\"follow\":{\"mode\":\"bounded\",\"maxSegments\":32,\"maxFailures\":8,\"retryDelayMs\":500}},\"commandPrefix\":\"native-product\"}"
 }

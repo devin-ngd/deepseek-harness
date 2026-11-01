@@ -83,7 +83,6 @@ export class SemanticPhone {
         else {
           if (frame.attemptId !== next.live.attemptId || frame.index !== next.live.nextIndex) throw new TransportError('domain-live-gap')
           if (frame.type === 'chunk') {
-            if (next.live.chunks.length >= this.limits.maxBlocks) throw new TransportError('domain-too-large')
             live = { ...next.live, revision, nextIndex: next.live.nextIndex + 1, chunks: [...next.live.chunks, frame.chunk!] }
           } else {
             const outcome = object(frame.outcome), committedSeq = outcome.kind === 'committed' ? outcome.seq as number : null

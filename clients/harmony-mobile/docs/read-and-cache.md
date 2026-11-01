@@ -4,6 +4,8 @@
 
 历史使用上游 SessionPage 的 `throughSeq/beforeSeq/maxMessages`，手机验证 envelope、Session、版本、连续 seq 和不可变交叠后原子地向前补页。它不回退 follow cursor、wire generation 或 task execution owner，不把历史再提交成任务。未来 Session 格式、required event 和 gap 保留原视图并报告。当前语义日志有显式 maxEvents/maxBytes；达到上限返回 `domain-window-full`，尚不支持无限历史或静默裁掉重建所需事实。
 
+流式思考和正文的小分片由 `maxBytes` 总字节预算及单片文本限制约束，`maxBlocks` 约束实际消息内容块数组。分片数量不会消耗内容块数量预算；累计字节超限仍保留上次已接收的状态与游标。[当前离线修复及原机限制](reply-sync-offline-20261101.md)记录其验证范围。
+
 共享 `MessageWindow` 以持久 message id 保留位置和行内 offset，读旧内容时新消息不会强制跳到底部；尾部跟随和 anchor 丢失分别显式返回。Chrome 实际复用节点、恢复 scrollTop 并限制20个显示节点。ArkUI 源码用同一模型生成的20行视口、List 和稳定 key，尚无已编译的 List 生命周期/IME/滚动 adapter。新 fixture 包含100条历史、离线只读及尺寸占位，不能据此宣称原生分页按钮已联网。
 
 `PhoneLibrary.save/restore` 保存带 schema、owner、epoch 和 age 的 app-owned cache，内容为 canonical 源事件、rich snapshot/draft 和去掉 continuation 的列表。它排除网络 hint、mount、任务重试队列、图片字节、凭据和读 token。恢复先验证 byte/version/scope/age，再原子提交为 disconnected/readOnly；接到新的合法远端 opening 后才解除缓存只读。未发送草稿能展示，但离线变更与桌面 CAS 冲突的合并 UI 尚未实现。缓存损坏、超限、不可访问和过期保持当前视图；storage 写失败由 native owner 明确显示，不能声称已落盘。Node 用独占 pending 文件和 rename 验证真实本地文件恢复，ArkTS app sandbox 文件实现仍待 SDK。

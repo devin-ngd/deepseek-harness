@@ -61,36 +61,56 @@ export function productButtonActions(ts, source) {
   return result.sort((left, right) => left.resource.localeCompare(right.resource))
 }
 
-/** @param ts - Installed official ETS parser. @param source - Native page source to check. @returns Scroll, keyboard and wrapping facts; throws when controls can escape the root scroll. */
+/** @param ts - Installed official ETS parser. @param source - Native page source to check. @returns History, footer, keyboard and wrapping facts; throws when history can displace conversation controls. */
 export function auditProductLayout(ts, source) {
   const { file, page, build } = parse(ts, source)
-  assert.equal(build.body.statements.length, 1, 'All native controls must share the root scroll')
+  assert.equal(build.body.statements.length, 1, 'The native page must have one root')
   const root = component(ts, build.body.statements[0].expression, file)
-  assert.equal(root.name, 'Scroll', 'The page root must scroll')
-  assert.deepEqual(root.attributes.get('height'), ["'100%'"], 'Only the scroll viewport fills the page height')
-  assert.deepEqual(root.attributes.get('scrollable'), ['ScrollDirection.Vertical'])
-  const content = component(ts, root.node.body.statements[0].expression, file)
+  assert.equal(root.name, 'Column', 'The page root must reserve space for fixed conversation controls')
+  assert.deepEqual(root.attributes.get('height'), ["'100%'"], 'The page must fill the resized viewport')
+  assert.deepEqual(root.attributes.get('width'), ["'100%'"])
+  assert.equal(root.node.body.statements.length, 2, 'The page must contain history and conditional conversation controls')
+  const scroll = component(ts, root.node.body.statements[0].expression, file)
+  assert.equal(scroll.name, 'Scroll', 'Page content must retain one history viewport')
+  assert.deepEqual(scroll.attributes.get('scrollable'), ['ScrollDirection.Vertical'])
+  assert.deepEqual(scroll.attributes.get('layoutWeight'), ['1'], 'History must use only the remaining viewport height')
+  assert.equal(scroll.attributes.has('height'), false, 'History must leave room for conversation controls')
+  const content = component(ts, scroll.node.body.statements[0].expression, file)
   assert.equal(content.name, 'Column')
   assert.equal(content.attributes.has('height'), false, 'Scroll content must retain intrinsic height')
+  const condition = root.node.body.statements[1]
+  assert.ok(ts.isIfStatement(condition) && condition.expression.getText(file) === "this.page === 'conversation'", 'Conversation controls must be scoped to the conversation page')
+  const footer = component(ts, condition.thenStatement.statements[0].expression, file)
+  assert.equal(footer.name, 'Column', 'Conversation controls must share one fixed footer')
+  assert.deepEqual(footer.attributes.get('id'), ["'product-conversation-controls'"])
+  assert.deepEqual(footer.attributes.get('width'), ["'100%'"])
+  assert.equal(footer.attributes.has('height') || footer.attributes.has('layoutWeight'), false, 'Conversation controls must retain intrinsic height')
   let resize = false
   const appear = page.members.find(node => node.name?.getText(file) === 'aboutToAppear')
   walk(ts, appear.body, node => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'setKeyboardAvoidMode' && node.arguments[0]?.getText(file) === 'KeyboardAvoidMode.RESIZE') resize = true
   })
-  assert.equal(resize, true, 'The keyboard must resize the scroll viewport')
-  let scrollCount = 0, composer = false, taskActions = false, wrappedGroups = 0
+  assert.equal(resize, true, 'The keyboard must resize the page viewport')
+  let scrollCount = 0, composer = false, taskActions = false, history = false, wrappedGroups = 0
   walk(ts, build.body, node => {
     if (!ts.isEtsComponentExpression(node)) return
     const name = node.expression.text, modifiers = attributes(ts, node, file), parents = ancestors(ts, node)
     if (name === 'Scroll') scrollCount++
     assert.ok(!['List', 'ListItem'].includes(name), 'The transcript must use the page scroll rather than another native viewport')
-    if (name === 'Column') assert.equal(modifiers.has('height'), false, 'Native section height must follow content')
+    if (name === 'Column' && node !== root.node) assert.equal(modifiers.has('height'), false, 'Native section height must follow content')
     if (name === 'Button') assert.equal(parents.includes('Row'), false, 'Button groups must wrap on narrow screens')
     if (name === 'Flex') { assert.match(node.arguments[0].getText(file), /wrap:\s*FlexWrap\.Wrap/); assert.deepEqual(modifiers.get('width'), ["'100%'"], 'Wrapping groups need a bounded page width'); wrappedGroups++ }
-    if (modifiers.get('id')?.[0] === "'product-composer'") { assert.equal(parents.filter(value => value === 'Scroll').length, 1); composer = true }
-    if (modifiers.get('id')?.[0] === "'product-task-actions'") { assert.equal(name, 'Flex'); assert.equal(parents.filter(value => value === 'Scroll').length, 1); taskActions = true }
+    if (name === 'ForEach' && node.arguments[0]?.getText(file) === 'this.view.messages') { assert.ok(parents.includes('Scroll'), 'History must remain scrollable'); history = true }
+    if (["'product-composer'", "'product-task-actions'"].includes(modifiers.get('id')?.[0])) {
+      assert.equal(parents.includes('Scroll'), false, 'Conversation controls must stay outside history scrolling')
+      let inFooter = false
+      for (let parent = node.parent; parent; parent = parent.parent) if (parent === footer.node) inFooter = true
+      assert.ok(inFooter, 'Conversation controls must stay inside the fixed footer')
+      if (modifiers.get('id')[0] === "'product-composer'") { assert.equal(name, 'TextInput'); composer = true }
+      else { assert.equal(name, 'Flex'); taskActions = true }
+    }
   })
   assert.equal(scrollCount, 1, 'Native sections must not reserve independent scroll heights')
-  assert.ok(composer && taskActions, 'Composer and actions must remain in the page scroll')
-  return { nativeScrollOwners: scrollCount, viewportHeight: '100%', contentHeight: 'intrinsic', keyboardAvoidance: 'RESIZE', wrappedButtonGroups: wrappedGroups, composerInRootScroll: composer, taskActionsInRootScroll: taskActions }
+  assert.ok(history && composer && taskActions, 'History, composer and actions must remain present')
+  return { nativeScrollOwners: scrollCount, pageHeight: '100%', viewportHeight: 'remaining', contentHeight: 'intrinsic', keyboardAvoidance: 'RESIZE', wrappedButtonGroups: wrappedGroups, composerOutsideScroll: composer, taskActionsOutsideScroll: taskActions }
 }

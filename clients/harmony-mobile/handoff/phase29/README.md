@@ -1,5 +1,7 @@
-# 离线交接包
+# Offline handoff package
 
-仅需已有 Node 22.19+ 或 24+，不需要原仓库、node_modules、DevEco 或 HDC。解压后运行 `node verify.mjs`。程序只读包内 fixtures，验证文件 hash、当前共享 TS 的合成 reset 读取，以及 v28 已记录原生日志/控件树的原判据；不重新执行原生，也不等于最新版全产品通过。此批实际测试 Node 24.13.0，其他 engines 范围没有在本批实测。
+English | [中文](README.zh.md)
 
-不会读取安装配置/真实会话/凭据，不监听端口，不发任务，不调用模型，不安装或签名。此包不是可连接真实桌面的产品，不包含 HAP 安装器。下一阶段计划和版本台账在 reference/ 生成文档中；源码引用保留为文字，不假设独立包带原仓库。所需安装/访问/配对/签名/网络批准仍各自独立。
+Only an existing Node 22.19+ or 24+ is needed; the original repository, node_modules, DevEco and HDC are unnecessary. After extraction, run `node verify.mjs`. It reads only bundled fixtures and checks file hashes, synthetic reset reads through the current shared TS, and the original criteria against v28's recorded native logs/control tree; it does not rerun native execution or establish acceptance of the latest complete product. This batch ran Node 24.13.0; the other declared engine versions were not measured in this batch.
+
+It reads no installed configuration, real Sessions or credentials, opens no listener, dispatches no task, invokes no model, and performs no installation or signing. This package cannot connect to a real desktop and contains no HAP installer. Next-stage plans and the version ledger are generated under reference/; source references remain text and do not assume that the standalone package includes the original repository. Required installation/access/pairing/signing/network approvals remain separate.

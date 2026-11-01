@@ -15,7 +15,7 @@ export type MessagePart = { readonly kind: 'text' | 'reasoning'; readonly text: 
   | { readonly kind: 'unsupported'; readonly type: string }
 /** Typed subset used by mobile rendering; other accepted events remain opaque journal facts. */
 export interface DecodedEvent { readonly wire: SessionWireEvent; readonly parts?: readonly MessagePart[]; readonly messageId?: string; readonly role?: string }
-/** Stream state is process-local and never establishes durable task completion. */
+/** Stream fragments are process-local, bounded by the domain byte budget, and never establish durable task completion. */
 export interface LiveState { readonly revision: number; readonly attemptId: string | null; readonly nextIndex: number; readonly chunks: readonly JsonValue[]; readonly committedSeq: number | null }
 /** Snapshot metadata is validated before replacing any current window. */
 export type DomainFrame = { readonly type: 'snapshot'; readonly cursor: number; readonly version: number; readonly seeded: boolean; readonly hasMore: boolean; readonly events: readonly DecodedEvent[]; readonly live: LiveState }
@@ -132,7 +132,7 @@ export function decodeDomain(value: JsonValue, owner: SessionId, limits: DomainL
     live = { ...live, revision }
     if (baseline.activeAttempt !== undefined) {
       const active = object(baseline.activeAttempt); integer(active.startedAfterSeq, -1); integer(active.turn, 1); integer(active.step, 1)
-      if (!Array.isArray(active.stream) || active.stream.length > limits.maxBlocks) throw new TransportError('domain-too-large')
+      if (!Array.isArray(active.stream)) throw new TransportError('domain-invalid')
       active.stream.forEach(chunk => validateChunk(chunk, limits))
       live = { revision, attemptId: string(active.attemptId, 128), nextIndex: integer(active.nextIndex), chunks: active.stream, committedSeq: null }
     }

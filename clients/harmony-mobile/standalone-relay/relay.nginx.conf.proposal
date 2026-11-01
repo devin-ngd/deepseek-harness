@@ -27,7 +27,7 @@ server {
     client_body_timeout 10s;
     limit_conn harmony_relay_conn 4;
     location = /harmony/relay/control/v1 {
-        limit_req zone=harmony_relay_upgrade burst=2 nodelay;
+        limit_req zone=harmony_relay_upgrade burst=3 nodelay;
         proxy_pass http://127.0.0.1:17846;
         proxy_http_version 1.1;
         proxy_set_header Host dsh.devinho.me;
@@ -35,12 +35,12 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header X-DSH-Relay-Pair $http_x_dsh_relay_pair;
         proxy_set_header X-DSH-Relay-Role $http_x_dsh_relay_role;
-        proxy_read_timeout 60s;
+        proxy_read_timeout 660s;
         proxy_send_timeout 10s;
         proxy_buffering off;
     }
     location = /harmony/relay/v1 {
-        limit_req zone=harmony_relay_upgrade burst=2 nodelay;
+        limit_req zone=harmony_relay_upgrade burst=3 nodelay;
         proxy_pass http://127.0.0.1:17846;
         proxy_http_version 1.1;
         proxy_set_header Host dsh.devinho.me;
@@ -49,7 +49,7 @@ server {
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-DSH-Relay-Room $http_x_dsh_relay_room;
         proxy_set_header X-DSH-Relay-Role $http_x_dsh_relay_role;
-        proxy_read_timeout 60s;
+        proxy_read_timeout 660s;
         proxy_send_timeout 10s;
         proxy_buffering off;
     }
