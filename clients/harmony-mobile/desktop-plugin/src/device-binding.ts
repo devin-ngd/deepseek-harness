@@ -6,15 +6,19 @@ import type { DeviceTransportBinding } from '../../integration/device-auth.ts'
 import { p256CredentialId, verifyP256 } from '../../integration/p256-public.ts'
 import { deviceGrantOperations } from '../../src/pairing-protocol.ts'
 import { deviceRouteContextSchema, type DeviceRouteContext } from '../../src/device-binding-protocol.ts'
+import { deviceSessionRowSchema, deviceProjectRowSchema, deviceSessionActionSchema, deviceSessionManagedSchema, type DeviceSessionRow, type DeviceProjectRow, type DeviceSessionAction } from '../../src/device-session-directory.ts'
 import { deviceBindingSchema, deviceBindingOfferSchema, deviceBindingReplySchema, deviceConnectionChallengeSchema, deviceConnectionTicketSchema, deviceBindingBytes, deviceBindingOfferBytes, deviceBindingReplyBytes, deviceConnectionChallengeBytes, deviceConnectionProofBytes, deviceConnectionTicketBytes, type DeviceBinding, type DeviceBindingOffer, type DeviceConnectionChallenge, type DeviceConnectionTicket } from '../../src/device-binding-protocol.ts'
 
 /** Atomic public-only persistence; implementations preserve old generations and reject compare conflicts or unknown writes. */
 export interface DeviceBindingStorage { read(): Promise<string | null>; compareAndSet(previous: string | null, next: string): Promise<void> }
-/** Sanitized visible Session row from the current desktop profile; no host paths or raw logs. */
-export interface DeviceSessionRow { readonly profileId: 'desktop'; readonly sessionId: string; readonly title: string; readonly projectId: string | null }
+export type { DeviceSessionRow, DeviceProjectRow, DeviceSessionAction } from '../../src/device-session-directory.ts'
 /** Host-owned catalogue and dispatch; only the existing ten mobile operations may enter dispatch. */
 export interface DeviceBindingSessionPorts {
   list(signal: AbortSignal): Promise<readonly DeviceSessionRow[]>
+  /** Optional desktop projects; absence publishes an empty project list. */
+  projects?(signal: AbortSignal): Promise<readonly DeviceProjectRow[]>
+  /** Optional list management; absence rejects every phone management intent. */
+  manage?(action: DeviceSessionAction, signal: AbortSignal): Promise<{ readonly sessionId: string }>
   /** Optional direct operation adapter; absence requires the existing profile wire dispatcher through run(). */
   dispatch?(sessionId: string, operation: typeof deviceGrantOperations[number], payload: unknown, signal: AbortSignal): Promise<unknown>
 }
@@ -121,9 +125,27 @@ export class DeviceBindingOwner {
   /** @param transport - exact authenticated channel. @param ticket - its short-lived public receipt. @returns current desktop-visible rows, including Sessions created after binding; no Agent is resumed. */
   async catalog(transport: DeviceTransportBinding, ticket: unknown): Promise<readonly DeviceSessionRow[]> {
     const { signal } = await this.admitted(transport, ticket), rows = await this.sessions.list(signal); signal.throwIfAborted()
-    if (rows.length > this.policy.maxCatalogRows || rows.some(row => row.profileId !== 'desktop') || new Set(rows.map(row => row.sessionId)).size !== rows.length) throw new Error('device catalogue scope or capacity denied')
-    const schema = z.array(z.object({ profileId: z.literal('desktop'), sessionId: z.string().min(1).max(256), title: z.string().max(this.policy.maxPublicBytes), projectId: z.string().max(256).nullable() }).strict())
-    const parsed = schema.parse(rows); await this.admitted(transport, ticket); return parsed
+    if (rows.length > this.policy.maxCatalogRows || rows.some(row => row.profileId !== 'desktop' || row.title.length > this.policy.maxPublicBytes) || new Set(rows.map(row => row.sessionId)).size !== rows.length) throw new Error('device catalogue scope or capacity denied')
+    const parsed = z.array(deviceSessionRowSchema).parse(rows); await this.admitted(transport, ticket); return parsed
+  }
+  /** @param transport - exact authenticated channel. @param ticket - its short-lived public receipt. @returns current desktop projects without paths; empty when the profile adapter has no project port. */
+  async projects(transport: DeviceTransportBinding, ticket: unknown): Promise<readonly DeviceProjectRow[]> {
+    const { signal } = await this.admitted(transport, ticket), list = this.sessions.projects, rows = list === undefined ? [] : await list(signal); signal.throwIfAborted()
+    if (rows.length > this.policy.maxCatalogRows || rows.some(row => row.title.length > this.policy.maxPublicBytes) || new Set(rows.map(row => row.projectId)).size !== rows.length) throw new Error('device project catalogue capacity denied')
+    const parsed = z.array(deviceProjectRowSchema).parse(rows); await this.admitted(transport, ticket); return parsed
+  }
+  /**
+   * Authorization is the registration's all-visible-sessions scope under a current ticket; these intents are separate from the signed mobile operations, so existing registrations need no new pairing.
+   * @param transport - exact authenticated channel. @param ticket - current receipt. @param candidate - phone list-management intent naming a visible Session or project.
+   * @returns the created or changed Session after admission still holds; a later admission failure leaves the outcome unknown and nothing is retried.
+   */
+  async manage(transport: DeviceTransportBinding, ticket: unknown, candidate: unknown): Promise<{ readonly sessionId: string }> {
+    const action = deviceSessionActionSchema.parse(candidate), admission = await this.admitted(transport, ticket), manage = this.sessions.manage
+    if (manage === undefined) throw new Error('device Session management unavailable')
+    const visible = action.action === 'create' ? action.projectId === null || (await this.projects(transport, ticket)).some(row => row.projectId === action.projectId) : (await this.catalog(transport, ticket)).some(row => row.sessionId === action.sessionId)
+    if (!visible) throw new Error('device Session management denied')
+    const result = deviceSessionManagedSchema.parse(await manage(action, admission.signal))
+    await this.admitted(transport, ticket); return result
   }
   /** @param transport - exact authenticated channel. @param ticket - current receipt. @param profileId - fixed route owner. @param sessionId - selected visible row. @param operation - existing narrow mobile operation. @param payload - existing operation-owned bounded parser input. @returns canonical result only if admission still holds after completion; accepted work is never retried. */
   dispatch(transport: DeviceTransportBinding, ticket: unknown, profileId: string, sessionId: string, operation: typeof deviceGrantOperations[number], payload: unknown): Promise<unknown> {

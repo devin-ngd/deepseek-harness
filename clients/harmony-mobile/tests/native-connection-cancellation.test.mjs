@@ -7,7 +7,7 @@ const api=await import(pathToFileURL(process.env.DSH_PHONE_DIAGNOSTIC_MODULE).hr
 const policy=JSON.parse(await readFile('product.config.json','utf8'))
 function gate(){let resolve;const promise=new Promise(yes=>{resolve=yes});return{promise,resolve}}
 function mobile(connect){const authority={},views=[],product=new api.DeviceBoundMobileProduct(authority,{load:async()=>({}),ticket:async()=>({expiresAt:5000})},{connect},()=>1000,{after:()=>()=>{}},view=>views.push(view));return{product,authority,views}}
-function connection(close=async()=>{}){return{authentication:'native',route:{routeId:'fixture-route',routeEpoch:1,expiresAt:5000},binding:{id:'fixture-channel',remoteCredentialId:'fixture',signal:new AbortController().signal},readyTicket:async()=>({}),catalog:async()=>[],select:async()=>{throw Error('unused')},close}}
+function connection(close=async()=>{}){return{authentication:'native',route:{routeId:'fixture-route',routeEpoch:1,expiresAt:5000},binding:{id:'fixture-channel',remoteCredentialId:'fixture',signal:new AbortController().signal},readyTicket:async()=>({}),catalog:async()=>({sessions:[],projects:null}),select:async()=>{throw Error('unused')},close}}
 
 function selectedMobile(options={}){
  const events=[],stops=[],m=mobile(async()=>makeConnection());let opens=0
@@ -15,7 +15,7 @@ function selectedMobile(options={}){
   const id=++opens,abort=new AbortController();let open=true
   const rpc=new api.DeviceProductRpc({request:async()=>{},follow:async()=>{},stop:async key=>{events.push('view-stop-'+id);await options.release?.();if(!open)throw Error('provider closed before consumer');stops.push(key)}},{after:()=>()=>{}},100,8,'fixture')
   const route={desktopId:'fixture',profileId:'desktop',sessionId:'fixture-session'},value=connection(async()=>{events.push('channel-close-'+id);open=false;abort.abort();rpc.close();await options.close?.()})
-  value.binding={...value.binding,id:'fixture-'+id,signal:abort.signal};value.catalog=async()=>[{profileId:'desktop',sessionId:route.sessionId,title:'Fixture',projectId:null}]
+  value.binding={...value.binding,id:'fixture-'+id,signal:abort.signal};value.catalog=async()=>({sessions:[{profileId:'desktop',sessionId:route.sessionId,title:'Fixture',projectId:null}],projects:null})
   value.select=async(_route,_ticket,publish,lifetime)=>{const view=rpc.view(route,()=>{});await view.follow('follow','{"argument":{},"resume":null}');await options.select?.({publish,lifetime});return{richRequest:async()=>'',close:()=>view.close()}}
   return value
  }

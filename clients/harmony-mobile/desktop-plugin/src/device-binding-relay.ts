@@ -56,8 +56,9 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
       if (data === null || channel === undefined || binding === undefined) throw new Error('device carrier unavailable')
       if (data.method === 'metadata') {
         const value = fields(candidate, ['method', 'argument']); if (value.argument !== null) throw new Error('device metadata denied')
-        return jsonPayload({ desktopId: this.plan.desktopId, profileId: 'desktop', sessions: await channel.catalog() })
+        return jsonPayload({ desktopId: this.plan.desktopId, profileId: 'desktop', sessions: await channel.catalog(), projects: await channel.projects() })
       }
+      if (data.method === 'manage') { const value = fields(candidate, ['method', 'action']); return jsonPayload(await channel.manage(value.action)) }
       if (data.method === 'select') { const value = fields(candidate, ['method', 'route']), route = routeSchema.parse(value.route); await channel.select(route); return jsonPayload({ selected: route }) }
       if (data.method === 'request') { const value = fields(candidate, ['method', 'route', 'argument']), route = routeSchema.parse(value.route); return jsonPayload(await channel.request(route, argument(value.argument), signal)) }
       throw new Error('device carrier method denied')

@@ -12,6 +12,7 @@ import { jsonPayload } from './wire.ts'
 import { id } from './protocol.ts'
 import { verifyDeviceRoute, type DeviceRoute } from './device-route-protocol.ts'
 import type { ProductConnection } from './paired-product-transport.ts'
+import { deviceSessionActionSchema } from './device-session-directory.ts'
 
 const route = z.object({ desktopId: z.string().min(1).max(256), profileId: z.literal('desktop'), sessionId: z.string().min(1).max(256) }).strict()
 /** Existing native crypto/socket owner supplies all ports; only public registration and a routing deadline are input JSON. */
@@ -104,12 +105,13 @@ export class NativeDeviceCore implements ProductConnection {
   ticketJson(): string { if (this.receipt === undefined || this.receipt.expiresAt <= this.ports.clock()) throw new Error('native device ticket unavailable'); return JSON.stringify(this.receipt) }
   private active(): PairedRelayEndpoint { if (this.closed || this.failed || this.receipt === undefined || this.receipt.expiresAt <= this.ports.clock() || this.binding.signal.aborted || this.endpoint === undefined) throw new Error('native device request denied'); return this.endpoint }
   private selected(candidate: unknown) { const value = route.parse(candidate), binding = deviceBindingSchema.parse(JSON.parse(this.registration)); if (value.desktopId !== binding.desktopId) throw new Error('native device route denied'); return value }
-  /** @param idText - native-owned correlation id. @param raw - only metadata/select/request with an explicit route for Session operations. @returns after encrypted send, never task completion. */
+  /** @param idText - native-owned correlation id. @param raw - only metadata, manage, or select/request with an explicit route for Session operations. @returns after encrypted send, never task completion. */
   async request(idText: string, raw: string): Promise<void> {
     const endpoint = this.active(); if (new TextEncoder().encode(raw).length > this.policy.e2e.maxPlaintextBytes) throw new Error('native device packet capacity'); const value = JSON.parse(raw), method = value?.method
     if (method === 'metadata') { const packet = fields(value, ['method', 'argument']); if (packet.argument !== null) throw new Error('native device metadata denied') }
     else if (method === 'select') this.selected(fields(value, ['method', 'route']).route)
     else if (method === 'request') this.selected(fields(value, ['method', 'route', 'argument']).route)
+    else if (method === 'manage') deviceSessionActionSchema.parse(fields(value, ['method', 'action']).action)
     else throw new Error('native device method denied')
     await endpoint.send(jsonPayload({ kind: 'request', id: text(idText), value }))
   }

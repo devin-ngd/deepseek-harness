@@ -639,6 +639,142 @@
     {
       "name": "error_generic",
       "value": "操作没有完成。可在设置的高级与诊断中查看详情。"
+    },
+    {
+      "name": "view_recent",
+      "value": "最近"
+    },
+    {
+      "name": "view_projects",
+      "value": "项目"
+    },
+    {
+      "name": "search_sessions",
+      "value": "搜索会话或项目"
+    },
+    {
+      "name": "filter_running",
+      "value": "运行中"
+    },
+    {
+      "name": "filter_running_count",
+      "value": "运行中 %d"
+    },
+    {
+      "name": "filter_archived",
+      "value": "已归档"
+    },
+    {
+      "name": "no_matches",
+      "value": "没有符合条件的会话。"
+    },
+    {
+      "name": "no_running",
+      "value": "当前没有正在运行的会话。"
+    },
+    {
+      "name": "no_archived",
+      "value": "没有已归档的会话。"
+    },
+    {
+      "name": "mvp_no_sessions_manage",
+      "value": "这里还没有会话。点右上角的新建按钮，或在电脑上创建会话。"
+    },
+    {
+      "name": "age_now",
+      "value": "刚刚"
+    },
+    {
+      "name": "age_minutes",
+      "value": "%d 分钟前"
+    },
+    {
+      "name": "age_hours",
+      "value": "%d 小时前"
+    },
+    {
+      "name": "age_days",
+      "value": "%d 天前"
+    },
+    {
+      "name": "age_date",
+      "value": "%d月%d日"
+    },
+    {
+      "name": "age_full_date",
+      "value": "%d年%d月%d日"
+    },
+    {
+      "name": "session_untitled",
+      "value": "新会话"
+    },
+    {
+      "name": "session_running",
+      "value": "运行中"
+    },
+    {
+      "name": "session_more",
+      "value": "会话操作"
+    },
+    {
+      "name": "session_pin",
+      "value": "置顶"
+    },
+    {
+      "name": "session_unpin",
+      "value": "取消置顶"
+    },
+    {
+      "name": "session_archive",
+      "value": "归档"
+    },
+    {
+      "name": "session_unarchive",
+      "value": "取消归档"
+    },
+    {
+      "name": "session_archived_notice",
+      "value": "已归档，可在“已归档”中查看或恢复"
+    },
+    {
+      "name": "session_unarchived_notice",
+      "value": "已取消归档"
+    },
+    {
+      "name": "archived_notice",
+      "value": "此会话已归档，只能查看。取消归档后可以继续对话。"
+    },
+    {
+      "name": "composer_archived",
+      "value": "已归档的会话不能发送消息"
+    },
+    {
+      "name": "new_session",
+      "value": "新建会话"
+    },
+    {
+      "name": "new_session_hint",
+      "value": "选择会话所属的项目。会话在电脑上创建，发送第一条消息后才开始任务。"
+    },
+    {
+      "name": "new_session_no_project",
+      "value": "不指定项目"
+    },
+    {
+      "name": "new_session_no_project_hint",
+      "value": "使用电脑端的默认工作目录"
+    },
+    {
+      "name": "project_none",
+      "value": "未归入项目"
+    },
+    {
+      "name": "project_new_session",
+      "value": "在此项目中新建会话"
+    },
+    {
+      "name": "project_sessions",
+      "value": "%d 个会话"
     }
   ]
 }

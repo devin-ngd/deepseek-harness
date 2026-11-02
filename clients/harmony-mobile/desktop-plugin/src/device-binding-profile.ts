@@ -14,17 +14,36 @@ import type { DeviceTransportBinding } from '../../integration/device-auth.ts'
 import type { AuthenticatedDeviceProvider, AuthenticatedDeviceScope } from './admission.ts'
 import { deviceRemotePolicy } from './device-policy.ts'
 import { invokeProfile, followProfile } from './transport.ts'
-import type { DeviceBindingOwner, DeviceBindingSessionPorts, DeviceSessionRow } from './device-binding.ts'
+import type { DeviceBindingOwner, DeviceBindingSessionPorts, DeviceSessionRow, DeviceProjectRow } from './device-binding.ts'
 import type { DeviceSessionRoute } from '../../src/mobile-device-product.ts'
 
-/** @param ctx - actual desktop profile, never an arbitrary profile path. @returns dynamic normal visible catalogue without resuming an Agent or starting a model. */
+/** @param ctx - actual desktop profile, never an arbitrary profile path. @returns dynamic visible catalogue without subagent Sessions, desktop projects without paths, and list management through the desktop's own Session and workspace services; none resumes an Agent or starts a model. */
 export function deviceProfileSessionPorts(ctx: Context): DeviceBindingSessionPorts {
   if (ctx.get('profileContext')?.name !== 'desktop') throw new Error('device binding requires desktop profile')
-  return { list: async signal => {
-    if (ctx.get('profileContext')?.name !== 'desktop') throw new Error('device binding profile changed')
-    const value = await ctx.sessionController.list({}, signal)
-    return value.items.map(row => ({ profileId: 'desktop' as const, sessionId: row.sessionId, title: typeof row.projections?.values.title === 'string' ? row.projections.values.title : row.sessionId, projectId: null }))
-  } }
+  const desktop = () => { if (ctx.get('profileContext')?.name !== 'desktop') throw new Error('device binding profile changed') }
+  return {
+    list: async signal => {
+      desktop()
+      const value = await ctx.sessionController.list({}, signal), registry = ctx.workspaceRegistry, owners = new Map<string, string>()
+      for (const workspace of registry.list()) for (const sessionId of workspace.sessionIds) owners.set(sessionId, workspace.id)
+      const pinned = new Set<string>(registry.pinnedSessionIds), archived = new Set<string>(registry.archivedSessionIds)
+      return value.items.filter(row => row.origin !== 'subagent').map((row): DeviceSessionRow => ({ profileId: 'desktop', sessionId: row.sessionId, title: typeof row.projections?.values.title === 'string' ? row.projections.values.title : row.sessionId, projectId: owners.get(row.sessionId) ?? null, updatedAt: row.updatedAt, running: row.running, pinned: pinned.has(row.sessionId), archived: archived.has(row.sessionId), blank: row.blank }))
+    },
+    projects: async signal => { desktop(); signal.throwIfAborted(); return ctx.workspaceRegistry.list().map((workspace): DeviceProjectRow => ({ projectId: workspace.id, title: workspace.title })) },
+    manage: async (action, signal) => {
+      desktop(); signal.throwIfAborted()
+      if (action.action === 'create') return { sessionId: (await ctx.sessionController.create(action.projectId === null ? {} : { workspaceId: id<'WorkspaceId'>(action.projectId) })).sessionId }
+      const sessionId = id<'SessionId'>(action.sessionId), registry = ctx.workspaceRegistry
+      switch (action.action) {
+        case 'archive': await registry.archiveSession(sessionId, { stopActivity: true }); break
+        case 'unarchive': await registry.unarchiveSession(sessionId); break
+        case 'pin': await registry.pinSession(sessionId); break
+        case 'unpin': await registry.unpinSession(sessionId); break
+        default: { const unknown: never = action; throw new Error('device Session action denied: ' + String(unknown)) }
+      }
+      return { sessionId: action.sessionId }
+    },
+  }
 }
 interface PeerBinding { readonly scope: AuthenticatedDeviceScope; readonly lifetime: AbortSignal; readonly stop: () => void }
 /** Host-owned verified peers are minted only after the new owner verifies the original channel and ticket. */
@@ -85,6 +104,10 @@ export class DeviceBoundProfileChannel {
   constructor(private readonly ctx: Context, private readonly owner: DeviceBindingOwner, private readonly provider: DeviceBindingProfileProvider, private readonly transport: DeviceTransportBinding, ticket: unknown, private readonly limits: LinkConfig) { this.ticket = deviceConnectionTicketSchema.parse(ticket) }
   /** @returns dynamic current visible rows; no selected Session or desktop foreground window affects them. */
   catalog(): Promise<readonly DeviceSessionRow[]> { if (this.closed) return Promise.reject(new LinkError('closed')); return this.owner.catalog(this.transport, this.ticket) }
+  /** @returns current desktop projects without paths. */
+  projects(): Promise<readonly DeviceProjectRow[]> { if (this.closed) return Promise.reject(new LinkError('closed')); return this.owner.projects(this.transport, this.ticket) }
+  /** @param action - unparsed phone list-management intent. @returns the created or changed Session; selection and followers are unchanged. */
+  manage(action: unknown): Promise<{ readonly sessionId: string }> { if (this.closed) return Promise.reject(new LinkError('closed')); return this.owner.manage(this.transport, this.ticket, action) }
   /** @param route - exact native desktop/profile/Session route. @returns after old Peer and rich/follow owners retire; no pairing or persistent grant is created. */
   select(route: DeviceSessionRoute): Promise<void> {
     const operation = this.tail.then(async () => {

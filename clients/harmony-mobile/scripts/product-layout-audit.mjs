@@ -60,10 +60,11 @@ function iconOnly(ts, node, file) {
   return children.length === 1 && ts.isExpressionStatement(children[0]) && component(ts, children[0].expression, file).name === 'SymbolGlyph'
 }
 
-/** @param ts - Installed official ETS parser. @param source - Inert native page source. @returns Stable button ids, label resources, guards and action callbacks for compatibility comparison. */
+/** @param ts - Installed official ETS parser. @param source - Inert native page source. @returns Stable button ids, label resources, guards and action callbacks of `build` and the page's `@Builder` methods, for compatibility comparison. */
 export function productButtonActions(ts, source) {
-  const { file, build } = parse(ts, source), printer = ts.createPrinter(), result = []
-  walk(ts, build.body, node => {
+  const { file, page, build } = parse(ts, source), printer = ts.createPrinter(), result = []
+  const builders = page.members.filter(node => node !== build && node.body !== undefined && (ts.getDecorators?.(node) ?? []).some(decorator => decorator.expression.getText(file) === 'Builder'))
+  for (const body of [build.body, ...builders.map(node => node.body)]) walk(ts, body, node => {
     if (!ts.isEtsComponentExpression(node) || node.expression.text !== 'Button') return
     const label = node.arguments[0], modifiers = attributes(ts, node, file), id = modifiers.get('id')?.[0]
     const resource = label !== undefined && ts.isCallExpression(label) && label.expression.getText(file) === '$r' ? label.arguments[0].text : null

@@ -32,6 +32,7 @@ export declare class NativeDeviceProductFacade {
   connect(networkApproved: boolean): Promise<void>
   select(session: string): Promise<void>
   refresh(): Promise<void>
+  manage(raw: string): Promise<string>
   submit(request: string, text: string): Promise<string>
   receipt(request: string): Promise<string>
   cancel(): Promise<void>

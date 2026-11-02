@@ -145,6 +145,8 @@ export class NativeDeviceProductOwner {
   stopRoute(): Promise<void> { this.autoStopped = true; return this.automatic === undefined ? this.core().stopRoute() : this.automatic.stop() }
   select(session: string): Promise<void> { return this.core().select(session) }
   refresh(): Promise<void> { return this.core().refresh() }
+  /** @param raw - list-management intent JSON from the native page. @returns created or changed Session id after the catalogue refreshed. */
+  manage(raw: string): Promise<string> { return this.core().manage(raw) }
   submit(request: string, text: string): Promise<string> { return this.core().submit(request, text) }
   receipt(request: string): Promise<string> { return this.core().receipt(request) }
   cancel(): Promise<void> { return this.core().cancel() }

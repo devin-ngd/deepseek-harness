@@ -235,6 +235,32 @@ it('actual desktop catalogue includes future Sessions and reuses the narrow Gate
     f.ctx.llm.assertZeroRealCalls()
   } finally { await channel?.close(); await f.close() }
 })
+it('actual desktop directory reports list state and manages Sessions through the desktop services without a model', async () => {
+  const f = await fixture('binding-directory-manage'); let channel: DeviceBoundProfileChannel | undefined
+  try {
+    const existing = id<'SessionId'>('directory-existing'); await f.ctx.sessionController.create({ sessionId: existing, cwd: f.world })
+    const folder = join(f.world, 'directory-project'); await mkdir(folder); const project = await f.ctx.workspaceRegistry.create(folder, 'Directory project')
+    await f.bind(); const ticket = await f.connect(), provider = new DeviceBindingProfileProvider(f.ctx, Date.now)
+    const options = { enabled: true, desktopId: f.policy.desktopId, profileId: 'desktop', journalMode: 'create' as const }
+    await f.ctx.plugin(Desktop, options)
+    channel = new DeviceBoundProfileChannel(f.ctx, f.owner, provider, f.server, ticket, Desktop.resolveOptions(options, Date.now).limits)
+    const row = async (sessionId: string) => (await channel!.catalog()).find(value => value.sessionId === sessionId)
+    expect(await row(existing)).toMatchObject({ profileId: 'desktop', pinned: false, archived: false, running: false, blank: true })
+    expect(await channel.projects()).toContainEqual({ projectId: project.id, title: 'Directory project' })
+    expect(JSON.stringify(await channel.projects())).not.toContain(folder.replaceAll('\\', '\\\\'))
+    const created = await channel.manage({ action: 'create', projectId: project.id })
+    expect(await row(created.sessionId)).toMatchObject({ projectId: project.id, blank: true, archived: false })
+    expect(await row((await channel.manage({ action: 'create', projectId: null })).sessionId)).toBeDefined()
+    await channel.manage({ action: 'pin', sessionId: existing }); expect(await row(existing)).toMatchObject({ pinned: true, archived: false })
+    await channel.manage({ action: 'archive', sessionId: existing }); expect(await row(existing)).toMatchObject({ pinned: false, archived: true })
+    await channel.manage({ action: 'unarchive', sessionId: existing }); expect(await row(existing)).toMatchObject({ pinned: false, archived: false })
+    await expect(channel.manage({ action: 'pin', sessionId: 'directory-hidden' })).rejects.toThrow('management denied')
+    await expect(channel.manage({ action: 'create', projectId: 'directory-unknown-project' })).rejects.toThrow('management denied')
+    await expect(channel.manage({ action: 'delete', sessionId: existing })).rejects.toThrow()
+    expect(f.ctx.workspaceRegistry.archivedSessionIds).toEqual([])
+    f.ctx.llm.assertZeroRealCalls()
+  } finally { await channel?.close(); await f.close() }
+})
 it('public storage retains pending markers after lost commit and never silently recovers or touches old grants', async () => {
   const f = await fixture('binding-storage-unknown')
   try {

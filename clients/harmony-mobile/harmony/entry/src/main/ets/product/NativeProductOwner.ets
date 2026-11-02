@@ -205,6 +205,8 @@ export class NativeProductOwner implements NativeProductRichPort {
   signRoute(raw: string, approved: boolean): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device route mode required')); return this.device.signRoute(raw, approved) }
   stopRoute(): Promise<void> { if (this.device === undefined) return Promise.reject(new Error('device route mode required')); return this.device.stopRoute() }
   select(session: string): Promise<void> { if (this.device !== undefined) return this.device.select(session); return this.core().select(this.authority, session) }
+  /** @param raw - list-management intent JSON. @returns created or changed Session id; legacy scopes have no list management. */
+  manage(raw: string): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device list management required')); return this.device.manage(raw) }
   submit(request: string, text: string): Promise<string> { if (this.device !== undefined) return this.device.submit(request, text); return this.core().submit(this.authority, request, text) }
   receipt(request: string): Promise<string> { if (this.device !== undefined) return this.device.receipt(request); return this.core().receipt(this.authority, request) }
   cancel(): Promise<void> { if (this.device !== undefined) return this.device.cancel(); return this.core().cancel(this.authority) }

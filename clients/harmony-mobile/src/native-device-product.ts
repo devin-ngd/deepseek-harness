@@ -20,6 +20,7 @@ import { fields } from './link-protocol.ts'
 import { DeviceRouteOwner } from './device-route-owner.ts'
 import { ProductRouteStorage } from './product-route-storage.ts'
 import { deviceRouteSchema } from './device-route-protocol.ts'
+import { deviceSessionDirectory, deviceSessionActionSchema, deviceSessionManagedSchema } from './device-session-directory.ts'
 
 /** Existing native owner acquires original-key crypto and verified WSS; open is separate so receipt validation precedes socket opening. */
 export interface NativeDeviceNetwork { readonly ports: PairedRelayPorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
@@ -84,7 +85,7 @@ export class NativeDeviceProductFacade {
   private project(view: DeviceMobileView): void {
     if (view.state !== 'connected') this.stopCatalog()
     const session = view.content === '' ? {} : JSON.parse(view.content)
-    this.publish(JSON.stringify({ ...session, pairing: 'paired', connectionDiagnostic: deviceConnectionDiagnosticText(view.diagnostic), connection: view.state === 'connected' ? 'connected' : view.state, error: view.error || this.catalogError || session.error || '', projects: [], sessions: view.sessions.map(row => ({ sessionId: row.sessionId, projectId: row.projectId, title: row.title })), selected: view.selected?.sessionId ?? '', task: session.task ?? 'idle', readOnly: session.readOnly ?? true, messages: session.messages ?? [], liveText: session.liveText ?? '', richJson: session.richJson ?? '' }))
+    this.publish(JSON.stringify({ ...session, pairing: 'paired', connectionDiagnostic: deviceConnectionDiagnosticText(view.diagnostic), connection: view.state === 'connected' ? 'connected' : view.state, error: view.error || this.catalogError || session.error || '', projects: view.projects, manageable: view.manageable, sessions: view.sessions, selected: view.selected?.sessionId ?? '', task: session.task ?? 'idle', readOnly: session.readOnly ?? true, messages: session.messages ?? [], liveText: session.liveText ?? '', richJson: session.richJson ?? '' }))
   }
   private sessionView(view: MobileProductView): string { return JSON.stringify({ task: view.transcript?.task ?? 'idle', readOnly: view.transcript?.readOnly ?? true, error: view.error, messages: view.transcript?.messages.filter(message => message.role === 'user' || message.role === 'assistant').map(message => ({ id: message.id, role: message.role, text: message.parts.flatMap(part => part.kind === 'text' || part.kind === 'reasoning' ? [part.text] : []).join('\n') })) ?? [], liveText: view.transcript?.liveText ?? '', richJson: view.rich === null ? '' : JSON.stringify(view.rich) }) }
   private install(_record: DeviceBinding, client: DeviceBindingClient): DeviceBoundMobileProduct {
@@ -129,11 +130,7 @@ export class NativeDeviceProductFacade {
       lifetime.addEventListener('abort', abort, { once: true })
       stage = 'identity-read'; await core.initialize(); lifetime.throwIfAborted(); stage = 'native-channel'; await acquired.open(); lifetime.throwIfAborted(); stage = 'control-handshake'; await core.ready(); lifetime.throwIfAborted(); this.local(this.authority)
       const network = core, calls = rpc
-      return { authentication: 'native', ...(context === undefined ? {} : { route: context }), binding: network.binding, failure: fallback => network.connectionFailure(fallback, 'active-channel'), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => {
-        const value = fields(await calls.call({ method: 'metadata', argument: null }), ['desktopId', 'profileId', 'sessions'])
-        if (value.desktopId !== registration.desktopId || value.profileId !== 'desktop') throw new Error('native device catalogue identity denied')
-        return z.array(z.object({ profileId: z.literal('desktop'), sessionId: z.string(), title: z.string(), projectId: z.string().nullable() }).strict()).parse(value.sessions)
-      }, select: async (route, ticket, publish, lifetime) => {
+      return { authentication: 'native', ...(context === undefined ? {} : { route: context }), binding: network.binding, failure: fallback => network.connectionFailure(fallback, 'active-channel'), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => deviceSessionDirectory(await calls.call({ method: 'metadata', argument: null }), registration.desktopId), manage: async action => deviceSessionManagedSchema.parse(await calls.call({ method: 'manage', action })).sessionId, select: async (route, ticket, publish, lifetime) => {
         const result = fields(await calls.call({ method: 'select', route }), ['selected'])
         if (JSON.stringify(result.selected) !== JSON.stringify(route)) throw new Error('native device selection acknowledgement denied')
         const session = new DevicePhoneSession(route, registration, ticket, network.binding, proof, this.authority, this.policy, calls, this.scheduler, this.clock, view => publish(this.sessionView(view)), context)
@@ -180,6 +177,8 @@ export class NativeDeviceProductFacade {
   }
   /** @param sessionId - current catalogue row. @returns after canonical old rich/subscription cleanup and selected Session start. */
   async select(sessionId: string): Promise<void> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); await this.device.select(this.authority, sessionId) }
+  /** @param raw - strict list-management intent JSON from the native page. @returns affected Session id after the desktop acknowledged it and the catalogue refreshed; selection is unchanged. */
+  async manage(raw: string): Promise<string> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); return this.device.manage(this.authority, deviceSessionActionSchema.parse(JSON.parse(raw))) }
   /** Refresh dynamic catalogue without resuming an Agent. */
   async refresh(): Promise<void> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); await this.device.refresh(this.authority) }
   private session(): DevicePhoneSession { this.local(this.authority); if (this.selected === undefined || this.device?.view.selected?.sessionId !== this.selected.route.sessionId || this.device.view.state !== 'connected') throw new Error('native device Session required'); return this.selected }

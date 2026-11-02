@@ -4,7 +4,7 @@ import { DeviceConnectionFailure, deviceConnectionFailure, type DeviceConnection
 import type { DeviceTransportBinding } from '../integration/device-auth.ts'
 import type { DeviceBindingClient } from './device-binding-client.ts'
 import type { DeviceBinding, DeviceConnectionTicket, DeviceRouteContext } from './device-binding-protocol.ts'
-import type { DeviceSessionRow } from '../desktop-plugin/src/device-binding.ts'
+import { deviceSessionRowSchema, deviceProjectRowSchema, deviceSessionActionSchema, type DeviceSessionRow, type DeviceProjectRow, type DeviceSessionDirectory, type DeviceSessionAction } from './device-session-directory.ts'
 import type { CleanupScheduler } from '../integration/connection-lifetime.ts'
 
 /** An exact desktop/profile/Session route; desktop foreground selection never supplies any field. */
@@ -20,7 +20,9 @@ export interface DeviceProductSessionConnection {
   failure?(fallback: DeviceConnectionFailure): DeviceConnectionFailure
   readonly binding: DeviceTransportBinding
   readonly route?: DeviceRouteContext
-  catalog(ticket: DeviceConnectionTicket): Promise<readonly DeviceSessionRow[]>
+  catalog(ticket: DeviceConnectionTicket): Promise<DeviceSessionDirectory>
+  /** Optional list management; absent adapters, and desktops whose directory has no projects, reject management. @returns affected Session id. */
+  manage?(action: DeviceSessionAction, ticket: DeviceConnectionTicket): Promise<string>
   select(route: DeviceSessionRoute, ticket: DeviceConnectionTicket, publish: (value: string) => void, lifetime: AbortSignal): Promise<DeviceSessionSelection>
   close(): Promise<void>
 }
@@ -32,8 +34,8 @@ export interface DeviceProductPorts {
   connect(registration: DeviceBinding, lifetime: AbortSignal): Promise<DeviceProductConnection>
 }
 interface DeviceConnectionAttempt { readonly lifetime: AbortController; readonly settled: Promise<void>; close(): Promise<void>; cleanupFailed: boolean }
-/** Safe UI state; signing keys, tickets and private channels are never published. */
-export interface DeviceMobileView { readonly state: 'disconnected' | 'connecting' | 'connected' | 'blocked' | 'closed'; readonly sessions: readonly DeviceSessionRow[]; readonly selected: DeviceSessionRoute | null; readonly content: string; readonly error: string; readonly diagnostic?: DeviceConnectionDiagnostic | undefined }
+/** Safe UI state; signing keys, tickets and private channels are never published. `manageable` reports whether the connected desktop accepts list management. */
+export interface DeviceMobileView { readonly state: 'disconnected' | 'connecting' | 'connected' | 'blocked' | 'closed'; readonly sessions: readonly DeviceSessionRow[]; readonly projects: readonly DeviceProjectRow[]; readonly manageable: boolean; readonly selected: DeviceSessionRoute | null; readonly content: string; readonly error: string; readonly diagnostic?: DeviceConnectionDiagnostic | undefined }
 /** One native view owns its selection and callbacks. Persistent identity and registration belong to the separate proof client. */
 export class DeviceBoundMobileProduct {
   private connection: DeviceProductConnection | undefined
@@ -49,7 +51,7 @@ export class DeviceBoundMobileProduct {
   private failed = false
   private disconnecting: Promise<void> | undefined
   private connecting: DeviceConnectionAttempt | undefined
-  private state: DeviceMobileView = { state: 'disconnected', sessions: [], selected: null, content: '', error: '' }
+  private state: DeviceMobileView = { state: 'disconnected', sessions: [], projects: [], manageable: false, selected: null, content: '', error: '' }
   /** @param authority - native UI capability, never exported to a rich guest. @param proof - original HUKS proof client. @param ports - existing native encrypted transport adapter. @param clock - native expiry clock. @param scheduler - explicit native cleanup timer owner. @param publish - safe view callback. */
   constructor(private readonly authority: object, private readonly proof: DeviceBindingClient, private readonly ports: DeviceProductPorts, private readonly clock: () => number, private readonly scheduler: CleanupScheduler, private readonly publish: (value: DeviceMobileView) => void) {}
   private local(authority: object): void { if (authority !== this.authority || this.closed || this.failed) throw new Error('device mobile operation denied') }
@@ -97,9 +99,17 @@ export class DeviceBoundMobileProduct {
     this.local(authority); const connection = this.connection, ticket = this.ticket
     if (connection === undefined || ticket === undefined) throw new Error('device mobile connection required')
     this.current(connection, ticket)
-    const schema = z.array(z.object({ profileId: z.literal('desktop'), sessionId: z.string().min(1).max(256), title: z.string(), projectId: z.string().nullable() }).strict()), rows = schema.parse(await connection.catalog(ticket))
+    const directory = await connection.catalog(ticket), rows = z.array(deviceSessionRowSchema).parse(directory.sessions), projects = directory.projects === null ? null : z.array(deviceProjectRowSchema).parse(directory.projects)
     this.current(connection, ticket); if (new Set(rows.map(row => row.sessionId)).size !== rows.length) throw new Error('device mobile duplicate catalogue row')
-    this.state = { ...this.state, sessions: rows }; this.emit()
+    this.state = { ...this.state, sessions: rows, projects: projects ?? [], manageable: projects !== null && connection.manage !== undefined }; this.emit()
+  }
+  /** @param authority - native list-management intent. @param action - create, archive, unarchive, pin or unpin. @returns affected Session id after desktop acknowledgement and a catalogue refresh; the current selection is unchanged and nothing is retried. */
+  async manage(authority: object, action: DeviceSessionAction): Promise<string> {
+    this.local(authority); const connection = this.connection, ticket = this.ticket
+    if (connection === undefined || ticket === undefined) throw new Error('device mobile connection required')
+    this.current(connection, ticket); if (connection.manage === undefined || !this.state.manageable) throw new Error('device mobile management unavailable')
+    const sessionId = await connection.manage(deviceSessionActionSchema.parse(action), ticket)
+    this.current(connection, ticket); await this.refresh(authority); return sessionId
   }
   /** @param authority - native row selection. @param sessionId - current admitted row. @returns only after previous follow/rich owner retires; late old callbacks cannot update this view. */
   select(authority: object, sessionId: string): Promise<void> {
@@ -148,7 +158,7 @@ export class DeviceBoundMobileProduct {
       const results = await Promise.allSettled([selectionClosed, channelClosed, attempt?.settled])
       const failure = cause === undefined ? undefined : connection?.failure?.(cause) ?? cause, cleanupFailed = attempt?.cleanupFailed === true || results.some(result => result.status === 'rejected')
       if (cleanupFailed) failure?.cleanupFailed()
-      if (generation === this.generation) { this.state = { state: this.closed ? 'closed' : cleanupFailed ? 'blocked' : 'disconnected', sessions: [], selected: null, content: '', error: cleanupFailed ? 'connection-cleanup-failed' : failure === undefined ? '' : 'connection-unavailable', diagnostic: failure?.diagnostic ?? { stage: 'local-stop', category: 'closed', cleanupFailed } }; this.emit() }
+      if (generation === this.generation) { this.state = { state: this.closed ? 'closed' : cleanupFailed ? 'blocked' : 'disconnected', sessions: [], projects: [], manageable: false, selected: null, content: '', error: cleanupFailed ? 'connection-cleanup-failed' : failure === undefined ? '' : 'connection-unavailable', diagnostic: failure?.diagnostic ?? { stage: 'local-stop', category: 'closed', cleanupFailed } }; this.emit() }
       if (cleanupFailed) { this.failed = true; throw new Error('device mobile disconnect cleanup failed') }
     })()
     this.disconnecting = operation

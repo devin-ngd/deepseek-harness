@@ -1,5 +1,23 @@
 [
   {
+    "id": "'product-group-' + group.key",
+    "resource": null,
+    "enabled": null,
+    "onClick": "(() => this.toggleGroup(group.key))"
+  },
+  {
+    "id": "'product-group-new-' + group.key",
+    "resource": null,
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.createSession(group.projectId)))"
+  },
+  {
+    "id": "'product-new-in-' + row.projectId",
+    "resource": null,
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.createSession(row.projectId)))"
+  },
+  {
     "id": "'product-scope-' + row.key",
     "resource": null,
     "enabled": "(!this.busy)",
@@ -12,10 +30,10 @@
     "onClick": "(() => this.run(() => this.openSession(row.sessionId)))"
   },
   {
-    "id": null,
-    "resource": "app.string.filter_all",
-    "enabled": null,
-    "onClick": "(() => { this.project = ''; })"
+    "id": "'product-session-more-' + row.sessionId",
+    "resource": null,
+    "enabled": "(!this.busy)",
+    "onClick": null
   },
   {
     "id": null,
@@ -90,6 +108,12 @@
     "onClick": "(() => { this.showPage('sessions'); })"
   },
   {
+    "id": "product-chat-more",
+    "resource": null,
+    "enabled": "(!this.busy)",
+    "onClick": null
+  },
+  {
     "id": "product-confirm-pair",
     "resource": "app.string.product_confirm_pair",
     "enabled": "(this.networkApproved && this.compared && this.preview.desktopFingerprint.length > 0 && !this.busy)",
@@ -118,6 +142,24 @@
     "resource": null,
     "enabled": null,
     "onClick": "(() => this.dismissError())"
+  },
+  {
+    "id": "product-filter-active",
+    "resource": "app.string.filter_all",
+    "enabled": null,
+    "onClick": "(() => { this.listFilter = 'active'; })"
+  },
+  {
+    "id": "product-filter-archived",
+    "resource": "app.string.filter_archived",
+    "enabled": null,
+    "onClick": "(() => { this.listFilter = 'archived'; })"
+  },
+  {
+    "id": "product-filter-running",
+    "resource": null,
+    "enabled": null,
+    "onClick": "(() => { this.listFilter = 'running'; })"
   },
   {
     "id": "product-home-connect",
@@ -160,6 +202,18 @@
     "resource": null,
     "enabled": null,
     "onClick": "(() => { this.showPage('device'); })"
+  },
+  {
+    "id": "product-new-session",
+    "resource": null,
+    "enabled": "(!this.busy)",
+    "onClick": "(() => { this.newSheet = true; })"
+  },
+  {
+    "id": "product-new-unassigned",
+    "resource": null,
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.createSession(null)))"
   },
   {
     "id": "product-route-preview",
@@ -208,5 +262,11 @@
     "resource": "app.string.product_storage_recover",
     "enabled": "(!this.busy)",
     "onClick": "(() => this.run(() => this.product.recoverDeviceStorage(true)))"
+  },
+  {
+    "id": "product-unarchive",
+    "resource": "app.string.session_unarchive",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.manageSession('unarchive', this.view.selected)))"
   }
 ]

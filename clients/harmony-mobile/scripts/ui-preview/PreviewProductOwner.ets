@@ -6,7 +6,7 @@ import { NativeProductRichPort } from './NativeProductRichOwner'
 import { ProductView, ProductProject, ProductSession, ProductMessage, ProductPairingPreview } from './ProductView'
 
 export interface NativeDeviceRecoveryPolicy { bindingId: string; epoch: number; desktopCredentialId: string; credentialId: string; identityAlias: string; retiredRoutes: string[] }
-export interface NativeProductConfiguration { deviceRecovery?: NativeDeviceRecoveryPolicy; deviceBindingMode?: boolean; deviceRoutingTtlMs?: number; deviceCatalogRefreshMs?: number; enabled: boolean; approvedHost: string; identityAlias: string; deviceApiVerified: number; maxCryptoBytes: number; maxTotalSendBytes: number; publicTrustMaxBytes: number; corePolicyJson: string; relay: NativeRelayBudgets }
+export interface NativeProductConfiguration { deviceRecovery?: NativeDeviceRecoveryPolicy; deviceBindingMode?: boolean; deviceAutoConnect?: boolean; deviceReconnectMs?: number; deviceRoutingTtlMs?: number; deviceCatalogRefreshMs?: number; enabled: boolean; approvedHost: string; identityAlias: string; deviceApiVerified: number; maxCryptoBytes: number; maxTotalSendBytes: number; publicTrustMaxBytes: number; corePolicyJson: string; relay: NativeRelayBudgets }
 export interface NativeProductStorageMetadata { file: string; size: number; lock: string; held: boolean }
 export interface NativeProductPublicStorage extends ProductStorage { inspect?(): NativeProductStorageMetadata; recoveryRequired?(): boolean }
 
@@ -40,8 +40,9 @@ const REVIEW_REPLY: string = [
 ].join('\n')
 
 function message(id: string, role: string, text: string): ProductMessage { const value: ProductMessage = { id: id, role: role, text: text }; return value }
-function session(sessionId: string, projectId: string, title: string): ProductSession { const value: ProductSession = { sessionId: sessionId, projectId: projectId, title: title }; return value }
-function project(projectId: string, title: string, sessionIds: string[]): ProductProject { const value: ProductProject = { projectId: projectId, title: title, sessionIds: sessionIds }; return value }
+interface PreviewIntent { action: string; projectId?: string | null; sessionId?: string }
+function session(sessionId: string, projectId: string | null, title: string, minutesAgo: number, running: boolean = false, pinned: boolean = false, archived: boolean = false, blank: boolean = false): ProductSession { const value: ProductSession = { sessionId: sessionId, projectId: projectId, title: title, updatedAt: Date.now() - minutesAgo * 60000, running: running, pinned: pinned, archived: archived, blank: blank }; return value }
+function project(projectId: string, title: string): ProductProject { const value: ProductProject = { projectId: projectId, title: title }; return value }
 
 function history(sessionId: string): ProductMessage[] {
   if (sessionId === 's1') return [message('s1-1', 'user', '检查手机端 UI 和交互是否合理，重点是会话控制。'), message('s1-2', 'assistant', REVIEW_REPLY)]
@@ -68,7 +69,7 @@ function replyFor(text: string): string {
   return head + '完成后任务状态会变为 **已完成**。'
 }
 
-/** Mirrors the native owner's methods; only connect, select, submit, cancel, stopRoute and revoke change the synthetic view. */
+/** Mirrors the native owner's methods; only connect, select, manage, submit, cancel, stopRoute and revoke change the synthetic view. */
 export class NativeProductOwner implements NativeProductRichPort {
   private view: ProductView = new ProductView()
   private publish: (view: string) => void = () => {}
@@ -109,8 +110,9 @@ export class NativeProductOwner implements NativeProductRichPort {
     this.view.connection = 'connecting'; this.view.error = ''; this.emit()
     this.later(1500, () => {
       this.view.connection = 'connected'; this.view.connectionGeneration++
-      this.view.projects = [project('p1', 'deepseek-harness', ['s1', 's2', 's3']), project('p2', '日常事务', ['s4', 's5'])]
-      this.view.sessions = [session('s1', 'p1', '移动端深色主题与会话控制优化'), session('s2', 'p1', '排查 relay 重连后任务状态不同步'), session('s3', 'p1', '为 session-query 增加全文检索'), session('s4', 'p2', '周报：整理本周合并的 PR（只读）'), session('s5', 'p2', '很长的会话标题用于检查两行截断效果，包含较多文字以便确认列表项在窄屏上的换行与省略号显示是否正常')]
+      this.view.projects = [project('p1', 'deepseek-harness'), project('p2', '日常事务'), project('p3', 'dsh-plugins')]
+      this.view.sessions = [session('s1', 'p1', '移动端深色主题与会话控制优化', 3, false, true), session('s2', 'p1', '排查 relay 重连后任务状态不同步', 0, true), session('s3', 'p1', '为 session-query 增加全文检索', 130), session('s4', 'p2', '周报：整理本周合并的 PR', 4320, false, false, true), session('s5', 'p2', '很长的会话标题用于检查两行截断效果，包含较多文字以便确认列表项在窄屏上的换行与省略号显示是否正常', 13000), session('s6', null, '临时问题：查看磁盘占用', 1500), session('s7', 'p1', 's7', 1, false, false, false, true)]
+      this.view.manageable = true
       this.emit()
     })
   }
@@ -118,14 +120,27 @@ export class NativeProductOwner implements NativeProductRichPort {
   async signRoute(raw: string, approved: boolean): Promise<string> { void raw; void approved; throw new Error('preview only') }
   async stopRoute(): Promise<void> {
     this.stopStream(); this.enabled = false
-    this.view.connection = 'disconnected'; this.view.sessions = []; this.view.projects = []; this.view.selected = ''; this.view.messages = []; this.view.liveText = ''; this.view.task = 'idle'; this.view.readOnly = true
+    this.view.connection = 'disconnected'; this.view.sessions = []; this.view.projects = []; this.view.manageable = false; this.view.selected = ''; this.view.messages = []; this.view.liveText = ''; this.view.task = 'idle'; this.view.readOnly = true
     this.emit()
+  }
+  async manage(raw: string): Promise<string> {
+    if (this.view.connection !== 'connected') throw new Error('preview offline')
+    const intent = JSON.parse(raw) as PreviewIntent
+    if (intent.action === 'create') { const sessionId = 'n' + (++this.counter); this.view.sessions = [session(sessionId, intent.projectId ?? null, sessionId, 0, false, false, false, true)].concat(this.view.sessions); this.emit(); return sessionId }
+    const row = this.view.sessions.find((item: ProductSession) => item.sessionId === intent.sessionId)
+    if (row === undefined) throw new Error('preview session absent')
+    if (intent.action === 'archive') { row.archived = true; row.running = false }
+    else if (intent.action === 'unarchive') row.archived = false
+    else if (intent.action === 'pin') row.pinned = true
+    else if (intent.action === 'unpin') row.pinned = false
+    else throw new Error('preview action refused')
+    this.emit(); return row.sessionId
   }
   async select(sessionId: string): Promise<void> {
     if (this.view.connection !== 'connected') throw new Error('preview offline')
     this.stopStream()
     this.view.selected = sessionId; this.view.messages = this.messages(sessionId); this.view.liveText = ''
-    this.view.task = sessionId === 's1' ? 'completed' : 'idle'; this.view.readOnly = sessionId === 's4'
+    this.view.task = sessionId === 's1' ? 'completed' : 'idle'; this.view.readOnly = false
     this.emit()
   }
   async submit(request: string, text: string): Promise<string> {
@@ -134,6 +149,8 @@ export class NativeProductOwner implements NativeProductRichPort {
     if (value.startsWith('/error')) { this.view.error = 'connection-unavailable'; this.emit(); return request }
     const rows = this.messages(this.view.selected)
     rows.push(message('local-' + (++this.counter), 'user', value))
+    const row = this.view.sessions.find((item: ProductSession) => item.sessionId === this.view.selected)
+    if (row !== undefined) { row.blank = false; row.updatedAt = Date.now(); if (row.title === row.sessionId) row.title = value.substring(0, 24) }
     this.view.messages = rows; this.view.task = 'accepted'; this.view.liveText = ''; this.emit()
     this.streamText = replyFor(value); this.streamOffset = 0
     this.later(500, () => {

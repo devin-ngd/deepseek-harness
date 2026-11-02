@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-harmony-mobile",
-  "version": "0.0.0-rc2.30",
+  "version": "0.0.0-rc2.32",
   "private": true,
   "type": "module",
   "description": "Default-disabled private Harmony mobile profile adapter with independent authenticated peer admission",

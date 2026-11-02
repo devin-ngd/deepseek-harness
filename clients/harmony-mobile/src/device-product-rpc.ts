@@ -5,6 +5,7 @@ import { fields } from './link-protocol.ts'
 import { object, string } from './domain.ts'
 import { TransportError, jsonPayload } from './wire.ts'
 import type { DeviceSessionRoute } from './mobile-device-product.ts'
+import { deviceSessionDirectory, type DeviceSessionAction } from './device-session-directory.ts'
 interface Wait { resolve(value: unknown): void; reject(error: Error): void; stop(): void }
 /** Existing native connection is shared; each selected Session has independent correlation ids and an owned subscriber. */
 export class DeviceProductRpc {
@@ -24,8 +25,8 @@ export class DeviceProductRpc {
     if (pending !== undefined) { if (kind !== 'result' && kind !== 'error') throw new Error('device RPC unary response denied'); this.pending.delete(packet.id); pending.stop(); if (kind === 'error') pending.reject(new TransportError('unknown-outcome')); else pending.resolve(packet.value); return }
     for (const [prefix, receive] of this.views) if (packet.id.startsWith(prefix)) { receive(raw); return }
   }
-  /** @param value - fixed metadata/select request only, constructed by native code. @returns acknowledged public result; timeout never retries the operation. */
-  call(value: { readonly method: 'metadata'; readonly argument: null } | { readonly method: 'select'; readonly route: DeviceSessionRoute }): Promise<unknown> {
+  /** @param value - fixed metadata/select/manage request only, constructed by native code. @returns acknowledged public result; timeout never retries the operation. */
+  call(value: { readonly method: 'metadata'; readonly argument: null } | { readonly method: 'select'; readonly route: DeviceSessionRoute } | { readonly method: 'manage'; readonly action: DeviceSessionAction }): Promise<unknown> {
     if (this.closed || this.pending.size >= this.maxPending) return Promise.reject(new TransportError('queue-full'))
     const id = this.prefix + '-rpc-' + ++this.counter
     return new Promise((resolve, reject) => {
@@ -44,9 +45,7 @@ export class DeviceProductRpc {
       if (selected === undefined) return
       let value = data.value
       if (selected.metadata && data.kind === 'result') {
-        const catalog = fields(value, ['desktopId', 'profileId', 'sessions'])
-        if (catalog.desktopId !== route.desktopId || catalog.profileId !== route.profileId || !Array.isArray(catalog.sessions)) throw new Error('device catalogue identity denied')
-        const sessions = catalog.sessions.map(object).filter(row => row.sessionId === route.sessionId).map(row => ({ sessionId: string(row.sessionId, 256), title: string(row.title, 65536), projectId: row.projectId === null ? null : string(row.projectId, 256) }))
+        const sessions = deviceSessionDirectory(value, route.desktopId).sessions.filter(row => row.sessionId === route.sessionId).map(row => ({ sessionId: row.sessionId, title: string(row.title, 65536), projectId: row.projectId }))
         if (sessions.length !== 1) throw new Error('selected device Session no longer visible')
         value = { desktopId: route.desktopId, profileId: route.profileId, catalog: { projects: [], sessions } }
       }

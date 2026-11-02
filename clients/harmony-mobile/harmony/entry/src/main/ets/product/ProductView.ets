@@ -1,6 +1,8 @@
 /** Native DTO fields are emitted only after shared semantic and scope validation. */
-export interface ProductProject { projectId: string; title: string; sessionIds: string[] }
-export interface ProductSession { sessionId: string; projectId: string | null; title: string }
+/** Device directories omit `sessionIds`; Sessions name their project instead. */
+export interface ProductProject { projectId: string; title: string; sessionIds?: string[] }
+/** Device directories add list state; `updatedAt` is epoch milliseconds and 0 when unknown. Legacy publications omit the optional fields. */
+export interface ProductSession { sessionId: string; projectId: string | null; title: string; updatedAt?: number; running?: boolean; pinned?: boolean; archived?: boolean; blank?: boolean }
 export interface ProductMessage { id: string; role: string; text: string }
 /** Saved range label; only an explicit selection and fresh confirmation can activate its original grant. */
 export interface ProductSavedScope { key: string; desktopId: string; profileId: string; sessions: string[] }
@@ -19,6 +21,8 @@ export class ProductView {
   storageRecoveryAudit: string = ''
   projects: ProductProject[] = []
   sessions: ProductSession[] = []
+  /** True only when the connected desktop accepts list management. */
+  manageable: boolean = false
   selected: string = ''
   task: string = 'idle'
   readOnly: boolean = true

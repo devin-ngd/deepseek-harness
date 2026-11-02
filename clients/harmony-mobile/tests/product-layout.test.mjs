@@ -8,7 +8,7 @@ const ts = await productLayoutParser(), page = (await readFile('harmony/entry/sr
 const replace = (from, to) => { assert.ok(page.includes(from), from); return page.replace(from, to) }
 
 test('native history uses remaining height between a fixed header and a conversation footer in the resized page', () => {
-  assert.deepEqual(auditProductLayout(ts, page), { nativeScrollOwners: 1, pageHeight: '100%', headerHeight: 'intrinsic', viewportHeight: 'remaining', contentHeight: 'intrinsic', keyboardAvoidance: 'RESIZE', wrappedButtonGroups: 7, iconButtons: 6, errorBannerInHeader: true, composerOutsideScroll: true, sendOutsideScroll: true, taskActionsOutsideScroll: true })
+  assert.deepEqual(auditProductLayout(ts, page), { nativeScrollOwners: 1, pageHeight: '100%', headerHeight: 'intrinsic', viewportHeight: 'remaining', contentHeight: 'intrinsic', keyboardAvoidance: 'RESIZE', wrappedButtonGroups: 7, iconButtons: 9, errorBannerInHeader: true, composerOutsideScroll: true, sendOutsideScroll: true, taskActionsOutsideScroll: true })
 })
 
 test('the recorded clipped predecessor is rejected before a candidate can be built', async () => {

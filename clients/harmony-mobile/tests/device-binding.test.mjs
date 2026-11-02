@@ -106,11 +106,11 @@ test('unknown initial commit is inspected rather than repeated and blocks the or
     assert.equal(f.existing.history.length, 1)
   } finally { await f.close() }
 })
-async function mobileFixture(policyOverrides = {}) {
+async function mobileFixture(policyOverrides = {}, legacy = false) {
   const f = fixture(storage(), policyOverrides); await f.bind(); const publications = [], selections = [], closes = []
   const ports = { connect: async () => {
     const channel = f.channel('native-' + ++f.state.ids)
-    return { authentication: 'caller', binding: channel.phone, challenge: async () => JSON.stringify(await f.owner.challenge(channel.server)), authenticate: proof => f.owner.authenticate(channel.server, proof), catalog: ticket => f.owner.catalog(channel.server, ticket), select: async (route, ticket, publish, signal) => {
+    return { authentication: 'caller', binding: channel.phone, challenge: async () => JSON.stringify(await f.owner.challenge(channel.server)), authenticate: proof => f.owner.authenticate(channel.server, proof), catalog: async ticket => legacy ? { sessions: (await f.owner.catalog(channel.server, ticket)).map(({ profileId, sessionId, title, projectId }) => ({ profileId, sessionId, title, projectId })), projects: null } : { sessions: await f.owner.catalog(channel.server, ticket), projects: await f.owner.projects(channel.server, ticket) }, ...(legacy ? {} : { manage: async (action, ticket) => (await f.owner.manage(channel.server, ticket, action)).sessionId }), select: async (route, ticket, publish, signal) => {
       await f.owner.dispatch(channel.server, ticket, route.profileId, route.sessionId, 'session.sync', {})
       const selected = { route, publish, signal }; selections.push(selected)
       return { richRequest: async raw => { await f.owner.dispatch(channel.server, ticket, route.profileId, route.sessionId, 'rich.invoke', { raw }); return JSON.stringify({ sessionId: route.sessionId }) }, close: async () => { closes.push(route.sessionId) } }
@@ -140,6 +140,58 @@ test('native ticket expiry closes the Session/rich owner and reconnects using ex
   } finally { await f.close() }
 })
 
+function directoryPorts(f) {
+  f.ports.projects = async () => [{ projectId: 'project-1', title: 'Project One' }]
+  f.ports.manage = async (action, signal) => {
+    signal.throwIfAborted(); f.state.calls.push({ manage: action })
+    if (action.action === 'create') { f.rows.push({ profileId: 'desktop', sessionId: 'created-' + f.state.calls.length, title: 'created-' + f.state.calls.length, projectId: action.projectId, updatedAt: 5, running: false, pinned: false, archived: false, blank: true }); return { sessionId: f.rows.at(-1).sessionId } }
+    const row = f.rows.find(value => value.sessionId === action.sessionId); row.pinned = action.action === 'pin' || action.action !== 'unpin' && action.action !== 'archive' && row.pinned; row.archived = action.action === 'archive' || action.action !== 'unarchive' && row.archived
+    return { sessionId: action.sessionId }
+  }
+}
+test('desktop directory carries list state and management is limited to visible Sessions and projects', async () => {
+  const f = fixture()
+  try {
+    await f.bind(); const ch = await f.connect()
+    assert.deepEqual((await f.owner.catalog(ch.server, ch.ticket))[0], { profileId: 'desktop', sessionId: 'session-0', title: 'Session 0', projectId: null, updatedAt: 0, running: false, pinned: false, archived: false, blank: false })
+    assert.deepEqual(await f.owner.projects(ch.server, ch.ticket), [])
+    await assert.rejects(f.owner.manage(ch.server, ch.ticket, { action: 'pin', sessionId: 'session-1' }), /management unavailable/)
+    directoryPorts(f)
+    assert.deepEqual(await f.owner.projects(ch.server, ch.ticket), [{ projectId: 'project-1', title: 'Project One' }])
+    assert.deepEqual(await f.owner.manage(ch.server, ch.ticket, { action: 'pin', sessionId: 'session-1' }), { sessionId: 'session-1' })
+    assert.equal((await f.owner.catalog(ch.server, ch.ticket))[1].pinned, true)
+    assert.equal((await f.owner.manage(ch.server, ch.ticket, { action: 'create', projectId: 'project-1' })).sessionId.startsWith('created-'), true)
+    await f.owner.manage(ch.server, ch.ticket, { action: 'create', projectId: null })
+    const calls = f.state.calls.length
+    await assert.rejects(f.owner.manage(ch.server, ch.ticket, { action: 'archive', sessionId: 'hidden' }), /management denied/)
+    await assert.rejects(f.owner.manage(ch.server, ch.ticket, { action: 'create', projectId: 'other-project' }), /management denied/)
+    await assert.rejects(f.owner.manage(ch.server, ch.ticket, { action: 'delete', sessionId: 'session-1' }))
+    await assert.rejects(f.owner.manage(ch.server, ch.ticket, { action: 'pin', sessionId: 'session-1', title: 'extra' }))
+    await assert.rejects(f.owner.manage(ch.server, { ...ch.ticket, signature: 'changed' }, { action: 'pin', sessionId: 'session-2' }), /ticket denied/)
+    assert.equal(f.state.calls.length, calls)
+  } finally { await f.close() }
+})
+test('phone management refreshes the directory and keeps the selection; older desktops stay read-only', async () => {
+  const f = await mobileFixture()
+  try {
+    directoryPorts(f); await f.product.connect(f.native)
+    assert.equal(f.product.view.manageable, true); assert.deepEqual(f.product.view.projects, [{ projectId: 'project-1', title: 'Project One' }])
+    await f.product.select(f.native, 'session-1')
+    const created = await f.product.manage(f.native, { action: 'create', projectId: 'project-1' })
+    assert.deepEqual(f.product.view.sessions.find(row => row.sessionId === created), { profileId: 'desktop', sessionId: created, title: created, projectId: 'project-1', updatedAt: 5, running: false, pinned: false, archived: false, blank: true })
+    assert.equal(f.product.view.selected.sessionId, 'session-1')
+    await f.product.manage(f.native, { action: 'archive', sessionId: 'session-1' }); assert.equal(f.product.view.sessions.find(row => row.sessionId === 'session-1').archived, true)
+    await assert.rejects(f.product.manage(f.native, { action: 'rename', sessionId: 'session-1' }))
+    await f.product.select(f.native, created); assert.equal(f.product.view.selected.sessionId, created)
+  } finally { await f.close() }
+  const legacy = await mobileFixture({}, true)
+  try {
+    await legacy.product.connect(legacy.native)
+    assert.equal(legacy.product.view.manageable, false); assert.deepEqual(legacy.product.view.projects, [])
+    assert.deepEqual(legacy.product.view.sessions[0], { profileId: 'desktop', sessionId: 'session-0', title: 'Session 0', projectId: null, updatedAt: 0, running: false, pinned: false, archived: false, blank: false })
+    await assert.rejects(legacy.product.manage(legacy.native, { action: 'create', projectId: null }), /management unavailable/)
+  } finally { await legacy.close() }
+})
 test('configured device tickets keep the catalogue usable beyond three minutes and still expire', async () => {
   const { connectionTtlMs } = JSON.parse(await readFile('desktop-plugin/device.enabled.example.json', 'utf8'))
   const f = await mobileFixture({ connectionTtlMs })
