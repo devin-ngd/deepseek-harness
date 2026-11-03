@@ -389,6 +389,60 @@ describe.skipIf(MODE === 'record')('web e2e: pending plan review across Sidebar 
   })
 })
 
+describe.skipIf(MODE === 'record')('web e2e: PTC plan history', () => {
+  it.each([true, false])('reopens the approved document after reload (metadata: %s)', async (withMetadata) => {
+    const scaffold = await launchWebScaffold({})
+    let browser: Browser | undefined
+    try {
+      const source = await readFile(new URL('../../../snapshots/session/ptc-node-read-only/session.v4.jsonl', import.meta.url), 'utf8')
+      const markdown = '# Reviewed PTC plan\n\n- Keep the middle step\n- Verify the result'
+      // A completed PTC recording supplies the parent call and execution enclosure.
+      const fixture = source.trimEnd().split('\n').map((line) => {
+        const event = JSON.parse(line) as SessionEvent
+        if (event.type !== 'tool/ptc-dispatch-start' && event.type !== 'tool/ptc-dispatch') return line
+        const data = { ...event.data, name: 'exit_plan_mode', arguments: { plan: '# Original draft' } }
+        if (event.type === 'tool/ptc-dispatch-start') return JSON.stringify({ ...event, data })
+        return JSON.stringify({ ...event, data: { ...data, isError: false,
+          content: [{ type: 'text', text: withMetadata ? 'Plan approved:\n# Cropped preview\n\n[Content omitted]' : 'Plan approved:\n' + markdown }],
+          meta: withMetadata ? { planMode: { approved: true, plan: markdown } } : undefined,
+        } })
+      }).join('\n') + '\n'
+      const session = await seedSession(scaffold, fixture, `ptc-plan-history-${String(withMetadata)}`)
+      browser = await launchTestChromium()
+      const page = await newEnglishPage(browser)
+      const tripwire = watchConsole(page)
+      onTestFailed(() => saveFailureShot(page, `web-e2e-ptc-plan-${String(withMetadata)}`))
+      await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+      const group = page.locator('[data-row-key^="workspace:"]').first()
+      await group.waitFor({ timeout: 15_000 })
+      if (await group.getAttribute('aria-expanded') !== 'true') await group.click()
+      await page.locator(`[data-row-key="session:${session}"]`).click()
+      const card = page.locator('[data-plan-card]')
+      await card.waitFor({ state: 'visible', timeout: 15_000 })
+      expect(await card.textContent()).toContain('Reviewed PTC plan')
+      await card.click()
+      const preview = page.locator('[data-plan-preview]')
+      await preview.waitFor({ state: 'visible' })
+      const warningStart = tripwire.warnings.length
+      await page.reload({ waitUntil: 'load' })
+      await preview.waitFor({ state: 'visible' })
+      expect(await captureStableAria(page, '[data-plan-preview]', scaffold.workspaceCwd)).toMatchInlineSnapshot(`
+        "- region \"Reviewed PTC plan\":
+          - heading \"Reviewed PTC plan\" [level=1]
+          - list:
+            - listitem: Keep the middle step
+            - listitem: Verify the result"
+      `)
+      acknowledgeReloadConnectionLoss(tripwire, warningStart)
+      expect(tripwire.pageErrors).toEqual([])
+      expect(tripwire.warnings).toEqual([])
+    } finally {
+      try { await browser?.close() }
+      finally { await scaffold.close() }
+    }
+  })
+})
+
 describe('web e2e: dismissed plan history', () => {
   it.skipIf(MODE === 'record')('reopens the permanent plan card after dismissing its review', async () => {
     // A dismissed review concludes the turn, so only the call presenting the plan replays.

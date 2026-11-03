@@ -30,11 +30,18 @@ function planDocument(callId: unknown, markdown: unknown): SubmittedPlan | undef
   return title === undefined ? undefined : { callId: callId as ToolCallId, markdown, title }
 }
 
+function approvedPlan(callId: unknown, meta: unknown): SubmittedPlan | undefined {
+  const approval = record(meta) ? meta.planMode : undefined
+  return record(approval) && approval.approved === true ? planDocument(callId, approval.plan) : undefined
+}
+
 function ptcApprovedPlan(data: Record<string, unknown>): SubmittedPlan | undefined {
-  if (data.isError !== false || !Array.isArray(data.content)) return undefined
+  if (data.isError !== false) return undefined
+  if (data.meta !== undefined) return approvedPlan(data.subCallId, data.meta)
+  if (!Array.isArray(data.content)) return undefined
+  // Older PTC records store the approved plan only in rendered content.
   for (const part of data.content) {
     if (!record(part) || part.type !== 'text' || typeof part.text !== 'string') continue
-    // PTC dispatch records retain rendered content, without native presentation metadata.
     if (!part.text.startsWith('Plan approved')) continue
     const newline = part.text.indexOf('\n')
     if (newline < 0) continue
@@ -54,9 +61,8 @@ export function submittedPlan(event: { readonly type: string; readonly data: unk
     && event.type !== 'tool/ptc-dispatch-start' && event.type !== 'tool/ptc-dispatch') return undefined
   const data = event.data
   if (event.type === 'tool/result') {
-    if (!record(data) || !record(data.message) || data.message.isError !== false || !record(data.meta)) return undefined
-    const approval = data.meta.planMode
-    return record(approval) && approval.approved === true ? planDocument(data.message.toolCallId, approval.plan) : undefined
+    if (!record(data) || !record(data.message) || data.message.isError !== false) return undefined
+    return approvedPlan(data.message.toolCallId, data.meta)
   }
   if (!record(data) || data.name !== 'exit_plan_mode') return undefined
   if (event.type === 'tool/ptc-dispatch') {

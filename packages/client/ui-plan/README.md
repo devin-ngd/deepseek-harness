@@ -33,7 +33,7 @@ While the effective target is plan mode, the seat renders the blue "Plan" status
 
 ### Reading submitted plans
 
-Cards and newly opened sidebar documents use the human-approved plan when a successful result records it; rejected, dismissed and earlier results retain the original submission. Native results supply `meta.planMode`; PTC settlements retain the approved Markdown after their `Plan approved` confirmation line. The original call arguments remain in Session history.
+Cards and newly opened sidebar documents use the human-approved plan when a successful result records it; rejected, dismissed and earlier results retain the original submission. Native and PTC results read `meta.planMode`, which retains the complete approved Markdown even when rendered content is cropped. Older PTC results without metadata read the Markdown after their `Plan approved` confirmation line. The original call arguments remain in Session history.
 
 When a Turn ends, each submitted plan appears in its final artifact area, using the file-delivery card treatment with a Markdown icon, title, and Open action. A pending plan opens automatically once per submission in the current browser session. Closing it stays effective across review remounts; a new submission opens its own plan. Historical cards open only when clicked. Use the card or review strip’s View full plan link to read the complete Markdown. Plan tabs show a plain text file icon. Different submissions retain separate tabs; the review buttons alone decide whether implementation may begin.
 

@@ -107,6 +107,37 @@ it('updates native and PTC plan artifacts to the approved version while preservi
   expect(submittedPlan({ ...native, data: { ...native.data, meta: { planMode: { approved: true, plan: 'invalid' } } } })).toBeUndefined()
 })
 
+it.each([
+  'Plan approved:\n# Incomplete preview\n\n[Content omitted]',
+  '[Full result saved to a spill file]',
+])('renders the complete PTC approval from metadata when content is %s', (text) => {
+  const approved = '# Reviewed plan\n\n- Keep the middle step\n- Verify the result'
+  const event = { type: 'tool/ptc-dispatch', data: {
+    name: 'exit_plan_mode', subCallId: plan.callId, arguments: { plan: markdown }, isError: false,
+    content: [{ type: 'text', text }], meta: { planMode: { approved: true, plan: approved } },
+  } }
+  const value = planDefinition.update({ state: plan } as never, { event } as never)
+  expect(value).toEqual({ callId: plan.callId, title: 'Reviewed plan', markdown: approved })
+  const props = { t,
+    useTabInfo: () => ({ tab: { title: 'Plan', navigation: { address: planAddress(target) } } }),
+    useResource: () => ({ status: 'live', value }),
+  } as Parameters<typeof PlanPreview>[0]
+  render(<PlanPreview {...props} />)
+  expect(screen.getByRole('region').textContent).toMatchInlineSnapshot(`
+    "Reviewed plan
+    Keep the middle stepVerify the result"
+  `)
+})
+
+it.each([null, {}, { planMode: null }, { planMode: { approved: false, plan: '# Rejected' } },
+  { planMode: { approved: true, plan: 'Invalid heading' } },
+])('does not interpret PTC text as approval when recorded metadata is %j', (meta) => {
+  expect(submittedPlan({ type: 'tool/ptc-dispatch', data: {
+    name: 'exit_plan_mode', subCallId: plan.callId, arguments: { plan: markdown }, isError: false,
+    meta, content: [{ type: 'text', text: 'Plan approved:\n# Untrusted text' }],
+  } })).toEqual(plan)
+})
+
 it('projects native and PTC submissions into their resolved turns without duplicate cards', () => {
   const assembler = new ConversationNodeAssembler(
     { entries: () => [planDefinition], fallbackEntry: () => undefined },
