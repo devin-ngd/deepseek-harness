@@ -319,10 +319,12 @@ describe('real guest SDK input and action lifecycle', () => {
 
   it('locks vertical overflow within the inline height cap and suppresses 1px resize jitter', async () => {
     const g = guest()
+    const root = g.dom.window.document.documentElement
+    expect(root.style.overflowY).toBe('hidden')
     let currentHeight = 640
     Object.defineProperty(g.dom.window.document.body, 'scrollHeight', { get: () => currentHeight, configurable: true })
     g.triggerResize()
-    expect(g.dom.window.document.documentElement.style.overflowY).toBe('hidden')
+    expect(root.style.overflowY).toBe('hidden')
     expect(g.packets('resize')).toMatchObject([{ payload: { height: 640 } }])
     currentHeight = 641
     g.triggerResize()
@@ -331,7 +333,31 @@ describe('real guest SDK input and action lifecycle', () => {
     currentHeight = 12400
     g.triggerResize()
     await vi.advanceTimersByTimeAsync(120)
-    expect(g.dom.window.document.documentElement.style.overflowY).toBe('auto')
+    expect(root.style.overflowY).toBe('auto')
     expect(g.packets('resize').at(-1)).toMatchObject({ payload: { height: 12000 } })
+    currentHeight = 900
+    g.triggerResize()
+    await vi.advanceTimersByTimeAsync(120)
+    expect(root.style.overflowY).toBe('hidden')
+  })
+  it('changes overflow only after the resize callback returns so Chrome sees no layout loop', async () => {
+    const g = guest()
+    const root = g.dom.window.document.documentElement
+    Object.defineProperty(g.dom.window.document.body, 'scrollHeight', { get: () => 12400, configurable: true })
+    g.triggerResize()
+    expect(root.style.overflowY).toBe('hidden')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(root.style.overflowY).toBe('auto')
+  })
+  it('does not treat a ResizeObserver loop notice as an execution failure', async () => {
+    const g = guest()
+    for (const message of ['ResizeObserver loop completed with undelivered notifications.', 'ResizeObserver loop limit exceeded']) {
+      g.dom.window.dispatchEvent(new g.dom.window.ErrorEvent('error', { message }))
+    }
+    await microtasks()
+    expect(g.packets('content.error')).toHaveLength(0)
+    g.dom.window.dispatchEvent(new g.dom.window.ErrorEvent('error', { message: 'bad code' }))
+    await microtasks()
+    expect(g.packets('content.error')).toMatchObject([{ payload: { message: 'bad code' } }])
   })
 })

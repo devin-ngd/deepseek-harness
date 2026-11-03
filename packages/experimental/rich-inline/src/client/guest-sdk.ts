@@ -130,15 +130,17 @@ export function guestSdk(mountId: string, renderRevision: number, guestPacketByt
       },
     };
     Object.defineProperty(window, 'rich', { value: Object.freeze(sdk), writable: false, configurable: false });
-    let lastResize = -Infinity, resizeTimer = null, lastHeight = -1;
+    let lastResize = -Infinity, resizeTimer = null, lastHeight = -1, tall = false;
     const root = document.querySelector('[data-rich-content-root]') || document.body;
+    // Toggling the scrollbar inside the observer callback re-wraps the observed root in the same frame, which Chrome reports as a window error.
+    document.documentElement.style.overflowY = 'hidden';
     const resize = () => {
       if (stopped) return;
       const remaining = 100 - (performance.now() - lastResize);
       if (remaining > 0) { if (!resizeTimer) resizeTimer = setTimeout(() => { resizeTimer = null; lastResize = -Infinity; resize(); }, remaining); return; }
       lastResize = performance.now();
       const raw = Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height));
-      document.documentElement.style.overflowY = raw > 12000 ? 'auto' : 'hidden';
+      if ((raw > 12000) !== tall) { tall = !tall; setTimeout(() => { if (!stopped) document.documentElement.style.overflowY = tall ? 'auto' : 'hidden'; }, 0); }
       const height = Math.max(24, Math.min(12000, raw));
       if (lastHeight < 0 || Math.abs(height - lastHeight) > 1) { lastHeight = height; packet('resize', { height }); }
     };
@@ -153,7 +155,8 @@ export function guestSdk(mountId: string, renderRevision: number, guestPacketByt
       if (snapshot && dirty.size) void save().then(() => report(false), error => { notifyFailure(error); report(true); });
       else report(false);
     };
-    window.addEventListener('error', event => reportFailure(event.message));
+    // Browsers raise this for harmless layout feedback loops, including ones caused by generated code's own observers; it is not a code failure.
+    window.addEventListener('error', event => { if (!/^ResizeObserver loop/.test(event.message)) reportFailure(event.message); });
     window.addEventListener('unhandledrejection', event => reportFailure(event.reason));
     packet('ready', { sdkVersion: '1', capabilities: ['draft', 'action', 'resize'] });
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(() => {
