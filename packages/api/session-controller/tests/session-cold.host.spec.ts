@@ -9,6 +9,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore from '@deepseek-ai/dsh-session'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
+import { CommandId } from '@deepseek-ai/dsh-commands/brand'
+import type {} from '@deepseek-ai/dsh-commands/types'
 import { SessionHistoryController } from '@deepseek-ai/dsh-api-session-controller/src/history.ts'
 import { subagentIdentityProjectionDefinition } from '@deepseek-ai/dsh-subagent/src/projection.ts'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
@@ -18,7 +20,11 @@ import { createInboxStub, mountAgentLoopTestDependencies, mountAgentLoopTestHarn
 import type { Agent, Inbox } from '@deepseek-ai/dsh-agent'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import AttachmentStore from '@deepseek-ai/dsh-attachment'
-import type { SessionPromptRequest, SessionRequestId } from '../src/types.ts'
+import {
+  SESSION_COLD_RECOMPUTE_EVENT_LIMIT,
+  type SessionPromptRequest,
+  type SessionRequestId,
+} from '../src/types.ts'
 import {
   SessionPersistenceRevision,
   type SessionPersistenceSnapshot,
@@ -95,7 +101,17 @@ describe('sessions.list cold merge', () => {
       ]
       const list = vi.fn(async () => snapshots)
       const stat = vi.fn()
-      const open = vi.fn()
+      const open = vi.fn(async (id: SessionId) => ({
+        id,
+        header: snapshots.find(snapshot => snapshot.header.id === id)!.header,
+        inheritedEventCount: SessionLogOffset(0),
+        access: 'read' as const,
+        read: () => Promise.resolve({ eventState: 'detached' as const, events: [] }),
+        append: () => Promise.reject(new Error('read-only handle')),
+        flush: () => Promise.reject(new Error('read-only handle')),
+        close: () => Promise.resolve(),
+        [Symbol.asyncDispose]: () => Promise.resolve(),
+      }))
       ctx.provide('sessionPersistence', { list, stat, open } as never)
       const remote = createSessionTestRemote(ctx, {
         defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
@@ -114,7 +130,9 @@ describe('sessions.list cold merge', () => {
         expect(byId.get(liveOnly.id)).toMatchObject({ formatStatus: 'current' })
         expect(list).toHaveBeenCalledTimes(1)
         expect(stat).not.toHaveBeenCalled()
-        expect(open).not.toHaveBeenCalled()
+        // Uncached current-format rows pay the bounded blankness recompute; a
+        // migration-required log and live Sessions are never opened here.
+        expect(open.mock.calls.map(call => call[0]).sort()).toEqual([current.id, unknown.id].sort())
         expect(observe).not.toHaveBeenCalled()
       } finally {
         observe.mockRestore()
@@ -124,7 +142,7 @@ describe('sessions.list cold merge', () => {
     }
   })
 
-  it('uses a predecessor title hint with zero cold stat or body reads', async () => {
+  it('serves a predecessor title hint while undecided metadata recomputes from a bounded log read', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     const metas = [header('legacy-title', 100), header('uncached', 200)]
@@ -146,6 +164,9 @@ describe('sessions.list cold merge', () => {
       cachedPredecessorTitle: (meta: SessionHeader) => meta.id === sid('legacy-title')
         ? { asOfSeq: 2, values: { title: 'Cached predecessor title' } }
         : undefined,
+      // The cold fold rides the real registry the controller registered into.
+      coldSnapshot: (meta: SessionHeader, inheritedEventCount: SessionLogOffset, events: readonly SessionEvent[]) =>
+        ctx.sessionProjections.restore({}, events, SessionLogOffset(0), meta, inheritedEventCount).snapshot,
     } as never)
     const remote = createSessionTestRemote(ctx, {
       defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
@@ -156,22 +177,31 @@ describe('sessions.list cold merge', () => {
     const response = await remote.list(request({}))
 
     if (!response.ok) throw new Error('list failed')
-    expect(response.value.items).toEqual([
-      expect.objectContaining({
-        sessionId: sid('uncached'),
-        blank: false,
-        updatedAt: 200,
-      }),
-      expect.objectContaining({
-        sessionId: sid('legacy-title'),
-        blank: false,
-        updatedAt: 100,
-        projections: { kind: 'cached', asOfSeq: 2, values: { title: 'Cached predecessor title' } },
-      }),
-    ])
+    expect(response.value.items).toHaveLength(2)
+    const [uncached, legacy] = response.value.items
+    expect(uncached).toMatchObject({
+      sessionId: sid('uncached'),
+      blank: false,
+      updatedAt: 1200,
+      projections: {
+        kind: 'cached',
+        asOfSeq: 1,
+        values: { sessionListMetadata: { blank: false, lastPromptAt: 1200 } },
+      },
+    })
+    expect(legacy).toMatchObject({
+      sessionId: sid('legacy-title'),
+      blank: false,
+      updatedAt: 1200,
+      projections: { kind: 'cached', asOfSeq: 2, values: { title: 'Cached predecessor title' } },
+    })
     expect(stat).not.toHaveBeenCalled()
-    expect(inspect).not.toHaveBeenCalled()
+    // Metadata-undecided rows read their small logs through a read-only
+    // handle; no Session observation or Agent activation is involved.
+    expect(inspect).toHaveBeenCalledTimes(2)
     expect(observe).not.toHaveBeenCalled()
+    expect(ctx.sessions.get(sid('uncached'))).toBeUndefined()
+    await ctx.fiber.dispose()
   })
 
   it('serves cold rows from current cached projections without body access', async () => {
@@ -240,6 +270,286 @@ describe('sessions.list cold merge', () => {
     expect(inspect).not.toHaveBeenCalled()
   })
 
+})
+
+describe('cold blankness recompute', () => {
+  /** Configuration event that never clears blank: a model-selection record. */
+  function configEvent(seq: number): SessionEvent {
+    return {
+      type: 'model/selection',
+      seq: SessionSeq(seq),
+      time: 1000 + seq,
+      data: { provider: 'p', model: 'm' },
+    }
+  }
+
+  /**
+   * Cache double whose cold fold rides the real registry the controller
+   * registered into, so recomputed metadata is the genuine unit output.
+   */
+  function provideRecomputeCache(ctx: Context): { coldSnapshot: ReturnType<typeof vi.fn> } {
+    const cache = {
+      cachedSnapshot: () => undefined,
+      cachedPredecessorTitle: () => undefined,
+      coldSnapshot: vi.fn((meta: SessionHeader, inheritedEventCount: SessionLogOffset, events: readonly SessionEvent[]) =>
+        ctx.sessionProjections.restore({}, events, SessionLogOffset(0), meta, inheritedEventCount).snapshot),
+    }
+    ctx.provide('sessionProjectionCache', cache as never)
+    return cache
+  }
+
+  it('hides a configuration-only persisted draft after a bounded recompute and refreshes its cache', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    const meta = header('legacy-empty-draft', 100)
+    const events = [configEvent(0), configEvent(1), configEvent(2)]
+    providePersistence(ctx, {
+      list: () => Promise.resolve([meta]),
+      inspect: () => Promise.resolve({ meta, events }),
+    })
+    const cache = provideRecomputeCache(ctx)
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
+      cwd: '/tmp',
+    })
+
+    const response = await remote.list(request({}))
+
+    if (!response.ok) throw new Error('list failed')
+    expect(response.value.items).toEqual([
+      expect.objectContaining({ sessionId: meta.id, blank: true, updatedAt: 100 }),
+    ])
+    // The complete small log folded once and its refreshed rows persist, so
+    // later listings serve the cache without another log read.
+    expect(cache.coldSnapshot).toHaveBeenCalledOnce()
+    // Neither a Session nor an Agent was materialized for the answer.
+    expect(ctx.sessions.get(meta.id)).toBeUndefined()
+    expect(ctx.agents.get(meta.id)).toBeUndefined()
+    await ctx.fiber.dispose()
+  })
+
+  it('keeps a legacy command-only Session visible through the recompute', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    const meta = header('legacy-command-only', 100)
+    const events = [
+      configEvent(0),
+      {
+        type: 'command/run',
+        seq: SessionSeq(1),
+        time: 1001,
+        data: { commandId: CommandId('legacy-cmd'), name: 'plan', source: { kind: 'user' } },
+      },
+      {
+        type: 'command/done',
+        seq: SessionSeq(2),
+        time: 1002,
+        data: { commandId: CommandId('legacy-cmd'), kind: 'error', text: 'Not approved.' },
+      },
+    ] as SessionEvent[]
+    providePersistence(ctx, {
+      list: () => Promise.resolve([meta]),
+      inspect: () => Promise.resolve({ meta, events }),
+    })
+    const cache = provideRecomputeCache(ctx)
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
+      cwd: '/tmp',
+    })
+
+    const response = await remote.list(request({}))
+
+    if (!response.ok) throw new Error('list failed')
+    expect(response.value.items).toEqual([
+      expect.objectContaining({ sessionId: meta.id, blank: false, updatedAt: 100 }),
+    ])
+    expect(cache.coldSnapshot).toHaveBeenCalledOnce()
+    await ctx.fiber.dispose()
+  })
+
+  it('bounds the recompute read and never hides an oversize undecided log', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    const quiet = header('oversize-quiet', 100)
+    const started = header('oversize-started', 200)
+    const logs: ReadonlyMap<SessionId, readonly SessionEvent[]> = new Map([
+      [quiet.id, Array.from({ length: 300 }, (_, index) => configEvent(index))],
+      [started.id, [
+        { type: 'turn/start', seq: SessionSeq(0), time: 900, data: { turn: 1 } } as SessionEvent,
+        ...Array.from({ length: 300 }, (_, index) => configEvent(index + 1)),
+      ]],
+    ])
+    const reads: Array<{ offset: number; length: number | undefined }> = []
+    providePersistence(ctx, {
+      list: () => Promise.resolve([quiet, started]),
+      open: (id: SessionId) => {
+        const meta = id === quiet.id ? quiet : started
+        const events = logs.get(id)!
+        return Promise.resolve({
+          id,
+          header: meta,
+          inheritedEventCount: SessionLogOffset(0),
+          access: 'read' as const,
+          read: (offset = 0, length?: number) => {
+            reads.push({ offset, length })
+            return Promise.resolve({
+              eventState: 'detached' as const,
+              events: events.slice(offset, length === undefined ? undefined : offset + length),
+            })
+          },
+          append: () => Promise.reject(new Error('read-only handle')),
+          flush: () => Promise.reject(new Error('read-only handle')),
+          close: () => Promise.resolve(),
+          [Symbol.asyncDispose]: () => Promise.resolve(),
+        })
+      },
+    })
+    const cache = provideRecomputeCache(ctx)
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
+      cwd: '/tmp',
+    })
+
+    const response = await remote.list(request({}))
+
+    if (!response.ok) throw new Error('list failed')
+    const byId = new Map(response.value.items.map(item => [item.sessionId, item]))
+    // A start visible inside the bounded prefix answers non-blank; an
+    // undecided oversize log stays unknown and visible — never hidden.
+    expect(byId.get(started.id)).toMatchObject({ blank: false })
+    expect(byId.get(quiet.id)).toMatchObject({ blank: false })
+    expect(reads).toHaveLength(2)
+    for (const readCall of reads) {
+      expect(readCall).toEqual({ offset: 0, length: SESSION_COLD_RECOMPUTE_EVENT_LIMIT + 1 })
+    }
+    // No oversize log pays a full fold.
+    expect(cache.coldSnapshot).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
+
+  it('treats an unreadable log as unknown and keeps the row visible', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    const meta = header('unreadable-cold', 100)
+    providePersistence(ctx, {
+      list: () => Promise.resolve([meta]),
+      inspect: () => Promise.resolve(undefined),
+    })
+    const cache = provideRecomputeCache(ctx)
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
+      cwd: '/tmp',
+    })
+
+    const response = await remote.list(request({}))
+
+    if (!response.ok) throw new Error('list failed')
+    expect(response.value.items).toEqual([
+      expect.objectContaining({ sessionId: meta.id, blank: false }),
+    ])
+    expect(cache.coldSnapshot).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
+
+  it('serves a decided version-1 metadata row through the real unit and leaves an undecidable one absent', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    // Registers the production sessionListMetadata unit (stateVersion 2 + migrate).
+    createSessionTestRemote(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
+
+    // Version 1 with a started turn decides version-2 blankness unchanged.
+    expect(ctx.sessionProjections.viewCheckpoint({
+      sessionListMetadata: { ver: 1, seq: SessionSeq(3), val: { blank: false, lastPromptAt: 900 } },
+    })).toEqual({ sessionListMetadata: { blank: false, lastPromptAt: 900 } })
+    // A still-blank version-1 row predates command awareness: undecidable.
+    expect(ctx.sessionProjections.viewCheckpoint({
+      sessionListMetadata: { ver: 1, seq: SessionSeq(3), val: { blank: true, lastPromptAt: null } },
+    })).toEqual({})
+    // A current row never consults the hook.
+    expect(ctx.sessionProjections.viewCheckpoint({
+      sessionListMetadata: { ver: 2, seq: SessionSeq(3), val: { blank: true, lastPromptAt: null } },
+    })).toEqual({ sessionListMetadata: { blank: true, lastPromptAt: null } })
+    await ctx.fiber.dispose()
+  })
+
+  it('propagates cancellation from an in-flight recompute read without producing a row', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    const meta = header('abort-during-read', 100)
+    const controller = new AbortController()
+    const reason = new Error('list cancelled during recompute')
+    providePersistence(ctx, {
+      list: () => Promise.resolve([meta]),
+      open: (id: SessionId) => Promise.resolve({
+        id,
+        header: meta,
+        inheritedEventCount: SessionLogOffset(0),
+        access: 'read' as const,
+        read: (_offset?: number, _length?: number, options?: { signal?: AbortSignal }) => {
+          queueMicrotask(() => { controller.abort(reason) })
+          return new Promise<never>((_, reject) => {
+            options?.signal?.addEventListener('abort', () => { reject(reason) }, { once: true })
+          })
+        },
+        append: () => Promise.reject(new Error('read-only handle')),
+        flush: () => Promise.reject(new Error('read-only handle')),
+        close: () => Promise.resolve(),
+        [Symbol.asyncDispose]: () => Promise.resolve(),
+      }),
+    })
+    const cache = provideRecomputeCache(ctx)
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
+      cwd: '/tmp',
+    })
+
+    const response = await remote.list(request({}), controller.signal)
+
+    expect(response).toMatchObject({ ok: false, error: { code: 'gateway/cancelled' } })
+    expect(cache.coldSnapshot).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
+
+  it('never opens a log whose format needs migration', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    const meta = header('legacy-format', 100)
+    const inspect = vi.fn(async () => ({ meta, events: conversationEvents() }))
+    ctx.provide('sessionPersistence', {
+      list: () => Promise.resolve([{
+        header: meta,
+        revision: SessionPersistenceRevision('test:legacy-format:list'),
+        formatStatus: 'migration-required' as const,
+      }]),
+      inspect,
+    } as never)
+    const cache = provideRecomputeCache(ctx)
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
+      cwd: '/tmp',
+    })
+
+    const response = await remote.list(request({}))
+
+    if (!response.ok) throw new Error('list failed')
+    expect(response.value.items).toEqual([
+      expect.objectContaining({
+        sessionId: meta.id,
+        blank: false,
+        formatStatus: 'migration-required',
+      }),
+    ])
+    expect(inspect).not.toHaveBeenCalled()
+    expect(cache.coldSnapshot).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
 })
 
 describe('attached updatedAt tracks human prompts', () => {

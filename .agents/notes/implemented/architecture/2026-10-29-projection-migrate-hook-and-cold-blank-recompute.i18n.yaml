@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for 2026-10-29-projection-migrate-hook-and-cold-blank-recompute.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-29-projection-migrate-hook-and-cold-blank-recompute.md
+/agent-note-projection-predecessor-rows-serve-through-a-unit-migrate-hook-undecidable-cold-list-metadata-gets-a-bounded-agent-free-recompute:
+  en: 10000a43a5165a9d
+  zh: 2a5a03499ff9a832
+/agent-note-projection-predecessor-rows-serve-through-a-unit-migrate-hook-undecidable-cold-list-metadata-gets-a-bounded-agent-free-recompute/problem:
+  en: 357b1d3cad108248
+  zh: 89a81da4c72d084c
+/agent-note-projection-predecessor-rows-serve-through-a-unit-migrate-hook-undecidable-cold-list-metadata-gets-a-bounded-agent-free-recompute/decision:
+  en: 41ca3d03cdd90dc5
+  zh: 30cc51ae37fe9d17
+/agent-note-projection-predecessor-rows-serve-through-a-unit-migrate-hook-undecidable-cold-list-metadata-gets-a-bounded-agent-free-recompute/alternatives-considered:
+  en: 2ec314f03da5fd7c
+  zh: 41775a3dfe776962
+/agent-note-projection-predecessor-rows-serve-through-a-unit-migrate-hook-undecidable-cold-list-metadata-gets-a-bounded-agent-free-recompute/consequences:
+  en: a3749453eace742a
+  zh: 5a9cf4de0c7a692c
+/agent-note-projection-predecessor-rows-serve-through-a-unit-migrate-hook-undecidable-cold-list-metadata-gets-a-bounded-agent-free-recompute/testing:
+  en: 36e3009d248f1e29
+  zh: 365e474d7363cc90
+/agent-note-projection-predecessor-rows-serve-through-a-unit-migrate-hook-undecidable-cold-list-metadata-gets-a-bounded-agent-free-recompute/related:
+  en: 64e2277421422a41
+  zh: 84a9efac0197d1ff

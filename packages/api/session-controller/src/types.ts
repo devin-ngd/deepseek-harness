@@ -46,7 +46,7 @@ declare module '@deepseek-ai/dsh-session/types' {
 
 /** Persisted hints used to summarize a cold Session. */
 export interface SessionListMetadata {
-  /** Whether the folded prefix contains no turn. */
+  /** Whether the folded prefix contains neither a turn nor a command invocation. */
   readonly blank: boolean
   /** Latest human-authored prompt time in the folded prefix. */
   readonly lastPromptAt: number | null
@@ -226,6 +226,14 @@ export const SESSION_SEARCH_RESULT_LIMIT = 20
 
 /** Maximum search snippet length in Unicode code points. */
 export const SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS = 240
+
+/**
+ * Complete-log event bound for the Agent-free cold blankness recompute: on a
+ * cached-metadata miss the list reads at most this many stored events (plus
+ * one to recognize an oversize log); a larger log whose prefix shows no
+ * started turn or command keeps its blankness unknown and stays visible.
+ */
+export const SESSION_COLD_RECOMPUTE_EVENT_LIMIT = 256
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {

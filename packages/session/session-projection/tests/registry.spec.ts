@@ -686,6 +686,40 @@ describe('SessionProjectionRegistry drive', () => {
     expect(ctx.sessionProjections.viewCheckpoint({})).toEqual({})
   })
 
+  it('viewCheckpoint serves a predecessor row only when the unit migrate hook decides it', async () => {
+    const { ctx } = await harness()
+    const migrate = vi.fn((state: MarksState, version: number): MarksState | undefined =>
+      version === 1 && state !== null ? state : undefined)
+    ctx.sessionProjections.register({ ...marksUnit(), stateVersion: 2, migrate })
+    const decided = {
+      'test/marks': { ver: 1, seq: SessionSeq(4), val: { marks: ['legacy'] } },
+    }
+    expect(ctx.sessionProjections.viewCheckpoint(decided)).toEqual({
+      'test/marks': { marks: ['legacy'] },
+    })
+    expect(migrate).toHaveBeenCalledWith({ marks: ['legacy'] }, 1)
+
+    // An undecidable old state and a version the hook does not know stay absent.
+    expect(ctx.sessionProjections.viewCheckpoint({
+      'test/marks': { ver: 1, seq: SessionSeq(4), val: null },
+    })).toEqual({})
+    expect(ctx.sessionProjections.viewCheckpoint({
+      'test/marks': { ver: 3, seq: SessionSeq(4), val: { marks: ['newer'] } },
+    })).toEqual({})
+    // A malformed old state fails schema validation before the hook runs.
+    migrate.mockClear()
+    expect(ctx.sessionProjections.viewCheckpoint({
+      'test/marks': { ver: 1, seq: SessionSeq(4), val: { marks: 'not-an-array' } },
+    })).toEqual({})
+    expect(migrate).not.toHaveBeenCalled()
+
+    // A current-version row serves directly and never consults the hook.
+    expect(ctx.sessionProjections.viewCheckpoint({
+      'test/marks': { ver: 2, seq: SessionSeq(4), val: null },
+    })).toEqual({ 'test/marks': { marks: [] } })
+    expect(migrate).not.toHaveBeenCalled()
+  })
+
   it('viewCheckpoint and restore exclude host-only state while retaining its checkpoint', async () => {
     const { ctx } = await harness()
     ctx.sessionProjections.register(marksUnit())

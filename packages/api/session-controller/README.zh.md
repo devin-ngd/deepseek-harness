@@ -37,11 +37,11 @@ Client journal 在发布 follow 快照、live entry 或历史页之前验证当�
 
 列表行在状态可用时携带 `formatStatus`，Client 无需请求其投影即可识别需要迁移的 Session。
 
-Host 仅在配置的工作时间片耗尽时，于完整条目之间让出事件循环；剩余工作较少时直接返回，不强制让出。每行及每次让出之后检查请求取消，取消时拒绝返回部分结果。每行同步计算；列表不承诺跨 Session 的统一快照。已经进入冷态队列的 Session 若在让出期间接入，仍返回缓存行：Client 对进行中请求的变更重放会纠正其可用性，带序号的投影会覆盖缓存提示。
+Host 仅在配置的工作时间片耗尽时，于完整条目之间让出事件循环；剩余工作较少时直接返回，不强制让出。每行及每次让出之后检查请求取消，取消时拒绝返回部分结果。缓存命中的行是同步的——只有元数据无法判定的冷行会等待其有界重算；列表不承诺跨 Session 的统一快照。已经进入冷态队列的 Session 若在让出期间接入，仍返回缓存行：Client 对进行中请求的变更重放会纠正其可用性，带序号的投影会覆盖缓存提示。
 
-Client 列表行和驻留 Session 使用当前 `sessionListMetadata` 投影纠正过期的空白会话提示；最近活动时间取摘要时间戳与投影中最后一次用户提示词时间的较晚值。当 SessionManager 在列表行到达前创建实例时，会使用已保留的该 Session 元数据对账空白状态。因此，即使旧列表响应仍将已有对话标为空白，新会话操作也不会复用已经打开过的对话。
+Client 列表行和驻留 Session 使用当前 `sessionListMetadata` 投影纠正过期的空白会话提示；最近活动时间取摘要时间戳与投影中最后一次用户提示词时间的较晚值。已提交的 `command/run` 或 `turn/start` 会清除列表空白状态，因此等待确认的命令在离开当前会话后仍有可返回的入口；仅有配置事件的草稿保持空白。投影状态版本 2 使旧空白状态缓存失效。已经历过轮次的 version-1 行仍通过单元的 `migrate` 钩子提供服务；无法判定的行（仍为空白的 version-1 行早于命令语义，或缓存缺失）由有界且不激活 Agent 的重算回答——经只读句柄读取至多 `SESSION_COLD_RECOMPUTE_EVENT_LIMIT` 个事件的前缀；完整的小日志通过缓存冷读折叠并刷新其存储记录，后续列表无需日志 I/O 即可由缓存服务。超大、不可读或等待格式迁移的日志保持空白状态未知并继续可见。当 SessionManager 在列表行到达前创建实例时，会使用已保留的该 Session 元数据对账空白状态。因此，即使旧列表响应仍将已有对话标为空白，新会话操作也不会复用已经打开过的对话。
 
-`session.create` 返回一个用于新对话的 Session，响应指明实际使用的 Session。请求指明的 `sessionId` 在满足以下条件时被复用：仍为空白（尚未开始任何轮次）、属于请求的目录、是请求的工作区中未归档的成员，且未被其他写者占用；活动 Session 原地复用，持久化 Session 被恢复并持续持有其写锁。被复用的 Session 运行请求的 `agentPreset`，请求未指明时运行配置的默认 preset：不解析它记录的 preset，变更在 Agent 发布前记录为 `agent-preset/selected`。指明的 Session 若已开始、不满足工作区归属，或被其他写者占用，则保持不变，改为新建 Session。没有对应已存储 Session 的 `sessionId` 成为新 Session 的标识。指明其他目录中的 Session 返回 `session/conflict`，指明由 subagent 路由拥有的 Session 返回 `session/agent-busy`；这两项检查先于 preset 解析。指明同一标识的创建请求按到达顺序执行，preset 解析也包含在内，每个响应报告其自身请求完成时该 Session 运行的 preset。`session.list` 根据缓存元数据列出持久化空白会话，不打开冷日志正文。
+`session.create` 返回一个用于新对话的 Session，响应指明实际使用的 Session。请求指明的 `sessionId` 在满足以下条件时被复用：仍为空白（尚未开始任何轮次）、属于请求的目录、是请求的工作区中未归档的成员，且未被其他写者占用；活动 Session 原地复用，持久化 Session 被恢复并持续持有其写锁。被复用的 Session 运行请求的 `agentPreset`，请求未指明时运行配置的默认 preset：不解析它记录的 preset，变更在 Agent 发布前记录为 `agent-preset/selected`。指明的 Session 若已开始、不满足工作区归属，或被其他写者占用，则保持不变，改为新建 Session。没有对应已存储 Session 的 `sessionId` 成为新 Session 的标识。指明其他目录中的 Session 返回 `session/conflict`，指明由 subagent 路由拥有的 Session 返回 `session/agent-busy`；这两项检查先于 preset 解析。指明同一标识的创建请求按到达顺序执行，preset 解析也包含在内，每个响应报告其自身请求完成时该 Session 运行的 preset。`session.list` 根据缓存元数据列出持久化空白会话，仅在元数据缺失时打开有界的只读日志前缀，且绝不激活该 Session 的 Agent。
 
 Client 列表刷新保留未变化的行对象，并在顺序和值均相同时复用条目数组。每行的 `retainedBy` 包含正数的本地引用来源计数，Host 元数据刷新不能覆盖它们。缓存成员检查使用每次刷新构建的 ID 集合，因此对账成本随当前列表和保留缓存的规模线性增长。 Host 摘要更新会替换运行状态与 Agent 可用性；本地 create/fork 响应只补充已有行缺失的元数据。普通 Session 被移除后，仅在目录仍有子项时保留其投影 store。
 

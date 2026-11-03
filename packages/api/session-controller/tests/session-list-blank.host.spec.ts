@@ -1,13 +1,9 @@
 /**
- * The summary blank bit means "conversation not started" (no turn has run),
- * not "log empty": standalone plugin events — command lifecycle records,
- * plan/mode, permission knob events, session titles — never flip it, so running /plan or /goal on a
- * fresh session keeps it list-hidden and reusable, while the first accepted
- * prompt's turn/start clears it. The host/session-added frame shares the
- * same predicate function (covered by the workspace spec's frame assertion).
+ * Command invocations and turns keep a Session discoverable in the list;
+ * configuration events alone leave a fresh draft blank.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -21,6 +17,7 @@ import { createSessionTestRemote, type TestSessionRemote } from './test-remote.t
 
 async function harness(): Promise<{ ctx: Context; remote: TestSessionRemote; attach: (session: Session) => Promise<void> }> {
   const ctx = new Context()
+  onTestFinished(() => ctx.fiber.dispose())
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
   return {
@@ -32,13 +29,9 @@ async function harness(): Promise<{ ctx: Context; remote: TestSessionRemote; att
   }
 }
 
-/** Append the standalone (non-conversation) event family a fresh session can accumulate. */
+/** Append configuration events that do not represent a submitted command or prompt. */
 function appendStandalone(session: Session): void {
-  session.append('command/run', {
-    commandId: CommandId('blank-cmd-1'), name: 'plan', args: '', source: { kind: 'user' },
-  })
   session.append('plan/mode', { active: true })
-  session.append('command/done', { commandId: CommandId('blank-cmd-1'), kind: 'success', text: 'Plan mode on.' })
   session.append('session/title', {
     title: 'standalone title', messageSeqs: [], source: { kind: 'fallback' },
   })
@@ -53,14 +46,50 @@ async function listBlank(remote: TestSessionRemote, id: string): Promise<boolean
   return result.value.items.find(item => item.sessionId === id)?.blank
 }
 
-describe('summary blank = conversation not started', () => {
-  it('standalone events (command lifecycle, plan/mode, title) keep the session blank', async () => {
+describe('summary blank = no submitted command or turn', () => {
+  it('configuration and title events keep the session blank', async () => {
     const { ctx, remote, attach } = await harness()
     const session = ctx.sessions.create()
     await attach(session)
     expect(await listBlank(remote, session.id)).toBe(true)
     appendStandalone(session)
     expect(await listBlank(remote, session.id)).toBe(true)
+  })
+
+  it('keeps a Session listed from command admission through a rejected result without starting a turn', async () => {
+    const { ctx, remote, attach } = await harness()
+    const session = ctx.sessions.create()
+    await attach(session)
+    session.append('command/run', {
+      commandId: CommandId('blank-cmd-1'), name: 'test-command', source: { kind: 'user' },
+    })
+    expect(await listBlank(remote, session.id)).toBe(false)
+    session.append('command/done', { commandId: CommandId('blank-cmd-1'), kind: 'error', text: 'Not approved.' })
+    expect({ blank: await listBlank(remote, session.id), events: session.snapshotEvents().map(({ type, data }) => ({ type, data })) }).toMatchInlineSnapshot(`
+      {
+        "blank": false,
+        "events": [
+          {
+            "data": {
+              "commandId": "blank-cmd-1",
+              "name": "test-command",
+              "source": {
+                "kind": "user",
+              },
+            },
+            "type": "command/run",
+          },
+          {
+            "data": {
+              "commandId": "blank-cmd-1",
+              "kind": "error",
+              "text": "Not approved.",
+            },
+            "type": "command/done",
+          },
+        ],
+      }
+    `)
   })
 
   it('the first turn clears blank', async () => {

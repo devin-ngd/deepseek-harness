@@ -64,10 +64,24 @@ interface ProjectionDefinition<
    * into garbage. Non-negative integer.
    */
   stateVersion: number
+  /**
+   * Predecessor-row salvage for the zero-I/O read (`viewCheckpoint` only):
+   * map a state folded under an older `stateVersion` — revalidated against
+   * the current `stateSchema` before the call — to the current semantics, or
+   * return `undefined` when the old state cannot decide the current one,
+   * leaving the key absent so a fuller read path refolds it. The hook also
+   * sees rows a newer version left behind (a downgrade), so it must answer
+   * only the versions it understands. Fold seeding (`restoreFloor`/`restore`)
+   * never consults this hook.
+   * @param state - schema-valid state produced by a non-current unit version.
+   * @param version - the `stateVersion` that folded `state`.
+   * @returns the equivalent current state, or `undefined` when undecidable.
+   */
+  migrate?: (this: void, state: NoInfer<S>, version: number) => NoInfer<S> | undefined
 }
 ```
 
-Every served projection value is a complete read model. A source event may carry a whole value or a domain-owned operation; the unit's deterministic `apply` owns replay, and checkpoint plus forward tail replay reconstructs the same state.
+Every served projection value is a complete read model. A source event may carry a whole value or a domain-owned operation; the unit's deterministic `apply` owns replay, and checkpoint plus forward tail replay reconstructs the same state. When a unit bumps `stateVersion`, its `migrate` hook may still serve a predecessor row whose old state decides the current value — the zero-I/O listing read uses it, while fold seeding stays exact-version.
 
 ## The snapshot and the change feed
 
@@ -302,7 +316,9 @@ restoreFloor(checkpoint: ProjectionCheckpoint): SessionLogOffset | undefined
 /**
  * View a checkpoint's rows without any log read: for every registered
  * client-visible unit whose row's `ver` matches, serve the schema-validated
- * `view` of the schema-validated stored state; mismatched, malformed, or absent rows leave their key
+ * `view` of the schema-validated stored state; a version-mismatched row
+ * still serves when the unit's `migrate` hook interprets its old state, and
+ * otherwise mismatched, malformed, or absent rows leave their key
  * absent (a cold or listing consumer treats it as not-yet-available and a
  * fuller read path refolds it). The zero-I/O rung of the read ladder —
  * values are as stale as their rows, never wrong.

@@ -12,8 +12,8 @@
   en: 2594af08bbc79dba
   zh: cdebd5d14d99cf3c
 /agent-note-projection-cache-read-only-face-matches-the-lifecycle-identity-the-client-store-separates-cached-and-sequenced-rows/problem/the-cache-s-two-uses-and-where-validation-lives:
-  en: 055ead18162ca1cd
-  zh: 9046bf04229e45d1
+  en: d857012ea09f5f0a
+  zh: f6775101c268fb09
 /agent-note-projection-cache-read-only-face-matches-the-lifecycle-identity-the-client-store-separates-cached-and-sequenced-rows/problem/the-client-store-cannot-guarantee-that-connected-data-replaces-hints:
   en: 597b346459a9d8b0
   zh: f7282a40061d645c
@@ -33,14 +33,14 @@
   en: dd1cc7ac96a5a25d
   zh: bdea08d20f166e65
 /agent-note-projection-cache-read-only-face-matches-the-lifecycle-identity-the-client-store-separates-cached-and-sequenced-rows/decision/what-stays-untouched:
-  en: 1cefba02bbfb2647
-  zh: 5a96942565ab9d72
+  en: c11c6f7ad2a25ffd
+  zh: 01ba1b1fa1308a8d
 /agent-note-projection-cache-read-only-face-matches-the-lifecycle-identity-the-client-store-separates-cached-and-sequenced-rows/decision/worst-case-walked-through:
   en: 396d75331b3b0143
   zh: 2eb41ac09de87de0
 /agent-note-projection-cache-read-only-face-matches-the-lifecycle-identity-the-client-store-separates-cached-and-sequenced-rows/alternatives-considered:
-  en: d71031c0dc256d80
-  zh: 753c948a90a0c9ad
+  en: 4e46ceae0ae7a6cb
+  zh: bef513e38fcdd659
 /agent-note-projection-cache-read-only-face-matches-the-lifecycle-identity-the-client-store-separates-cached-and-sequenced-rows/consequences:
   en: 525ea6842ad2e19a
   zh: 595da1db20255617

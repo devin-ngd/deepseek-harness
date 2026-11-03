@@ -10,8 +10,9 @@
  * fold shortcut, never an authority: a row
  * is possibly stale (its `seq` says how stale) but never wrong, so every
  * write path is fail-soft (a lost write costs a longer tail replay on the
- * next cold read) and a `ver` mismatch discards the row instead of migrating
- * it. Design authority: the session-projection RFC
+ * next cold read) and fold faces discard a `ver`-mismatched row instead of
+ * migrating it; only the zero-I/O listing read may still serve the row when
+ * the unit's `migrate` hook interprets the old state. Design authority: the session-projection RFC
  * (.agents/notes/proposed/architecture/2026-07-27-session-projection-and-command-log.md).
  * @module @deepseek-ai/dsh-session-projection-cache
  */
@@ -141,8 +142,9 @@ export class SessionProjectionCache extends Service {
 
   /**
    * The zero-I/O listing read: whole values viewed straight from the stored
-   * rows (version-matching keys only) of the record bound to the caller's
-   * lifecycle. The header is the only identity witness a listing holds, so
+   * rows of the record bound to the caller's lifecycle — keys whose row
+   * version matches the live unit, plus a mismatched row the unit's `migrate`
+   * hook can still interpret. The header is the only identity witness a listing holds, so
    * this face matches the lifecycle identity (`formatVersion`, `createdAt`,
    * `cwd`, `isSeeded`) and not the inherited cut: within one format
    * generation the cut is fixed at fork time, so it distinguishes no

@@ -5,13 +5,16 @@ import { scheduler } from 'node:timers/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { ImageAttachmentLimits } from '@deepseek-ai/dsh-attachment'
+import type {} from '@deepseek-ai/dsh-commands/types'
 import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { ProjectionSnapshot } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import { SessionQueryError, type SessionRecord, type SessionSearchCursor } from '@deepseek-ai/dsh-session-query'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { z } from 'zod'
 import {
+  SESSION_COLD_RECOMPUTE_EVENT_LIMIT,
   SESSION_SEARCH_RESULT_LIMIT,
   SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS,
 } from './types.ts'
@@ -38,6 +41,11 @@ const imageLimitsSchema = z.object({
   mediaTypes: z.array(z.string()),
 }) as unknown as z.ZodType<ImageAttachmentLimits>
 
+/** Whether one committed event makes its Session non-blank in the list: a started turn or a submitted command. */
+function eventClearsBlank(event: SessionEvent): boolean {
+  return event.type === 'turn/start' || event.type === 'command/run'
+}
+
 /**
  * Advance the Session-list metadata projection by one committed event.
  * @param state - metadata before the event.
@@ -48,7 +56,7 @@ export function applySessionListMetadata(
   state: SessionListMetadata,
   event: SessionEvent,
 ): SessionListMetadata {
-  const blank = state.blank && event.type !== 'turn/start'
+  const blank = state.blank && !eventClearsBlank(event)
   const lastPromptAt = event.type === 'user/message' && event.data.source.kind === 'user'
     ? event.time
     : state.lastPromptAt
@@ -87,7 +95,14 @@ export class ApiSessionList {
       init: () => ({ blank: true, lastPromptAt: null }),
       apply: applySessionListMetadata,
       wire: { viewSchema: sessionListMetadataSchema, view: state => state },
-      stateVersion: 1,
+      stateVersion: 2,
+      // A version-1 row that already saw a turn proves the conversation
+      // started under either semantics; a still-blank version-1 row cannot
+      // decide whether a command ran, so it stays absent and the bounded
+      // cold recompute answers it from the log.
+      migrate: (state, version) => version === 1 && !state.blank
+        ? { blank: false, lastPromptAt: state.lastPromptAt }
+        : undefined,
     })
     ctx.inject(['attachments'], (attachmentCtx) => {
       ctx.sessionProjections.register<'imageLimits', null>({
@@ -152,7 +167,8 @@ export class ApiSessionList {
     }
     for (const record of cold) {
       signal?.throwIfAborted()
-      items.push(this.summarizeCold(record))
+      const summary = this.summarizeCold(record, signal)
+      items.push(summary instanceof Promise ? await summary : summary)
       if (performance.now() >= yieldDeadline) {
         await scheduler.yield()
         signal?.throwIfAborted()
@@ -164,19 +180,99 @@ export class ApiSessionList {
     return items
   }
 
-  private summarizeCold({ header, formatStatus }: SessionRecord): SessionSummary {
-    const projections = this.projectionsFor(header, undefined)
+  /**
+   * Summarize one persisted, unattached Session. The cached-metadata path is
+   * synchronous, so cheap rows never leave the work slice; only a cache miss
+   * returns a Promise for the bounded recompute.
+   * @param record - the listed cold record.
+   * @param signal - optional cancellation for the recompute read.
+   * @returns the summary, or a promise of it when a recompute runs.
+   */
+  private summarizeCold(
+    record: SessionRecord,
+    signal: AbortSignal | undefined,
+  ): SessionSummary | Promise<SessionSummary> {
+    const projections = this.projectionsFor(record.header, undefined)
     const metadata = projections?.values.sessionListMetadata
-    return {
-      sessionId: header.id,
-      updatedAt: updatedAt(header, metadata),
-      agentAvailable: false,
-      ...(formatStatus === undefined ? {} : { formatStatus }),
-      running: false,
-      // A large, metadata-less, or inaccessible cache miss remains unknown and visible.
-      blank: metadata?.blank ?? false,
-      ...listFields(header),
-      ...(projections === undefined ? {} : { projections }),
+    if (metadata !== undefined) return coldSummary(record, metadata, projections)
+    return this.summarizeColdUncached(record, projections, signal)
+  }
+
+  /** The asynchronous cold row: a cache miss after the bounded recompute settles. */
+  private async summarizeColdUncached(
+    record: SessionRecord,
+    cached: SessionProjectionHints | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<SessionSummary> {
+    const recomputed = await this.recomputeColdMetadata(record, signal)
+    return coldSummary(record, recomputed?.metadata, cached ?? recomputed?.projections)
+  }
+
+  /**
+   * Answer one cold Session's list metadata from its log when the persisted
+   * cache cannot — a missing row, or a predecessor row the unit's `migrate`
+   * hook could not decide. The read is bounded: a prefix of
+   * `SESSION_COLD_RECOMPUTE_EVENT_LIMIT` events through a read-only handle,
+   * never an Agent activation. A log that fits the bound folds completely
+   * through the cache's cold read, refreshing the stored record so later
+   * listings serve it without log I/O; a started turn or command visible in
+   * an oversize prefix still answers non-blank, with prompt recency as of the
+   * prefix. A subagent child (its row
+   * never gates on blank), a log needing format migration, an indecisive
+   * oversize prefix, and any read failure leave the blankness unknown.
+   * @param record - the listed cold record (its header witnesses the lifecycle).
+   * @param signal - optional cancellation for the persistence read.
+   * @returns the decided metadata plus the refreshed hint block when the full
+   *   fold ran, or `undefined` when blankness stays unknown.
+   */
+  private async recomputeColdMetadata(
+    { header, formatStatus }: SessionRecord,
+    signal: AbortSignal | undefined,
+  ): Promise<{ metadata: SessionListMetadata; projections?: SessionProjectionHints } | undefined> {
+    if (header.origin === 'subagent') return undefined
+    // A log the backend marks for migration predates the current format;
+    // folding it with current units could misread its events. A backend that
+    // does not classify still fails closed: its read path refuses old-format
+    // logs, and the catch below keeps the row visible.
+    if (formatStatus === 'migration-required') return undefined
+    const persistence = this.ctx.get('sessionPersistence')
+    if (persistence === undefined) return undefined
+    try {
+      const options = signal === undefined ? undefined : { signal }
+      await using handle = await persistence.open(header.id, 'read', options)
+      const { events } = await handle.read(0, SESSION_COLD_RECOMPUTE_EVENT_LIMIT + 1, options)
+      signal?.throwIfAborted()
+      if (events.length > SESSION_COLD_RECOMPUTE_EVENT_LIMIT) {
+        // An oversize log is never hidden on partial evidence; a started turn
+        // or command inside the prefix still answers non-blank, with prompt
+        // recency as of the prefix (a stale lower bound, never overstated).
+        if (!events.some(eventClearsBlank)) return undefined
+        let metadata: SessionListMetadata = { blank: true, lastPromptAt: null }
+        for (const event of events) metadata = applySessionListMetadata(metadata, event)
+        return { metadata }
+      }
+      const cache = this.ctx.get('sessionProjectionCache')
+      if (cache !== undefined) {
+        try {
+          const snapshot = cache.coldSnapshot(header, handle.inheritedEventCount, events)
+          const metadata = snapshot.values.sessionListMetadata
+          if (metadata !== undefined) {
+            const projections = hintsOf('cached', snapshot)
+            return { metadata, ...projections === undefined ? {} : { projections } }
+          }
+        } catch {
+          // Cached rows are disposable derived data; fold the small log directly.
+        }
+      }
+      let metadata: SessionListMetadata = { blank: true, lastPromptAt: null }
+      for (const event of events) metadata = applySessionListMetadata(metadata, event)
+      return { metadata }
+    } catch (error: unknown) {
+      signal?.throwIfAborted()
+      this.ctx.logger.warn(
+        `api-session.list: cold metadata recompute for "${header.id}" failed; serving the row as unknown: ${String(error)}`,
+      )
+      return undefined
     }
   }
 
@@ -348,6 +444,27 @@ function normalizeSearchQuery(query: string): string {
 
 function updatedAt(header: SessionHeader, metadata: SessionListMetadata | undefined): number {
   return Math.max(header.createdAt, metadata?.lastPromptAt ?? 0)
+}
+
+/** Assemble one cold Session-list row from whatever metadata the cache or recompute decided. */
+function coldSummary(
+  { header, formatStatus }: SessionRecord,
+  metadata: SessionListMetadata | undefined,
+  projections: SessionProjectionHints | undefined,
+): SessionSummary {
+  return {
+    sessionId: header.id,
+    updatedAt: updatedAt(header, metadata),
+    agentAvailable: false,
+    ...(formatStatus === undefined ? {} : { formatStatus }),
+    running: false,
+    // Blankness the cache cannot decide and the bounded recompute could not
+    // answer remains unknown: the row stays visible rather than hiding a
+    // possibly real conversation.
+    blank: metadata?.blank ?? false,
+    ...listFields(header),
+    ...(projections === undefined ? {} : { projections }),
+  }
 }
 
 function listFields(header: SessionHeader): {

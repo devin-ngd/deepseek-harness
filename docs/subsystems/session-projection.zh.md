@@ -64,10 +64,24 @@ interface ProjectionDefinition<
    * into garbage. Non-negative integer.
    */
   stateVersion: number
+  /**
+   * Predecessor-row salvage for the zero-I/O read (`viewCheckpoint` only):
+   * map a state folded under an older `stateVersion` — revalidated against
+   * the current `stateSchema` before the call — to the current semantics, or
+   * return `undefined` when the old state cannot decide the current one,
+   * leaving the key absent so a fuller read path refolds it. The hook also
+   * sees rows a newer version left behind (a downgrade), so it must answer
+   * only the versions it understands. Fold seeding (`restoreFloor`/`restore`)
+   * never consults this hook.
+   * @param state - schema-valid state produced by a non-current unit version.
+   * @param version - the `stateVersion` that folded `state`.
+   * @returns the equivalent current state, or `undefined` when undecidable.
+   */
+  migrate?: (this: void, state: NoInfer<S>, version: number) => NoInfer<S> | undefined
 }
 ```
 
-每个对外投影值都是完整读模型。源事件可以携带完整值，也可以携带领域拥有的操作；单元的确定性 `apply` 负责回放，checkpoint 加前向 tail replay 会重建出同一状态。
+每个对外投影值都是完整读模型。源事件可以携带完整值，也可以携带领域拥有的操作；单元的确定性 `apply` 负责回放，checkpoint 加前向 tail replay 会重建出同一状态。单元提升 `stateVersion` 时，其 `migrate` 钩子仍可服务于旧状态足以判定当前值的 predecessor 行——零 I/O 列表读取使用它，而折叠播种仍保持精确版本匹配。
 
 ## 快照与变更流
 
@@ -302,7 +316,9 @@ restoreFloor(checkpoint: ProjectionCheckpoint): SessionLogOffset | undefined
 /**
  * View a checkpoint's rows without any log read: for every registered
  * client-visible unit whose row's `ver` matches, serve the schema-validated
- * `view` of the schema-validated stored state; mismatched, malformed, or absent rows leave their key
+ * `view` of the schema-validated stored state; a version-mismatched row
+ * still serves when the unit's `migrate` hook interprets its old state, and
+ * otherwise mismatched, malformed, or absent rows leave their key
  * absent (a cold or listing consumer treats it as not-yet-available and a
  * fuller read path refolds it). The zero-I/O rung of the read ladder —
  * values are as stale as their rows, never wrong.

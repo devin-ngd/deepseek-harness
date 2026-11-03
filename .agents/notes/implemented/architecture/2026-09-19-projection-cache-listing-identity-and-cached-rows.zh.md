@@ -31,7 +31,7 @@ Host 进程重启后，所有 fork 出来的会话（`SessionHeader.isSeeded ===
 |---|---|---|---|
 | `write(session)` | 三个强制点加节流写 checkpoint | 有 | 缓存内部监听 |
 | `hydratePrepared(session, events)` | 把 `rows` 当 fold 起点，从 `row.seq + 1` 继续 apply，结果进 live cell | 后续 checkpoint 写回 | `session-query/src/observation.ts` |
-| `coldSnapshot(meta, cut, events)` | fold 起点加回写 | 有 | 无生产调用方 |
+| `coldSnapshot(meta, cut, events)` | fold 起点加回写 | 有 | Session 列表的[有界冷元数据重算](2026-10-29-projection-migrate-hook-and-cold-blank-recompute.zh.md) |
 | `cachedSnapshot(meta, cut, keys?)` | `viewCheckpoint`：每行过 `ver` 和 `stateSchema`，`view` 后返回 | 无 | `list.ts`、`session-reference` |
 | `cachedPredecessorTitle(meta, cut)` | 同上，只看 `title`，允许更旧的 `formatVersion` | 无 | `list.ts` |
 
@@ -107,7 +107,7 @@ seq 比较只在同一条 Host 连接内发生：`handleConnected` 先整表 `cl
 
 - Session 格式、物理 header 行、`fromHeaderLine`、persistence、`SessionPersistenceSnapshot`。
 - hydration 与 checkpoint 写路径，`recordFor` 的五字段全等。
-- `coldSnapshot` 保留，不因没有生产调用方而删除。
+- `coldSnapshot` 保留；此后它在[有界冷元数据重算](2026-10-29-projection-migrate-hook-and-cold-blank-recompute.zh.md)中获得了生产调用方。
 - 老记录（domain v4/v5，缺 `isSeeded` 与 `inheritedEventCount`）对 seeded 会话继续 miss，等会话打开后被 v7 记录改写。
 - 列表下发全部带 wire 视图的行（`contextBreakdown`、`turnOutline` 等）这一点不在本次范围。
 
@@ -124,7 +124,7 @@ seq 比较只在同一条 Host 连接内发生：`handleConnected` 先整表 `cl
 
 **由 persistence 或 session-query 维护每个会话 cut 的索引。** 新增一套 durable 索引及其一致性维护，只为服务一个展示读取。否决。
 
-**恢复有界正文探测。** #3400 删掉的 `probeSmallCold` 思路，或由客户端对可见 seeded 会话异步 `refreshProjections`。违背列表零 I/O 原则，且历史阈值 1KB 说明它从未覆盖过正常 fork。否决。
+**恢复有界正文探测。** #3400 删掉的 `probeSmallCold` 思路，或由客户端对可见 seeded 会话异步 `refreshProjections`。违背列表零 I/O 原则，且历史阈值 1KB 说明它从未覆盖过正常 fork。否决。后续的 [migrate 钩子与冷空白重算注记](2026-10-29-projection-migrate-hook-and-cold-blank-recompute.zh.md) 收窄了这一否决：有界、不激活 Agent、失败倒向可见的前缀读取只服务于任何缓存版本都无法判定空白状态的行。
 
 **只用 `asOfSeq: -1` 哨兵，不给 store 分层。** 服务端一处改动即可让提示在 seq 规则下永远落败。但它靠约定成立：一旦提示 seq 与基线 cut 相等或偏高（crash-repair 截断），`apply` 保留旧行，错值存活到下一帧。用户要求建连数据无条件覆盖提示，规则要写进 store 而不是靠 seq 约定模拟。
 

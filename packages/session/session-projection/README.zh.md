@@ -33,7 +33,7 @@ kind: "package-reference"
 
 ### 定义投影单元
 
-领域为每个状态键贡献一个 `ProjectionDefinition`：一个 key、状态 schema、初始状态、同步折叠 `apply(state, event)`、可选的 `wire` 块（把状态投影为客户端视图），以及状态字段或折叠语义变化时递增的 `stateVersion`：
+领域为每个状态键贡献一个 `ProjectionDefinition`：一个 key、状态 schema、初始状态、同步折叠 `apply(state, event)`、可选的 `wire` 块（把状态投影为客户端视图）、状态字段或折叠语义变化时递增的 `stateVersion`，以及可选的 `migrate` 钩子（把可判定的旧版本状态映射到当前语义，供零 I/O 读取使用）：
 
 ```text
 const definition = {
@@ -91,7 +91,7 @@ const { asOfSeq, values } = ctx.sessionProjections.snapshot(session)
 
 ### 驱动与检查点流程
 
-一个已提交事件按注册顺序驱动每个已注册单元；原始 view 通过 `Object.is` 判定为变化的客户端可见单元会以经 schema 校验的视图与致因 seq 通知变更流。live drive 保留前后两个原始 view；snapshot 与冷读仍是彼此独立的完整读取。`checkpoint(session)` 为持久缓存返回每个单元一份独立的 `(key → {ver, seq, val})` 行；`restoreFloor` 把尾部读取锚定在最低可用水位之前一个事件处，使缩短的日志可被检出；`restore` 把持久行在存储后缀上重新折叠，丢弃任何 `ver` 不匹配或声称越过存储末尾的行。
+一个已提交事件按注册顺序驱动每个已注册单元；原始 view 通过 `Object.is` 判定为变化的客户端可见单元会以经 schema 校验的视图与致因 seq 通知变更流。live drive 保留前后两个原始 view；snapshot 与冷读仍是彼此独立的完整读取。`checkpoint(session)` 为持久缓存返回每个单元一份独立的 `(key → {ver, seq, val})` 行；`restoreFloor` 把尾部读取锚定在最低可用水位之前一个事件处，使缩短的日志可被检出；`restore` 把持久行在存储后缀上重新折叠，丢弃任何 `ver` 不匹配或声称越过存储末尾的行。零 I/O 的 `viewCheckpoint` 读取仅在单元的 `migrate` 钩子无法解释其通过 schema 校验的旧状态时，才丢弃版本不匹配的行。
 
 </details>
 

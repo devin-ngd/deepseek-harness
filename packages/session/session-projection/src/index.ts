@@ -90,7 +90,22 @@ export interface ProjectionDefinition<
    * into garbage. Non-negative integer.
    */
   stateVersion: number
+  /**
+   * Predecessor-row salvage for the zero-I/O read (`viewCheckpoint` only):
+   * map a state folded under an older `stateVersion` — revalidated against
+   * the current `stateSchema` before the call — to the current semantics, or
+   * return `undefined` when the old state cannot decide the current one,
+   * leaving the key absent so a fuller read path refolds it. The hook also
+   * sees rows a newer version left behind (a downgrade), so it must answer
+   * only the versions it understands. Fold seeding (`restoreFloor`/`restore`)
+   * never consults this hook.
+   * @param state - schema-valid state produced by a non-current unit version.
+   * @param version - the `stateVersion` that folded `state`.
+   * @returns the equivalent current state, or `undefined` when undecidable.
+   */
+  migrate?: (this: void, state: NoInfer<S>, version: number) => NoInfer<S> | undefined
 }
+
 
 /**
  * Change-feed listener: one unit's raw `view` result changed by `Object.is`
@@ -144,6 +159,7 @@ interface ErasedDefinition {
   apply(state: unknown, event: SessionEvent): unknown
   wire: { viewSchema: { parse(value: unknown): unknown }; view(state: unknown): unknown } | undefined
   stateVersion: number
+  migrate?(state: unknown, version: number): unknown
 }
 
 /** Per-session per-unit watermark and fixed live-drive view buffer. */
@@ -257,6 +273,7 @@ export class SessionProjectionRegistry extends Service {
       viewSchema: ZodType
       view(state: S): unknown
     } | undefined
+    const migrate = definition.migrate
     const erased: ErasedDefinition = {
       key: definition.key,
       stateSchema: definition.stateSchema,
@@ -266,6 +283,16 @@ export class SessionProjectionRegistry extends Service {
         ? undefined
         : { viewSchema: wire.viewSchema, view: state => wire.view(state as S) },
       stateVersion: definition.stateVersion,
+      ...migrate === undefined
+        ? {}
+        : {
+          migrate: (state: unknown, version: number): unknown => {
+            // The typed call returns `NoInfer<S> | undefined`, which this rule misreads as void.
+            // oxlint-disable-next-line typescript/no-confusing-void-expression
+            const migrated: unknown = migrate(state as S, version)
+            return migrated
+          },
+        },
     }
     if (!Number.isSafeInteger(definition.stateVersion) || definition.stateVersion < 0) {
       throw new Error(`session projection ${JSON.stringify(definition.key)} stateVersion must be a non-negative integer, got ${String(definition.stateVersion)}`)
@@ -438,7 +465,9 @@ export class SessionProjectionRegistry extends Service {
   /**
    * View a checkpoint's rows without any log read: for every registered
    * client-visible unit whose row's `ver` matches, serve the schema-validated
-   * `view` of the schema-validated stored state; mismatched, malformed, or absent rows leave their key
+   * `view` of the schema-validated stored state; a version-mismatched row
+   * still serves when the unit's `migrate` hook interprets its old state, and
+   * otherwise mismatched, malformed, or absent rows leave their key
    * absent (a cold or listing consumer treats it as not-yet-available and a
    * fuller read path refolds it). The zero-I/O rung of the read ladder —
    * values are as stale as their rows, never wrong.
@@ -457,12 +486,17 @@ export class SessionProjectionRegistry extends Service {
       if (def.wire === undefined) continue
       if (selected !== undefined && !selected.has(def.key)) continue
       const row = checkpoint[def.key]
-      if (row === undefined || row.ver !== def.stateVersion) continue
+      if (row === undefined) continue
       let state: unknown
       try {
         state = def.stateSchema.parse(row.val)
       } catch {
         continue
+      }
+      if (row.ver !== def.stateVersion) {
+        if (def.migrate === undefined) continue
+        state = def.migrate(state, row.ver)
+        if (state === undefined) continue
       }
       values[def.key] = def.wire.viewSchema.parse(def.wire.view(state))
     }

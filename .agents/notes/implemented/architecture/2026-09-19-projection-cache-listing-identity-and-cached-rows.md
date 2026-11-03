@@ -31,7 +31,7 @@ The read and write faces of `SessionProjectionCache` and their callers:
 |---|---|---|---|
 | `write(session)` | writes the checkpoint at three mandatory points plus a throttle | yes | the cache's own listeners |
 | `hydratePrepared(session, events)` | uses `rows` as the fold starting point and applies events from `row.seq + 1`; the result lands in live cells | the next checkpoint | `session-query/src/observation.ts` |
-| `coldSnapshot(meta, cut, events)` | fold starting point plus write-back | yes | no production caller |
+| `coldSnapshot(meta, cut, events)` | fold starting point plus write-back | yes | the Session list's [bounded cold-metadata recompute](2026-10-29-projection-migrate-hook-and-cold-blank-recompute.md) |
 | `cachedSnapshot(meta, cut, keys?)` | `viewCheckpoint`: each row passes `ver` and `stateSchema`, is `view`ed, and returned | no | `list.ts`, `session-reference` |
 | `cachedPredecessorTitle(meta, cut)` | the same, `title` only, allowing an older `formatVersion` | no | `list.ts` |
 
@@ -107,7 +107,7 @@ The `seed` and `apply` signatures are unchanged. The client routes by `kind`: a 
 
 - The Session format, the physical header line, `fromHeaderLine`, persistence, `SessionPersistenceSnapshot`.
 - Hydration and the checkpoint write path; `recordFor` keeps full equality on all five fields.
-- `coldSnapshot` stays; having no production caller is not a reason to delete it here.
+- `coldSnapshot` stays; it later gained its production caller in the [bounded cold-metadata recompute](2026-10-29-projection-migrate-hook-and-cold-blank-recompute.md).
 - Old records (domain v4/v5, lacking `isSeeded` and `inheritedEventCount`) keep missing for seeded sessions until the session is opened and rewritten as a v7 record.
 - The list still delivers every row with a wire view (`contextBreakdown`, `turnOutline`, and so on); narrowing that is out of scope.
 
@@ -124,7 +124,7 @@ The `seed` and `apply` signatures are unchanged. The client routes by `kind`: a 
 
 **An index of each session's cut maintained by persistence or session-query.** A new durable index with its own consistency maintenance, serving one display read. Rejected.
 
-**Restore a bounded body probe.** The `probeSmallCold` idea #3400 removed, or a client-side asynchronous `refreshProjections` for visible seeded sessions. It breaks the list's zero-I/O principle, and the historical 1KB threshold shows it never covered an ordinary fork. Rejected.
+**Restore a bounded body probe.** The `probeSmallCold` idea #3400 removed, or a client-side asynchronous `refreshProjections` for visible seeded sessions. It breaks the list's zero-I/O principle, and the historical 1KB threshold shows it never covered an ordinary fork. Rejected. The later [migrate-hook and cold-blank-recompute note](2026-10-29-projection-migrate-hook-and-cold-blank-recompute.md) narrows this rejection: a bounded, Agent-free, fail-visible prefix read serves only rows whose blankness no cache version can decide.
 
 **Only the `asOfSeq: -1` sentinel, without store tiers.** One server-side change makes hints always lose under the seq rule. It rests on a convention: when a hint's seq equals or exceeds the baseline cut (crash-repair truncation), `apply` keeps the old row and the wrong value survives until the next frame. The user requires connected data to replace hints unconditionally, so the rule belongs in the store rather than in a seq convention.
 

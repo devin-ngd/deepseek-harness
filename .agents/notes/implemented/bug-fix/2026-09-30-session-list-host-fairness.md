@@ -12,7 +12,7 @@ Large cached projection states can monopolize the Host while a Session list is a
 
 [ApiSessionList](../../../../packages/api/session-controller/src/list.ts) uses one monotonic deadline for classification and summary generation. It yields only after elapsed work exhausts the configured `listWorkSliceMs`, then starts a new deadline after the wait. The optional deployment setting defaults to 16 positive integral milliseconds. Small lists have no forced final yield or no-op asynchronous helper. Cancellation is checked per row, after each yield, and before returning; no partial list is returned.
 
-Every row remains synchronous. Live rows precede queued cold rows before the stable activity sort; the list promises no cross-Session atomic cut. A cold row already queued before an attachment remains cached, and Client mutation replay plus [cached/sequenced precedence](../architecture/2026-09-19-projection-cache-listing-identity-and-cached-rows.md) reconcile the newer live state. No projection data or validation is omitted.
+Live and cached cold rows remain synchronous; cold rows without decidable cached metadata may require a bounded asynchronous read. Live rows precede queued cold rows before the stable activity sort; the list promises no cross-Session atomic cut. A cold row already queued before an attachment remains cached, and Client mutation replay plus [cached/sequenced precedence](../architecture/2026-09-19-projection-cache-listing-identity-and-cached-rows.md) reconcile the newer live state. No projection data or validation is omitted.
 
 ## Measurement and calibration
 

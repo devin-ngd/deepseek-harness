@@ -538,6 +538,35 @@ describe('SessionProjectionCache listing read', () => {
       .toBeUndefined()
   })
 
+  it('serves a predecessor row only when the unit migrate hook decides it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
+    roots.push(root)
+    await seedRecord(root, 'migratable', {
+      'cache-test/marks': { ver: 1, seq: SessionSeq(4), val: { marks: ['current'] } },
+      'cache-test/marks3': { ver: 1, seq: SessionSeq(4), val: { marks: ['legacy'] } },
+    })
+    await seedRecord(root, 'undecidable', {
+      'cache-test/marks3': { ver: 1, seq: SessionSeq(2), val: null },
+    })
+    const { ctx, cache } = await harness({ root })
+    // The marks3 unit ships semantics version 2 and salvages what version 1 proved.
+    ctx.sessionProjections.register({
+      ...marks3Unit,
+      stateVersion: 2,
+      migrate: (state, version) => (version === 1 && state !== null ? state : undefined),
+    })
+
+    expect(cache.cachedSnapshot(headerOf(SessionId('migratable')))).toEqual({
+      asOfSeq: 4,
+      values: {
+        'cache-test/marks': { marks: ['current'] },
+        'cache-test/marks3': { marks: ['legacy'] },
+      },
+    })
+    // An old state the hook cannot decide leaves the record with no served rows.
+    expect(cache.cachedSnapshot(headerOf(SessionId('undecidable')))).toBeUndefined()
+  })
+
   it('views every served wire row of one record in one cached block', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
     roots.push(root)

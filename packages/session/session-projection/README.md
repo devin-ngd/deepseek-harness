@@ -33,7 +33,7 @@ Choose it when a domain keeps state that clients should see without re-deriving 
 
 ### Define a projection unit
 
-A domain contributes one `ProjectionDefinition` per state key: a key, a state schema, an initial state, a synchronous fold `apply(state, event)`, an optional `wire` block that projects state to a client view, and a `stateVersion` that bumps whenever the state fields or fold semantics change:
+A domain contributes one `ProjectionDefinition` per state key: a key, a state schema, an initial state, a synchronous fold `apply(state, event)`, an optional `wire` block that projects state to a client view, a `stateVersion` that bumps whenever the state fields or fold semantics change, and an optional `migrate` hook that maps a decidable predecessor-version state to the current semantics for the zero-I/O read:
 
 ```text
 const definition = {
@@ -91,7 +91,7 @@ The package is the Service Definition and drive role of a capability seam: the f
 
 ### Drive and checkpoint flow
 
-One committed event drives every registered unit in registration order; a client-visible unit whose raw view changes by `Object.is` notifies the change feed with its schema-validated view and the causing seq. The live drive retains its previous and current raw views; snapshots and cold reads remain complete independent reads. `checkpoint(session)` returns one detached `(key → {ver, seq, val})` row per unit for the persisted cache; `restoreFloor` anchors a tail read one event below the lowest usable watermark so a shrunk log is detected, and `restore` refolds persisted rows over a stored suffix, discarding any row whose `ver` does not match or that claims events past the stored end.
+One committed event drives every registered unit in registration order; a client-visible unit whose raw view changes by `Object.is` notifies the change feed with its schema-validated view and the causing seq. The live drive retains its previous and current raw views; snapshots and cold reads remain complete independent reads. `checkpoint(session)` returns one detached `(key → {ver, seq, val})` row per unit for the persisted cache; `restoreFloor` anchors a tail read one event below the lowest usable watermark so a shrunk log is detected, and `restore` refolds persisted rows over a stored suffix, discarding any row whose `ver` does not match or that claims events past the stored end. The zero-I/O `viewCheckpoint` read discards a version-mismatched row only when the unit's `migrate` hook cannot interpret its schema-valid old state.
 
 </details>
 

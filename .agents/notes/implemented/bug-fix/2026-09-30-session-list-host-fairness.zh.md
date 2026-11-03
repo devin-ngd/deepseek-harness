@@ -12,7 +12,7 @@ Status: implemented
 
 [ApiSessionList](../../../../packages/api/session-controller/src/list.ts) 对分类和摘要生成共享一个单调时钟截止时间。仅当经过的工作时间耗尽配置的 `listWorkSliceMs` 时才让出，并在等待结束后建立新的截止时间。这个可选部署设置默认为 16 毫秒，要求正整数。小列表没有强制的最后一次让出，也不经过空操作异步 helper。每行、每次让出之后以及返回前检查取消；不会返回部分列表。
 
-每行仍同步计算。live 行先于已进入队列的 cold 行，随后按活动时间稳定排序；列表不承诺跨 Session 的原子 cut。接入前已经排入队列的冷行仍是缓存行，Client 变更重放与 [cached/sequenced 优先级](../architecture/2026-09-19-projection-cache-listing-identity-and-cached-rows.zh.md)协调较新的 live 状态。不省略任何投影数据或校验。
+live 行和命中缓存的 cold 行仍同步计算；缓存无法确定元数据的冷行可能需要有界异步读取。live 行先于已进入队列的 cold 行，随后按活动时间稳定排序；列表不承诺跨 Session 的原子 cut。接入前已经排入队列的冷行仍是缓存行，Client 变更重放与 [cached/sequenced 优先级](../architecture/2026-09-19-projection-cache-listing-identity-and-cached-rows.zh.md)协调较新的 live 状态。不省略任何投影数据或校验。
 
 ## 测量与校准
 
