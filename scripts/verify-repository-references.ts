@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { lstatSync, readFileSync, readlinkSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import ts from 'typescript'
 import { canonicalReferenceText } from './verify-public-repository-links.ts'
 
 const root = resolve(import.meta.dirname, '..')
@@ -16,6 +17,49 @@ const excludedPrefixes = ['vendor/', '.agents/notes/archived/']
 const gitOutputLimit = 64 * 1024 * 1024
 // One 41-byte line per object; 1.2 million objects produce about 49 MiB.
 const objectListingLimit = 1024 * 1024 * 1024
+
+// Read-only dependency locators and historical audit emitters require exact source identities.
+const sourceIdentityFields: Readonly<Record<string, readonly string[]>> = {
+  'clients/harmony-mobile/source.json': ['auditedCommit'],
+  'clients/harmony-mobile/projection-source.json': ['baseCommit'],
+  'clients/harmony-mobile/scripts/phase62-finalize.mjs': ['auditedCommit'],
+  'clients/harmony-mobile/scripts/phase62-preimages.mjs': ['sourceCommit'],
+  'clients/harmony-mobile/scripts/phase63-closeout.mjs': ['observedPrimaryCommit'],
+  'clients/harmony-mobile/scripts/phase63-migrate.mjs': ['baseCommit'],
+  'clients/harmony-mobile/scripts/phase64-closeout.mjs': ['observedPrimaryCommit'],
+  'clients/harmony-mobile/scripts/phase64-rolldown-repro.mjs': ['sourceBase'],
+}
+
+interface ReferenceRange { start: number; end: number }
+
+function sourceIdentityRanges(file: string, source: string): ReferenceRange[] {
+  const fields = sourceIdentityFields[file]
+  if (fields === undefined) return []
+  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true,
+    file.endsWith('.json') ? ts.ScriptKind.JSON : ts.ScriptKind.JS)
+  const ranges: ReferenceRange[] = []
+  const visit = (node: ts.Node): void => {
+    if (ts.isPropertyAssignment(node) && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
+      && fields.includes(node.name.text) && ts.isStringLiteral(node.initializer)) {
+      ranges.push({ start: node.initializer.getStart(parsed) + 1, end: node.initializer.end - 1 })
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(parsed)
+  return ranges
+}
+
+function artifactSizeRanges(file: string, line: string): ReferenceRange[] {
+  if (file !== 'uv.lock' && !file.endsWith('/uv.lock')) return []
+  // Quoted TOML values and comments cannot supply numeric artifact fields.
+  const tokens = /"(?:\\.|[^"\\])*"|'[^']*'|#.*$|(?:^|[,{])\s*size\s*=\s*(\d+)(?=\s*(?:[,}]|$))/gu
+  return [...line.matchAll(tokens)].flatMap((match) => {
+    const digits = match[1]
+    if (digits === undefined) return []
+    const start = match.index + match[0].lastIndexOf(digits)
+    return [{ start, end: start + digits.length }]
+  })
+}
 
 /** One prohibited reference in a maintained source file. */
 export interface RepositoryReference {
@@ -36,7 +80,7 @@ function isMaintained(file: string): boolean {
  * @param file - Repository-relative path used in diagnostics and exclusions.
  * @param source - File text or a symlink's stored target.
  * @param commits - Lowercase, unambiguous full or abbreviated commit identifiers.
- * @returns One finding per line and reference kind; digests and other Git object types are accepted.
+ * @returns Findings per line and kind; accepts digests, non-commit objects, artifact sizes and named source identities.
  */
 export function findRepositoryReferences(
   file: string,
@@ -45,13 +89,22 @@ export function findRepositoryReferences(
 ): RepositoryReference[] {
   if (!isMaintained(file)) return []
   const references: RepositoryReference[] = []
+  const identities = sourceIdentityRanges(file, source)
+  let lineOffset = 0
   for (const [index, line] of source.split('\n').entries()) {
     if (organizationUrl.test(canonicalReferenceText(line).replace(kitRepositoryUrl, ''))) {
       references.push({ file, line: index + 1, kind: 'organization-url' })
     }
-    if ([...line.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase()))) {
+    const sizes = artifactSizeRanges(file, line)
+    if ([...line.matchAll(commitCandidate)].some((match) => {
+      if (!commits.has(match[0].toLowerCase())) return false
+      const start = match.index, end = start + match[0].length
+      return !sizes.some(range => range.start === start && range.end === end)
+        && !identities.some(range => range.start === lineOffset + start && range.end === lineOffset + end)
+    })) {
       references.push({ file, line: index + 1, kind: 'commit-hash' })
     }
+    lineOffset += line.length + 1
   }
   return references
 }
@@ -146,7 +199,7 @@ const invokedPath = process.argv[1]
 if (invokedPath !== undefined && import.meta.url === pathToFileURL(resolve(invokedPath)).href) {
   const references = scanRepositoryReferences(root)
   if (references.length === 0) {
-    console.log('verify-repository-references: maintained files contain no repository commit identifiers or disallowed organization URLs.')
+    console.log('verify-repository-references: maintained references comply; numeric artifact sizes and declared source identities remain unchanged.')
   } else {
     console.error('verify-repository-references: use release tags or maintained repository links:')
     for (const { file, line, kind } of references) console.error(`  ${file}:${String(line)} ${kind}`)

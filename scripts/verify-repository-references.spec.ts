@@ -97,6 +97,33 @@ describe('maintained repository reference policy', () => {
     expect(scanRepositoryReferences(fixture.root)).toHaveLength(4)
   })
 
+  it('keeps numeric lockfile sizes separate from quoted or prose commit references', () => {
+    const commit = String(6_344_383)
+    const commits = new Set([commit])
+    expect(findRepositoryReferences('python/sdk/uv.lock', `wheels = [{ url = "https://example.invalid/file.whl", size = ${commit} }]`, commits)).toEqual([])
+    for (const line of [`size = "${commit}"`, `url = "size = ${commit},"`, `revision = ${commit}`, `# ${commit}`, `# ignored, size = ${commit},`]) {
+      expect(findRepositoryReferences('python/sdk/uv.lock', line, commits)).toHaveLength(1)
+    }
+    expect(findRepositoryReferences('guide.md', `size = ${commit}`, commits)).toHaveLength(1)
+  })
+
+  it('permits only exact identity values in the named historical artifacts', () => {
+    const commit = 'abcdef1234'
+    const commits = new Set([commit])
+    const locator = `{"auditedCommit":"${commit}"}`
+    expect(findRepositoryReferences('clients/harmony-mobile/source.json', locator, commits)).toEqual([])
+    expect(findRepositoryReferences('other/source.json', locator, commits)).toHaveLength(1)
+    expect(findRepositoryReferences('clients/harmony-mobile/source.json', `{"note":"${commit}"}`, commits)).toHaveLength(1)
+    expect(findRepositoryReferences('clients/harmony-mobile/source.json', `{"auditedCommit":"review ${commit}"}`, commits)).toHaveLength(1)
+    const emitter = 'clients/harmony-mobile/scripts/phase63-migrate.mjs'
+    expect(findRepositoryReferences(emitter, `const record = {baseCommit: '${commit}'}`, commits)).toEqual([])
+    expect(findRepositoryReferences(emitter, `// baseCommit: '${commit}'`, commits)).toHaveLength(1)
+    expect(findRepositoryReferences(emitter, `const other = '${commit}'`, commits)).toHaveLength(1)
+    expect(findRepositoryReferences(emitter, `const record = {baseCommit: '${organizationUrl}/${commit}'}`, commits)).toEqual([
+      { file: emitter, line: 1, kind: 'organization-url' }, { file: emitter, line: 1, kind: 'commit-hash' },
+    ])
+  })
+
   it('checks available unreachable commits without requiring a branch or network', (test) => {
     const fixture = repository(test)
     const unreachable = fixture.git(['commit-tree', fixture.tree, '-m', 'unreachable fixture'])
