@@ -9,5 +9,5 @@ export const nativeAssets: NativeAssetEntry[] = [
   new NativeAssetEntry("native-offline-core.js", 805617, "c4b0e41d0b07fc8bd64cc61688baaae3c9a27aa75922f91633202c45e998db82"),
   new NativeAssetEntry("native-policy.json", 1446, "f6b7091a48823d9b0e91d25496b7d32760978f9e49cd6fa9de463af3920187e0"),
   new NativeAssetEntry("native-runtime-placeholder.html", 161, "a2cbf89341fda82f3fe093009d8843473efa908656873ebae624e55deb67f11c"),
-  new NativeAssetEntry('product-rich-document.js', 687475, '12ed0b1774240831c360457f311c458f393f0f1e86361347ceccc06229d409e8'),
+  new NativeAssetEntry('product-rich-document.js', 689021, '046655b985c29e6e6892a13900648a9bb4de674551d50aa880180079a8fa1f63'),
 ]

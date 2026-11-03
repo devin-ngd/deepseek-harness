@@ -1,3 +1,5 @@
+> 当前模拟器接入（2026-11-02）：dsh-emulator 独立配对；长时间跟随、房间到期续接、桌面重启恢复、跨重连草稿、模拟器新建及消息已通过实际验证。桌面 rc2.33 与模拟器已整合 4 MiB 历史容量和设置入口，旧“MVP体验”历史／富内容、切换后消息、原生停止及再次自然续接通过；原真机配对和数据保留，真机未更新。真实模型停止确认仍可能等待几十秒，后台和完整富内容操作未验收。见[整合结果与边界](../evidence/mobile-coordinated-20261102.json)、[933 秒稳定性验证](../evidence/emulator-stability-20261102.json)和[恢复命令](../emulator-dev/README.zh.md)。
+
 > 当前任务（2026-11-02 会话列表管理）：[rc2.32](session-list-manage-rc2.32.md)已完成并双端安装：手机新建（无项目／项目内）、置顶、归档与取消归档真机逐项通过，桌面 workspace.json 同步落地；最近／项目双视图、搜索、筛选和分组折叠可用，全程零模型消息。手机锁屏后载体断开需重开应用；桌面 /device 命令缺失原因未查；两个验收空会话留在桌面待用户清理。下文为阶段历史。
 
 > 历史任务（2026-11-01 会话误报）：[手机 rc2.31](session-catalog-ready-rc2.31.md)已修正连接提前发布造成的目录误报并原位安装，原配对和数据保留；原机“手机MVP体验”首次及再次打开无顶部错误。旧“MVP体验”往返仍会触发断连，未认定全部修复，当前已恢复到可用会话。下文为阶段历史。
@@ -429,3 +431,10 @@ Reuse the existing fixed phone/desktop binding. Qualify post-catalogue asynchron
 ## Local log self-check
 
 The [local-only diagnostic probe](local-log-selfcheck-rc2.15.md) has matching native/page regressions, strict types, official compilation and original-certificate signed payload checks. Original-phone in-place installation and paired/disconnected startup verification passed. The single approved no-network probe now has physical output-to-filtered-collection proof: exactly one fixed record from the same App PID, the page acknowledgement, and an exited owned reader. Pairing and public storage-size metadata are unchanged. Earlier empty isolated-client checks are superseded as host USB evidence. Real control-handshake and network functionality remain unverified.
+
+## rc2.33 history follow-up
+
+- Desktop rc2.33 and the local emulator are installed with the shared history and connection fixes; see [history capacity](history-capacity-rc2.33.md).
+- Physical-phone history, switching, memory and latency remain unverified; the phone and public relay retain their existing installation and configuration.
+
+> 桌面手机控制入口（2026-11-02）：已整合并安装到桌面 rc2.33，输入框上方常驻面板已实际移除，入口位于“设置 → 内置插件 → 手机连接”。需要确认的操作关闭设置并保留正常确认界面。25 项面板、16 项浏览器及完整 Web 设置外壳通过；安装版 Windows 设置页因本轮窗口输入未完成导航，尚未逐项点击验收。见[统一安装与验证](../evidence/mobile-coordinated-20261102.json)。原真机配对和数据未修改。

@@ -17100,11 +17100,32 @@ var ticketBody = external_exports.object({
 }).strict();
 var deviceConnectionTicketSchema = ticketBody.extend({ signature: signature2 }).strict().refine((value) => value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 18e5);
 
+// src/device-session-directory.ts
+var identifier5 = external_exports.string().min(1).max(256);
+var deviceSessionRowSchema = external_exports.object({
+  profileId: external_exports.literal("desktop"),
+  sessionId: identifier5,
+  title: external_exports.string(),
+  projectId: external_exports.string().max(256).nullable(),
+  updatedAt: external_exports.number().int().nonnegative().default(0),
+  running: external_exports.boolean().default(false),
+  pinned: external_exports.boolean().default(false),
+  archived: external_exports.boolean().default(false),
+  blank: external_exports.boolean().default(false)
+}).strict();
+var deviceProjectRowSchema = external_exports.object({ projectId: identifier5, title: external_exports.string() }).strict();
+var deviceSessionActionSchema = external_exports.union([
+  external_exports.object({ action: external_exports.literal("create"), projectId: identifier5.nullable() }).strict(),
+  external_exports.object({ action: external_exports.enum(["archive", "unarchive", "pin", "unpin"]), sessionId: identifier5 }).strict()
+]);
+var deviceSessionManagedSchema = external_exports.object({ sessionId: identifier5 }).strict();
+var metadataSchema = external_exports.object({ desktopId: identifier5, profileId: external_exports.literal("desktop"), sessions: external_exports.array(deviceSessionRowSchema), projects: external_exports.array(deviceProjectRowSchema).optional() }).strict();
+
 // src/device-route-protocol.ts
-var identifier5 = external_exports.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
+var identifier6 = external_exports.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
 var signature3 = external_exports.string().regex(/^[A-Za-z0-9_-]{1,192}$/);
 var time3 = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1);
-var body = external_exports.object({ schema: external_exports.literal("harmony-device-route-offer/1"), binding: deviceBindingSchema, routeId: identifier5, routeEpoch: external_exports.literal(1), nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), issuedAt: time3, expiresAt: time3 }).strict();
+var body = external_exports.object({ schema: external_exports.literal("harmony-device-route-offer/1"), binding: deviceBindingSchema, routeId: identifier6, routeEpoch: external_exports.literal(1), nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), issuedAt: time3, expiresAt: time3 }).strict();
 var deviceRouteOfferSchema = body.extend({ signature: signature3 }).strict().refine((value) => !value.binding.revoked && value.routeId !== value.binding.bindingId && value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 18e5);
 var deviceRouteSchema = external_exports.object({ schema: external_exports.literal("harmony-device-route/1"), offer: deviceRouteOfferSchema, signature: signature3 }).strict();
 
@@ -17117,7 +17138,7 @@ var ledger = external_exports.object({ schema: external_exports.literal("harmony
 // src/native-product-facade.ts
 var positive = external_exports.number().int().positive().max(2147483647);
 var recovery = external_exports.object({ maxAttempts: positive, retryDelayMs: positive }).strict();
-var policySchema = external_exports.object({ enabled: external_exports.boolean(), trustMaxBytes: positive, transport: external_exports.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: external_exports.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: external_exports.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: external_exports.discriminatedUnion("mode", [external_exports.object({ mode: external_exports.literal("once") }).strict(), external_exports.object({ mode: external_exports.literal("bounded"), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: external_exports.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/) }).strict();
+var policySchema = external_exports.object({ enabled: external_exports.boolean(), trustMaxBytes: positive, transport: external_exports.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: external_exports.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: external_exports.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: external_exports.discriminatedUnion("mode", [external_exports.object({ mode: external_exports.literal("once") }).strict(), external_exports.object({ mode: external_exports.literal("bounded"), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict(), external_exports.object({ mode: external_exports.literal("continuous"), maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: external_exports.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/) }).strict();
 function parseProductPolicy(raw) {
   return policySchema.parse(JSON.parse(raw));
 }

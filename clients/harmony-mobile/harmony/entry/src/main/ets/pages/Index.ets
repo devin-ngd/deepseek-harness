@@ -71,6 +71,7 @@ struct Index {
   private logDiagnostics: NativeDiagnostics = new NativeDiagnostics()
   private lastRequest: string = ''
   private drafts: Map<string, string> = new Map()
+  private draftSessionId: string = ''
   private product: NativeProductOwner = new NativeProductOwner(productConfiguration)
   private rich: NativeProductRichOwner = new NativeProductRichOwner(this.product, productConfiguration.corePolicyJson)
   aboutToAppear(): void {
@@ -89,7 +90,7 @@ struct Index {
   }
   private receiveView(next: ProductView): void {
     if (next.connectionGeneration !== this.view.connectionGeneration) this.networkApproved = false
-    if (next.selected !== this.view.selected) { if (this.view.selected.length > 0) this.drafts.set(this.view.selected, this.draft); this.draft = this.drafts.get(next.selected) || ''; this.lastRequest = '' }
+    if (next.selected.length > 0 && next.selected !== this.draftSessionId) { if (this.draftSessionId.length > 0) this.drafts.set(this.draftSessionId, this.draft); this.draft = this.drafts.get(next.selected) || ''; this.draftSessionId = next.selected; this.lastRequest = '' }
     if (next.error === '') this.dismissedError = ''
     if (next.connection !== 'connected') this.newSheet = false
     this.view = next; this.refreshConnectionControls(); this.rich.setMount(this.view.richJson)
@@ -132,6 +133,7 @@ struct Index {
       case 'device-binding-locally-revoked': return $r('app.string.error_binding_unavailable')
       case 'device-route-history-unavailable': return $r('app.string.error_route_history')
       case 'rich-unavailable': return $r('app.string.error_rich_unavailable')
+      case 'history-too-large': return $r('app.string.error_history_too_large')
       default: return $r('app.string.error_generic')
     }
   }

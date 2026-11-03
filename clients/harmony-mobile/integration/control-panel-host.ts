@@ -57,7 +57,7 @@ export async function createControlPanelHost(world: string, onQuestion: (session
     routes = new DeviceRouteOwner(native, 'phone', async () => binding, { read: async () => routeRecord, compareAndSet: async (previous, next) => { assert.equal(previous, routeRecord); routeRecord = next } }, phoneKey, nodeE2EPrimitives, Date.now)
     ctx.on('user-questions/request', async (request, next) => request.questions.every(question => question.id === 'harmony-device') ? onQuestion(String(request.agent!.id), request.questions) : next())
     const options = JSON.parse(await readFile(join(client, 'desktop-plugin/device.enabled.example.json'), 'utf8'))
-    Object.assign(options, { enabled: true, desktopId: policy.desktopId, deviceId: policy.deviceId, identityAlias: alias, phoneIdentityAlias: policy.identityAlias, audience: policy.audience, wss: { ...options.wss, host: policy.audience } })
+    Object.assign(options, { enabled: true, connectionMode: 'window', desktopId: policy.desktopId, deviceId: policy.deviceId, identityAlias: alias, phoneIdentityAlias: policy.identityAlias, audience: policy.audience, wss: { ...options.wss, host: policy.audience } })
     const plugin = ctx.plugin(DeviceCommand, options); await plugin
     return {
       calls,

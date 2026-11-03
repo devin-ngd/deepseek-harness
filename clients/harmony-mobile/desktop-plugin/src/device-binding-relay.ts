@@ -18,6 +18,7 @@ import type { DesktopRelayLifecycle } from './relay-lifecycle.ts'
 import { verifyDeviceRoute, type DeviceRoute } from '../../src/device-route-protocol.ts'
 import { nodeE2EPrimitives } from '../../integration/p256-channel.ts'
 import { deviceCommandStep } from './device-command-step.ts'
+import { SessionWindowTooLarge } from './session-window.ts'
 
 /** Explicit local routing lease and original crypto ports; a relay directory lease never substitutes for a device ticket. */
 export type DeviceBindingRelayPlan = { readonly desktopId: string; isRouteCurrent(): Promise<boolean>; readonly trust: EndpointRelayTrust; readonly policy: PairedRelayPolicy; readonly limits: LinkConfig; openPorts(): PairedRelayPorts } & ({ readonly route: DeviceRoute; readonly paired?: never } | { readonly paired: DeviceBinding; readonly route?: never })
@@ -89,7 +90,7 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
               for await (const frame of current.follow(route, argument(value.argument), value.resume, signal)) { await assertRoute(); if (signal.aborted || current !== channel) return; await outgoing.send(jsonPayload({ kind: 'frame', id: packet.id, value: frame })) }
               if (!signal.aborted) await outgoing.send({ kind: 'end', id: packet.id })
             }
-          } catch (error) { void error; if (!signal.aborted && !lifetime.signal.aborted && !requestBinding.signal.aborted) await outgoing.send({ kind: 'error', id: packet.id, code: 'unknown-outcome' }) }
+          } catch (error) { if (!signal.aborted && !lifetime.signal.aborted && !requestBinding.signal.aborted) await outgoing.send({ kind: 'error', id: packet.id, code: error instanceof SessionWindowTooLarge ? error.code : 'unknown-outcome' }) }
           finally { work.delete(packet.id) }
         })()
         work.set(packet.id, item); track(item.done)

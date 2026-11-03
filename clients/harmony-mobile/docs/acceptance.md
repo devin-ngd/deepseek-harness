@@ -1,3 +1,5 @@
+> 当前模拟器接入（2026-11-02）：dsh-emulator 独立配对；长时间跟随、房间到期续接、桌面重启恢复、跨重连草稿、模拟器新建及消息已通过实际验证。桌面 rc2.33 与模拟器已整合 4 MiB 历史容量和设置入口，旧“MVP体验”历史／富内容、切换后消息、原生停止及再次自然续接通过；原真机配对和数据保留，真机未更新。真实模型停止确认仍可能等待几十秒，后台和完整富内容操作未验收。见[整合结果与边界](../evidence/mobile-coordinated-20261102.json)、[933 秒稳定性验证](../evidence/emulator-stability-20261102.json)和[恢复命令](../emulator-dev/README.zh.md)。
+
 > 当前验收（2026-11-02 会话列表管理）：[rc2.32 结果](session-list-manage-rc2.32.md)：编译与 21/21、47/47、33/34 检查通过，真机新建／置顶／归档／取消归档／搜索／折叠逐项通过并有桌面持久化证据；零模型消息。锁屏断连、/device 命令缺失、“运行中”筛选真机未点及两个遗留空会话保留记录。下文为阶段历史。
 
 > 历史验收（2026-11-01 会话误报）：[rc2.31 结果](session-catalog-ready-rc2.31.md)包含一项时序回归、一项本地加密往返、API26 编译，以及原机主体验会话首次和重复打开通过；旧会话往返失败和最新聚合类型检查的依赖错误保留，未发送消息。下文为阶段历史。
@@ -339,3 +341,9 @@ Offline lifecycle qualification separates explicit local stop, ticket expiry and
 ## Local log self-check
 
 The [local-only diagnostic probe](local-log-selfcheck-rc2.15.md) has matching native/page regressions, strict types, official compilation and original-certificate signed payload checks. Original-phone in-place installation and paired/disconnected startup verification passed. The single approved no-network probe now has physical output-to-filtered-collection proof: exactly one fixed record from the same App PID, the page acknowledgement, and an exited owned reader. Pairing and public storage-size metadata are unchanged. Earlier empty isolated-client checks are superseded as host USB evidence. Real control-handshake and network functionality remain unverified.
+
+## rc2.33 history capacity candidate
+
+History/queue checks, native diagnostics, current-source types, normal-profile ESM output and the official API26 unsigned build pass. The candidate raises history to 4 MiB with coordinated transport budgets and canonical-window fallback. The coordinated desktop and local emulator deployment reopened the old “MVP体验” history with rich content and returned to another Session without a cleanup error. Physical-phone history, memory/latency and the original phone cleanup report remain pending; the physical phone and public relay were not changed. See [capacity and verification](history-capacity-rc2.33.md).
+
+> 桌面手机控制入口（2026-11-02）：已整合并安装到桌面 rc2.33，输入框上方常驻面板已实际移除，入口位于“设置 → 内置插件 → 手机连接”。需要确认的操作关闭设置并保留正常确认界面。25 项面板、16 项浏览器及完整 Web 设置外壳通过；安装版 Windows 设置页因本轮窗口输入未完成导航，尚未逐项点击验收。见[统一安装与验证](../evidence/mobile-coordinated-20261102.json)。原真机配对和数据未修改。

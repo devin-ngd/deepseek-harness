@@ -7,6 +7,7 @@ import z from '@deepseek-ai/schemastery'
 import { randomUUID } from 'node:crypto'
 import { ProfilePeerAdmission } from './admission.ts'
 import { profileServicePorts, ProfileDesktopExecutor } from './ports.ts'
+import type { SessionWindowPolicy } from './session-window.ts'
 import { openProfileJournal } from './journal.ts'
 import { deviceCommandStep } from './device-command-step.ts'
 import { MobileBffCore, FollowJournal } from '../../integration/mobile-bff.ts'
@@ -35,6 +36,7 @@ export interface Options {
   readonly journalMode?: 'create' | 'reopen' | 'create-or-reopen'
   readonly maxPacketBytes?: number; readonly maxEnvelopeBytes?: number; readonly commandTtlMs?: number; readonly maxCachedCommands?: number
   readonly maxMountedBlocks?: number; readonly maxAdmissionRecords?: number; readonly followTtlMs?: number; readonly maxFollowFrames?: number; readonly maxFollowBytes?: number; readonly maxSessions?: number; readonly maxPeers?: number
+  readonly snapshotMaxMessages?: number; readonly snapshotMaxRecords?: number; readonly snapshotMaxBytes?: number
 }
 /** Explicit resolved activation spec. */
 export interface Spec {
@@ -44,20 +46,24 @@ export interface Spec {
   readonly journalMode: 'create' | 'reopen' | 'create-or-reopen'
   readonly limits: LinkConfig; readonly maxEnvelopeBytes: number; readonly maxAdmissionRecords: number
   readonly followTtlMs: number; readonly maxFollowFrames: number; readonly maxFollowBytes: number; readonly maxSessions: number; readonly maxPeers: number
+  readonly snapshot: SessionWindowPolicy
 }
 /** Validated defaults; no field grants access, selects a model or opens a transport. */
 export const Config = z.object({ enabled: z.boolean().default(false), relayEnabled: z.boolean().default(false), desktopId: z.string(), profileId: z.string(), sessionId: z.string().min(1).max(256),
   journalMode: z.union(['create', 'reopen', 'create-or-reopen']).default('reopen'),
-  maxPacketBytes: z.number().min(1).max(1048576).default(1048576), maxEnvelopeBytes: z.number().min(1).default(2097152), commandTtlMs: z.number().min(1).default(60000),
+  maxPacketBytes: z.number().min(1).max(5242880).default(5242880), maxEnvelopeBytes: z.number().min(1).default(2097152), commandTtlMs: z.number().min(1).default(60000),
   maxCachedCommands: z.number().min(1).default(256), maxMountedBlocks: z.number().min(1).default(8), maxAdmissionRecords: z.number().min(1).default(1024),
+  snapshotMaxMessages: z.number().min(1).default(50), snapshotMaxRecords: z.number().min(1).default(512), snapshotMaxBytes: z.number().min(1).default(4194304),
   followTtlMs: z.number().min(1).default(60000), maxFollowFrames: z.number().min(1).default(1024), maxFollowBytes: z.number().min(1).default(4194304), maxSessions: z.number().min(1).default(16), maxPeers: z.number().min(1).default(16) })
 /** @param request - parser/config input. @param clock - explicit host clock. @returns complete validated spec; enabled requests require both owner identities, and optional sessionId restricts the original grant. */
 export function resolveOptions(request: Options, clock: () => number): Spec {
   const value = Config(request)
   for (const field of ['maxPacketBytes', 'maxEnvelopeBytes', 'commandTtlMs', 'maxCachedCommands', 'maxMountedBlocks', 'maxAdmissionRecords', 'followTtlMs', 'maxFollowFrames', 'maxFollowBytes', 'maxSessions', 'maxPeers'] as const) if (!Number.isSafeInteger(value[field])) throw new LinkError('invalid-packet')
+  for (const field of ['snapshotMaxMessages', 'snapshotMaxRecords', 'snapshotMaxBytes'] as const) if (!Number.isSafeInteger(value[field])) throw new LinkError('invalid-packet')
   if (value.enabled && (value.desktopId === undefined || value.profileId === undefined)) throw new LinkError('invalid-packet')
   return { enabled: value.enabled, relayEnabled: value.relayEnabled, journalMode: value.journalMode, desktopId: value.desktopId === undefined ? null : id<'mobile-desktop'>(value.desktopId), profileId: value.profileId === undefined ? null : id<'mobile-profile'>(value.profileId),
     sessionId: value.sessionId === undefined ? null : id<'SessionId'>(value.sessionId),
+    snapshot: { maxMessages: value.snapshotMaxMessages, maxRecords: value.snapshotMaxRecords, maxBytes: Math.min(value.snapshotMaxBytes, value.maxPacketBytes) },
     limits: { clock, maxPacketBytes: value.maxPacketBytes, maxCommandTtlMs: value.commandTtlMs, maxCachedCommands: value.maxCachedCommands, maxMountedBlocks: value.maxMountedBlocks },
     maxEnvelopeBytes: value.maxEnvelopeBytes, maxAdmissionRecords: value.maxAdmissionRecords, followTtlMs: value.followTtlMs, maxFollowFrames: value.maxFollowFrames, maxFollowBytes: value.maxFollowBytes, maxSessions: value.maxSessions, maxPeers: value.maxPeers }
 }
@@ -153,7 +159,7 @@ export class HarmonyDesktop extends TypertRemoteService {
     if (sessions.size >= this.spec.maxSessions) throw new LinkError('queue-full')
     if (this.spec.desktopId === null) throw new LinkError('invalid-packet')
     let executor = this.peerExecutors.get(peer)
-    if (executor === undefined) { executor = new ProfileDesktopExecutor(this.spec.desktopId, profileServicePorts(this.ctx), authorizer, this.spec.limits, this.state.journal); this.peerExecutors.set(peer, executor) }
+    if (executor === undefined) { executor = new ProfileDesktopExecutor(this.spec.desktopId, profileServicePorts(this.ctx, this.spec.snapshot), authorizer, this.spec.limits, this.state.journal); this.peerExecutors.set(peer, executor) }
     const journal = new FollowJournal(sessionId, { clock: this.spec.limits.clock, ttlMs: this.spec.followTtlMs, maxFrames: this.spec.maxFollowFrames, maxBytes: this.spec.maxFollowBytes, maxFrameBytes: this.spec.limits.maxPacketBytes })
     const core = new MobileBffCore({ adapter: executor, registry: authorizer, journal, desktopId: command.desktopId, deviceId: command.deviceId, instance: id<'mobile-wire-instance'>('profile-peer-' + randomUUID()), mode: 'desktop-profile' })
     const controller = new AbortController(), opened = Promise.withResolvers<void>(), outcome: Runtime['outcome'] = {}

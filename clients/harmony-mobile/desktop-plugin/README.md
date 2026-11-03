@@ -8,6 +8,8 @@ Current alpha.4 status: [phase66](../docs/phase66-progress.md). Detached runtime
 
 English | [中文](README.zh.md)
 
+Phone history defaults to a 4 MiB snapshot budget, 512 records and 50 messages. `snapshotMaxBytes`, `snapshotMaxRecords` and `snapshotMaxMessages` configure these bounds; oversized openings halve the canonical message window before retrying the read. Individual records remain intact, `hasMore` retains the canonical older-history indication, and a smallest window that still exceeds the bounds reports `history-too-large`. Endpoint plaintext, encrypted-frame and relay capacities must be updated together; see [history capacity and verification](../docs/history-capacity-rc2.33.md). This candidate is not installed.
+
 The rc2.30 `/device` component defaults to `connectionMode: paired`: it waits for the saved phone automatically and retries after disconnects. Set `connectionMode: window` for the explicit temporary-window workflow. See [paired-device startup](../docs/paired-connection-rc2.30.md) for the one-time endpoint and relay update; the original endpoints and persistent relay are updated, and phone automatic connection with the real Session list is verified. The following version-specific records are historical.
 
 The last verified running desktop is rc2.12. The rc2.16 control panel is an offline candidate; construction and qualification are described in the [control panel reference](../docs/control-panel-rc2.16.md). Installation and physical testing remain separate operations. The [handoff](../docs/HANDOFF-2026-10-28.md) retains the original pairing and closed-window evidence.
@@ -61,7 +63,7 @@ Synthetic current-source Gateway/plugin tests and actual ETS owners with SDK sub
 
 ## Harmony command feedback
 
-The passive feedback component displays reviewed public results and safe errors in the original retained Session; missing Sessions receive no fallback notification. The rc2.16 candidate adds a fixed Session control panel through the formal command API, retaining Host validation and normal confirmation. It makes only explicit, allowlisted command calls and grants no authority by mounting. Without a retained Session the panel is absent and creates no Session. See the [qualification and limits](../docs/control-panel-rc2.16.md) and [earlier feedback qualification](../docs/rc2-alignment.md).
+The passive feedback component displays reviewed public results and safe errors in the original retained Session; missing Sessions receive no fallback notification. Source controls appear under Settings → Built-in plugins → Phone connection, with no panel above the conversation input. Without a retained Session, settings show guidance and create no Session. Controls use the formal command API and preserve Host validation; actions that need confirmation close settings so the conversation can show the normal confirmation. Reopen the tab to inspect the result. Mounting grants no authority and dispatches no command. See the [earlier control-panel qualification and limits](../docs/control-panel-rc2.16.md) and [feedback qualification](../docs/rc2-alignment.md).
 
 ## Device routing windows
 

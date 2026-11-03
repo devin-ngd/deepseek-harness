@@ -12,7 +12,7 @@ const reactRequire = createRequire(root + '/packages/client/ui-conversation/pack
 let registration
 runInNewContext(await readFile(process.env.DSH_HARMONY_FEEDBACK_FACTORY, 'utf8'), { window: { __ModuleLoader__: { load: value => { registration = value } } }, TextEncoder, TextDecoder, AbortController, URL, console })
 assert.equal(registration.id, '@deepseek-ai/dsh-experimental-harmony-mobile')
-const Feedback = registration.factory(name => { if (name === 'zod') return require(name); if (name === 'react' || name === 'react/jsx-runtime') return reactRequire(name); throw new Error('Unexpected browser runtime import: ' + name) })
+const Feedback = registration.factory(name => { if (name === 'zod') return require(name); if (name === '@deepseek-ai/dsh-client-ui-primitives') return { closeTopModal: () => {} }; if (name === 'react' || name === 'react/jsx-runtime') return reactRequire(name); throw new Error('Unexpected browser runtime import: ' + name) })
 const rawStatus = id => JSON.stringify({ profileId: 'desktop', sessionId: id, state: 'not-started', steps: [] })
 async function fixture(ids = ['home-empty', 'existing-session']) {
   const ctx = new Context(), notices = [], scopes = new Map(), dictionaries = new Map()

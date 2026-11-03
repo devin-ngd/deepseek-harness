@@ -1,10 +1,10 @@
-.root { box-sizing: border-box; width: 100%; padding: 8px 12px; color: var(--dsw-alias-label-primary); background: var(--dsw-specific-menu); border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg); }
-.root summary { cursor: pointer; font-weight: 600; }
+.root { box-sizing: border-box; width: 100%; min-width: 0; color: var(--dsw-alias-label-primary); }
+.heading { margin: 0; font-size: 14px; font-weight: 500; }
 .body { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
-.body p { margin: 0; font-size: 12px; }
+.body p { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 .body button { padding: 5px 9px; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-md); color: inherit; background: transparent; cursor: pointer; }
 .body button:disabled { opacity: .5; cursor: default; }
-.body label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.body label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 13px; }
 .body textarea { box-sizing: border-box; width: 100%; min-height: 66px; max-height: 180px; resize: vertical; padding: 6px; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-md); color: inherit; background: transparent; font: 12px/1.4 monospace; }
-.body button:focus-visible, .body textarea:focus-visible, .root summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.body button:focus-visible, .body textarea:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

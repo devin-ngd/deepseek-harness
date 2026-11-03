@@ -91,6 +91,20 @@ test('finite clean segment budget stops and reports a read-only foreground lifet
   await assert.rejects(async () => { for await (const view of f.core.follow(f.abort.signal)) { void view } }, error => error.code === 'follow-budget-exhausted')
   assert.equal(f.reads.length, 2); assert.equal(f.model.view.readOnly, true)
 })
+
+test('continuous foreground follow renews beyond the finite segment budget without replaying a message', async () => {
+  const f = fixture(async function* (at, signal, abort) { if (at === 1) yield reset(); if (at === 65) { yield frame(0); abort.abort() } }, { mode: 'continuous', maxFailures: 2, retryDelayMs: 1 })
+  for await (const view of f.core.follow(f.abort.signal)) { if (view.cursor === -1) await f.core.submit('once', 'task') }
+  assert.equal(f.reads.length, 65); assert.equal(new Set(f.reads.map(row => row.command.commandId)).size, 65)
+  assert.equal(f.model.view.cursor, 0); assert.equal(f.writes.length, 1)
+})
+
+test('continuous follow resets its consecutive failure budget after a clean segment and stops repeated transport loss', async () => {
+  const f = fixture(async function* (at) { if (at === 1) yield reset(); if (at !== 2) throw new TransportError('transport-lost') }, { mode: 'continuous', maxFailures: 2, retryDelayMs: 1 })
+  await assert.rejects(async () => { for await (const view of f.core.follow(f.abort.signal)) void view }, error => error.code === 'follow-recovery-exhausted')
+  assert.equal(f.reads.length, 4); assert.equal(f.model.view.readOnly, true); assert.deepEqual(f.writes, [])
+})
+
 test('truncated, reordered and conflicting deliveries stop read supervision without consuming the invalid item', async () => {
   for (const failure of ['truncated-frame', 'gap', 'conflict']) {
     const f = fixture(async function* () { yield reset(); yield frame(0); if (failure === 'truncated-frame') throw new TransportError(failure); if (failure === 'gap') yield frame(1, 3); if (failure === 'conflict') yield { ...frame(0), payload: { type: 'event', event: { ...event(0), time: 99 } } } })

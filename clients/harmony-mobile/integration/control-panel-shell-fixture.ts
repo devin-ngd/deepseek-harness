@@ -40,7 +40,7 @@ export async function installShellDeviceFixture(ctx: Context, world: string) {
     await owner.confirm(authority, { schema: 'harmony-device-binding-reply/1', offer, signature: nodeE2EPrimitives.encode(await phoneKey.sign(deviceBindingReplyBytes(offer))) }, async () => true)
     const originalBinding = await storage.read()
     const options = JSON.parse(await readFile(new URL('../desktop-plugin/device.enabled.example.json', import.meta.url), 'utf8'))
-    Object.assign(options, { enabled: true, desktopId: policy.desktopId, deviceId: policy.deviceId, identityAlias: alias, phoneIdentityAlias: policy.identityAlias, audience: policy.audience, wss: { ...options.wss, host: policy.audience } })
+    Object.assign(options, { enabled: true, connectionMode: 'window', desktopId: policy.desktopId, deviceId: policy.deviceId, identityAlias: alias, phoneIdentityAlias: policy.identityAlias, audience: policy.audience, wss: { ...options.wss, host: policy.audience } })
     plugin = ctx.plugin(DeviceCommand, options); await plugin
     const events: { sessionId: string; type: string; commandId: string; state?: string; kind?: string }[] = []
     const turns: string[] = []

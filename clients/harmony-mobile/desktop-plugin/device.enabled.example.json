@@ -8,21 +8,21 @@
   "enrollmentTtlMs": 600000,
   "relay": {
     "maxProofs": 64,
-    "maxQueuedBytes": 4194304,
+    "maxQueuedBytes": 16777216,
     "maxChallengeTtlMs": 15000,
     "maxRoomTtlMs": 600000,
     "handshakeMs": 10000,
     "e2e": {
-      "maxFrameBytes": 2097152,
-      "maxPlaintextBytes": 1048576,
+      "maxFrameBytes": 8388608,
+      "maxPlaintextBytes": 5242880,
       "maxFrames": 4096
     }
   },
   "wss": {
     "host": "dsh.devinho.me",
     "handshakeMs": 10000,
-    "maxFrameBytes": 2097152,
-    "maxBufferedBytes": 4194304,
+    "maxFrameBytes": 8388608,
+    "maxBufferedBytes": 16777216,
     "maxControlFrames": 64
   },
   "journalMode": "create",

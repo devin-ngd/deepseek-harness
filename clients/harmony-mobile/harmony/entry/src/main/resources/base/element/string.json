@@ -1,5 +1,6 @@
 {
   "string": [
+    { "name": "error_history_too_large", "value": "这段会话内容超过手机读取上限，请在电脑查看。你仍可返回并打开其他会话。" },
     {
       "name": "product_storage_audit",
       "value": "恢复校验（仅结论与计数）：%s"

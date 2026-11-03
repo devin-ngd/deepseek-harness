@@ -161,15 +161,38 @@ for(const phase of ['agreement','data'])test('cancelling encrypted '+phase+' acq
 })
 
 const native=await import('./helpers/product-native-harness.mjs')
+
+test('actual ETS socket treats a received close event as completed release without closing the SDK socket again',async()=>{
+ native.resetProductSdk();const callbacks=new Map(),authority={},socket=new native.NativeRelaySocket(new native.NativeRelayPolicy(authority,'relay.example',26,10000,65536,65536));let closes=0,notices=[]
+ native.network.factory=()=>({on(event,callback){callbacks.set(event,callback)},connect:async()=>true,close:async()=>{closes++;throw Error('already closed')},send:async()=>true})
+ try{await socket.connectControlNative(authority,'fixture-pair','phone',()=>{},failed=>notices.push(failed));callbacks.get('close')();await socket.closeNative(authority);assert.equal(closes,0);assert.deepEqual(notices,[false])}finally{await socket.closeNative(authority).catch(()=>{});native.network.factory=undefined}
+})
+
+test('actual ETS socket accepts a close event during release but still rejects an unconfirmed close failure',async()=>{
+ for(const confirmed of [true,false]){
+  native.resetProductSdk();const callbacks=new Map(),authority={},socket=new native.NativeRelaySocket(new native.NativeRelayPolicy(authority,'relay.example',26,10000,65536,65536))
+  native.network.factory=()=>({on(event,callback){callbacks.set(event,callback)},connect:async()=>true,close:async()=>{if(confirmed)callbacks.get('close')();return false},send:async()=>true})
+  try{await socket.connectControlNative(authority,'fixture-pair','phone',()=>{},()=>{});if(confirmed)await socket.closeNative(authority);else await assert.rejects(socket.closeNative(authority),/cleanup failed/)}finally{await socket.closeNative(authority).catch(()=>{});native.network.factory=undefined}
+ }
+})
+
+test('actual ETS socket retires an HTTP upgrade rejection before open and still releases a late open',async()=>{
+ native.resetProductSdk();const callbacks=new Map(),authority={},socket=new native.NativeRelaySocket(new native.NativeRelayPolicy(authority,'relay.example',26,10000,65536,65536));let closes=0
+ native.network.factory=()=>({on(event,callback){callbacks.set(event,callback)},connect:async()=>true,close:async()=>{closes++;if(closes===1)throw Object.assign(Error('no websocket connection'),{code:2302999});return true},send:async()=>true})
+ try{
+  await socket.connectControlNative(authority,'fixture-pair','phone',()=>{},()=>{});callbacks.get('error')({code:200});await socket.closeNative(authority);assert.equal(closes,0)
+  native.network.sockets[0].close=async()=>{closes++;return true};callbacks.get('open')();await socket.closeNative(authority);assert.equal(closes,1)
+ }finally{await socket.closeNative(authority).catch(()=>{});native.network.factory=undefined}
+})
 test('actual ETS owner closes pending original-key acquisition without creating a key or socket',async()=>{
- native.resetProductSdk();native.state.aliases.add('fixture-original');const entered=gate(),released=gate(),original=native.huks.exportKeyItem,authority={},owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-original',2,26,65536,4194304,policy.relay))
+ native.resetProductSdk();native.state.aliases.add('fixture-original');const entered=gate(),released=gate(),original=native.huks.exportKeyItem,authority={},owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-original',2,26,65536,policy.maxTotalSendBytes,policy.relay))
  native.huks.exportKeyItem=async(...args)=>{entered.resolve();await released.promise;return original(...args)}
  const pending=owner.acquireDevicePortsNative(authority,'desktop'),rejected=assert.rejects(pending);await entered.promise
  try{const closed=owner.closeNative(authority);released.resolve();await rejected;await closed;assert.equal(native.network.sockets.length,0);assert.equal(native.state.calls.includes('create'),false);assert.equal(native.state.calls.includes('remove'),false);assert.equal(owner.ports.length,0)}finally{released.resolve();native.huks.exportKeyItem=original;await rejected;await owner.closeNative(authority)}
 })
 
 test('actual ETS socket releases a late successful dial after its owner was closed',async()=>{
- native.resetProductSdk();native.state.aliases.add('fixture-original');const entered=gate(),released=gate(),authority={},owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-original',2,26,65536,4194304,policy.relay));let closes=0
+ native.resetProductSdk();native.state.aliases.add('fixture-original');const entered=gate(),released=gate(),authority={},owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-original',2,26,65536,policy.maxTotalSendBytes,policy.relay));let closes=0
  native.network.factory=()=>({on(){},connect:async()=>{entered.resolve();return released.promise},close:async()=>{closes++;return true},send:async()=>true})
  try{await owner.acquireDevicePortsNative(authority,'desktop');const opened=owner.openDeviceControlNative(authority),rejected=assert.rejects(opened);await entered.promise;await owner.closeNative(authority);released.resolve(true);await rejected;assert.equal(closes,2);assert.equal(native.network.sockets.length,1);assert.equal(native.state.calls.includes('create'),false)}finally{released.resolve(true);await owner.closeNative(authority);native.network.factory=undefined}
 })

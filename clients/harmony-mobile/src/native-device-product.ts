@@ -33,6 +33,7 @@ export class NativeDeviceProductFacade {
   private client: DeviceBindingClient | undefined
   private device: DeviceBoundMobileProduct | undefined
   private selected: DevicePhoneSession | undefined
+  private resumeSessionId = ''
   private closed = false
   private connectionApproved = false
   private revoked = false
@@ -112,7 +113,7 @@ export class NativeDeviceProductFacade {
     let stage: DeviceConnectionStage = 'route-verify', cleanupFailed = false
     let acquisition: NativeDeviceNetwork | undefined, core: NativeDeviceCore | undefined, rpc: DeviceProductRpc | undefined
     let closing: Promise<void> | undefined
-    const close = (): Promise<void> => closing ??= (async () => { const results = await Promise.allSettled([(async () => { await rpc?.close() })(), (async () => { await core?.close() })(), (async () => { await acquisition?.close() })()]); if (results.some(result => result.status === 'rejected')) throw new Error('native device network cleanup failed') })()
+    const close = (): Promise<void> => closing ??= (async () => { const results = await Promise.allSettled([(async () => { await rpc?.close() })(), (async () => { await core?.close() })(), (async () => { await acquisition?.close() })()]); for (const [index, result] of results.entries()) if (result.status === 'rejected') console.info('DSH_CONNECTION_CLEANUP=' + ['rpc', 'channel', 'native'][index] + '-failed'); if (results.some(result => result.status === 'rejected')) throw new Error('native device network cleanup failed') })()
     const abort = () => { void close().catch(error => { void error; cleanupFailed = true }) }
     try {
     lifetime.throwIfAborted()
@@ -162,8 +163,16 @@ export class NativeDeviceProductFacade {
   async pairWithConnection(raw: string, compared: boolean, networkApproved: boolean): Promise<void> { this.local(this.authority); if (!networkApproved) throw new Error('native device network disclosure not approved'); const value = deviceBindingSchema.parse(JSON.parse(raw)), client = this.client ?? this.makeClient(value); await client.accept(this.authority, raw, compared); this.local(this.authority); this.connectionApproved = true; if (this.device === undefined) this.project(this.install(await client.load(this.authority), client).view) }
   /** @param confirmed - explicit native saved-binding choice. @returns existing public receipt without changing identity or opening a connection. */
   async savedPairing(confirmed: boolean): Promise<string> { this.local(this.authority); if (!confirmed) throw new Error('native saved device decision required'); const raw = await this.storage.read(); if (raw === null) throw new Error('native device not bound'); return raw }
-  /** @param networkApproved - current native page's explicit host decision, never inferred from a saved binding. @returns after a fresh finite channel proof; no model is submitted. */
-  async connect(networkApproved: boolean): Promise<void> { this.local(this.authority); if (networkApproved !== true) throw new Error('native device host consent required'); if (this.revoked || this.device === undefined) throw new Error('native device not bound'); this.connectionApproved = true; await this.device.connect(this.authority); this.scheduleCatalog() }
+  /** @param networkApproved - current native page's explicit host decision, never inferred from a saved binding. @returns after a fresh channel proof and reopening the last selected Session when still visible. Only reads resume; no model message or mutation is replayed. */
+  async connect(networkApproved: boolean): Promise<void> {
+    this.local(this.authority); if (networkApproved !== true) throw new Error('native device host consent required'); if (this.revoked || this.device === undefined) throw new Error('native device not bound')
+    const resume = this.resumeSessionId
+    this.connectionApproved = true; await this.device.connect(this.authority); this.catalogError = ''; this.scheduleCatalog()
+    if (resume !== '' && resume === this.resumeSessionId) {
+      if (this.device.view.sessions.some(row => row.sessionId === resume)) await this.device.select(this.authority, resume)
+      else this.resumeSessionId = ''
+    }
+  }
   private scheduleCatalog(): void {
     this.stopCatalog()
     if (this.closed || this.revoked || this.device?.view.state !== 'connected') return
@@ -175,8 +184,8 @@ export class NativeDeviceProductFacade {
       void operation.then(() => { if (this.polling === operation) this.polling = undefined; this.scheduleCatalog() }, () => { if (this.polling === operation) this.polling = undefined })
     })
   }
-  /** @param sessionId - current catalogue row. @returns after canonical old rich/subscription cleanup and selected Session start. */
-  async select(sessionId: string): Promise<void> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); await this.device.select(this.authority, sessionId) }
+  /** @param sessionId - current catalogue row, retained in memory for channel recovery. @returns after canonical old rich/subscription cleanup and selected Session start. */
+  async select(sessionId: string): Promise<void> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); this.resumeSessionId = sessionId; await this.device.select(this.authority, sessionId) }
   /** @param raw - strict list-management intent JSON from the native page. @returns affected Session id after the desktop acknowledged it and the catalogue refreshed; selection is unchanged. */
   async manage(raw: string): Promise<string> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); return this.device.manage(this.authority, deviceSessionActionSchema.parse(JSON.parse(raw))) }
   /** Refresh dynamic catalogue without resuming an Agent. */

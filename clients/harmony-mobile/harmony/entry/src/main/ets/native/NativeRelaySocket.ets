@@ -16,6 +16,7 @@ export class NativeRelayPolicy {
 export class NativeRelaySocket {
   private socket: webSocket.WebSocket | undefined = undefined
   private closed: boolean = false
+  private opened: boolean = false
   private totalSent: number = 0
   private timer: number = -1
   private closing: Promise<void> | undefined = undefined
@@ -43,9 +44,14 @@ export class NativeRelaySocket {
     const report = (stage: string): void => { console.info('DSH_CONNECTION_STAGE=' + role + '-' + plane + '-' + stage + ' at=' + Date.now()) }
     report('dial-started')
     const socket = webSocket.createWebSocket(); this.socket = socket; this.closedNotice = onClosed
-    socket.on('open', () => { if (!this.closed) report('http-upgraded') })
-    socket.on('error', (error: BusinessError, response?: BusinessError) => { const detail = error ?? response, code = detail?.code, status = detail?.data; const http = typeof status === 'string' && /^[1-5][0-9]{2}$/.test(status) ? Number(status) : 0; console.info('DSH_CONNECTION_FAILURE=' + role + '-' + plane + '-socket-error code=' + (typeof code === 'number' && Number.isSafeInteger(code) ? code : -1) + ' http=' + http); this.retire(authority) })
-    socket.on('close', () => { report('socket-closed'); this.closed = true; clearTimeout(this.timer); this.notice() })
+    socket.on('open', () => { this.opened = true; if (this.closed) { this.socket = socket; this.closing = this.releaseSocket(socket); void this.closing.then(() => this.notice(), () => this.notice()) } else report('http-upgraded') })
+    socket.on('error', (error: BusinessError, response?: BusinessError) => {
+      const detail = error ?? response, code = detail?.code, status = detail?.data; const http = typeof status === 'string' && /^[1-5][0-9]{2}$/.test(status) ? Number(status) : 0
+      console.info('DSH_CONNECTION_FAILURE=' + role + '-' + plane + '-socket-error code=' + (typeof code === 'number' && Number.isSafeInteger(code) ? code : -1) + ' http=' + http)
+      // API26 reports 200 for a rejected HTTP upgrade; no WebSocket connection exists before open.
+      if (!this.opened && code === 200) { this.closed = true; clearTimeout(this.timer); if (this.socket === socket) this.socket = undefined; this.notice() } else this.retire(authority)
+    })
+    socket.on('close', () => { report('socket-closed'); this.closed = true; clearTimeout(this.timer); if (this.socket === socket) this.socket = undefined; this.notice() })
     socket.on('message', (error, data) => {
       if (this.closed) return
       if (this.firstMessage) { this.firstMessage = false; report('first-frame') }
@@ -60,7 +66,7 @@ export class NativeRelaySocket {
       report('dial-returned')
       if (this.closed) {
         try { await this.closing } catch (error) { void error; /* Even a failed earlier close cannot skip release of a late acquisition. */ }
-        this.closing = this.releaseSocket(socket); await this.closing; throw new Error('native WSS connection closed')
+        this.socket = socket; this.closing = this.releaseSocket(socket); await this.closing; throw new Error('native WSS connection closed')
       }
       if (!connected) throw new Error('native WSS connection failed')
     } catch (error) { void error; await this.closeNative(authority); throw new Error('native WSS connection failed') }
@@ -90,7 +96,8 @@ export class NativeRelaySocket {
     this.closing = socket === undefined ? Promise.resolve() : this.releaseSocket(socket)
     return this.closing
   }
-  private async releaseSocket(socket: webSocket.WebSocket): Promise<void> { try { const closed = await socket.close(); if (!closed) throw new Error('native WSS close unknown'); if (this.socket === socket) this.socket = undefined } catch (error) { void error; this.cleanupFailed = true; this.notice(); throw new Error('native WSS cleanup failed') } }
+  /** A close event confirms release even when a concurrent SDK close returns false or rejects. Without that event, failed release remains terminal. */
+  private async releaseSocket(socket: webSocket.WebSocket): Promise<void> { try { const closed = await socket.close(); if (!closed && this.socket === socket) throw new Error('native WSS close unknown'); if (this.socket === socket) this.socket = undefined } catch (error) { if (this.socket !== socket) return; const code = (error as BusinessError).code; console.info('DSH_CONNECTION_CLEANUP=socket-close-failed code=' + (typeof code === 'number' && Number.isSafeInteger(code) ? code : -1)); this.cleanupFailed = true; this.notice(); throw new Error('native WSS cleanup failed') } }
   private retire(authority: object): void { void this.closeNative(authority).then(() => this.notice(), () => this.notice()) }
   private notice(): void { try { this.closedNotice(this.cleanupFailed) } catch (error) { void error; this.cleanupFailed = true } }
 }

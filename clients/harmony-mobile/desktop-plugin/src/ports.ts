@@ -10,15 +10,16 @@ import type { DesktopId } from '../../src/protocol.ts'
 import type { LinkConfig } from '../../src/link-protocol.ts'
 import { LinkError } from '../../src/link-protocol.ts'
 import type { AdmissionJournal } from '../../src/admission-journal.ts'
+import { sessionWindow, type SessionWindowPolicy } from './session-window.ts'
 
 /** Production service ports retain a distinct type from synthetic fixtures. */
 export interface ProfileServicePorts extends DesktopOperationPorts { readonly environment: 'profile-service' }
-/** @param ctx - existing same-profile service Context. @returns canonical ports; accepted receipts require a Session durability barrier and missing approval support rejects explicitly. */
-export function profileServicePorts(ctx: Context): ProfileServicePorts {
+/** @param ctx - existing same-profile service Context. @param window - bounded canonical opening; omission retains the Session service's original window. @returns canonical ports; accepted receipts require a Session durability barrier and missing approval support rejects explicitly. */
+export function profileServicePorts(ctx: Context, window?: SessionWindowPolicy): ProfileServicePorts {
   return { environment: 'profile-service', session: {
     prompt: async (request, signal) => { const result = await ctx.sessionController.prompt(request, signal); await ctx.sessionPersistence.flush(); return result },
     cancel: request => ctx.sessionController.cancel(request),
-    follow: (request, signal) => ctx.sessionController.follow(request, signal),
+    follow: (request, signal) => window === undefined ? ctx.sessionController.follow(request, signal) : sessionWindow((request, signal) => ctx.sessionController.follow(request, signal), window, request, signal),
     findPromptReceipt: async (sessionId, requestId) => {
       const matches = (message: UserMessage) => message.source.kind === 'user' && 'rpcId' in message.source && message.source.rpcId === requestId
       const agent = ctx.agents.get(sessionId)

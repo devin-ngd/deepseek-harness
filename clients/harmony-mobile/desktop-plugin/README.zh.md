@@ -8,6 +8,8 @@
 
 [English](README.md) | 中文
 
+手机历史默认预算为 4 MiB、512 条记录和 50 条消息。`snapshotMaxBytes`、`snapshotMaxRecords` 与 `snapshotMaxMessages` 可配置这些限制；首帧超限时，将原生会话分页的消息窗口减半后重新读取。单条记录保持完整，`hasMore` 保留更早历史的原生标记，最小窗口仍超限则报告 `history-too-large`。双端明文、加密帧和中继容量需要同步更新，见[历史容量与验证](../docs/history-capacity-rc2.33.md)。本候选尚未安装。
+
 rc2.30 的 `/device` 组件默认使用 `connectionMode: paired`，自动等待已配对手机，掉线后重试。`connectionMode: window` 保留显式临时窗口流程。双端和中继的一次更新见[已配对自动连接](../docs/paired-connection-rc2.30.md)，原双端及常驻中继已更新，手机自动连接及真实会话列表已核验。下列版本记录为历史。
 
 最后核实的桌面运行版本为 rc2.12。rc2.16 控制面板是离线候选，构建与验证方式见[控制面板参考](../docs/control-panel-rc2.16.md)。安装和实机测试仍为独立操作。[交接](../docs/HANDOFF-2026-10-28.md)保留原配对和已关闭窗口的证据。
@@ -61,7 +63,7 @@ rc2.30 的 `/device` 组件默认使用 `connectionMode: paired`，自动等待�
 
 ## Harmony 命令反馈
 
-被动反馈组件在原 retained Session 中显示经过审查的公开结果和安全错误；缺少 Session 时不会发送替代通知。rc2.16 候选另加固定 Session 控制面板，使用正式命令 API，保留 Host 校验和正常确认。它只在明确操作时调用有限白名单命令，挂载不会授予权限。没有 retained Session 时面板不显示，也不创建 Session。见[验收与限制](../docs/control-panel-rc2.16.md)和[早期反馈验收](../docs/rc2-alignment.md)。
+被动反馈组件在原 retained Session 中显示经过审查的公开结果和安全错误；缺少 Session 时不会发送替代通知。源码中的控制入口位于“设置 → 内置插件 → 手机连接”，聊天输入框上方不显示面板。没有 retained Session 时，设置页提示先打开会话，不创建 Session。控制使用正式命令 API 并保留 Host 校验；需要确认的操作会关闭设置，让会话显示原有确认界面，重新打开标签页可查看结果。挂载不授予权限，也不发送命令。见[早期控制面板验收与限制](../docs/control-panel-rc2.16.md)和[反馈验收](../docs/rc2-alignment.md)。
 
 ## 设备路由窗口
 

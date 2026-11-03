@@ -117,8 +117,8 @@ export class NativeDeviceCore implements ProductConnection {
   }
   /** @param idText - native-owned subscriber id. @param raw - exact route/argument/resume JSON. @returns after encrypted subscription send. */
   async follow(idText: string, raw: string): Promise<void> { if (new TextEncoder().encode(raw).length > this.policy.e2e.maxPlaintextBytes) throw new Error('native device packet capacity'); const endpoint = this.active(), value = fields(JSON.parse(raw), ['route', 'argument', 'resume']); this.selected(value.route); await endpoint.send(jsonPayload({ kind: 'follow', id: text(idText), value })) }
-  /** @param idText - existing subscriber/request wait. @returns after wait cancellation; accepted tasks are never cancelled implicitly. */
-  async stop(idText: string): Promise<void> { if (!this.closed && this.receipt !== undefined) await this.active().send({ kind: 'stop', id: text(idText) }) }
+  /** @param idText - existing subscriber/request wait. @returns after wait cancellation; a retired crypto binding has no remaining remote wait to stop. Channel cleanup remains owned by close; active send failures still reject. Accepted tasks are never cancelled implicitly. */
+  async stop(idText: string): Promise<void> { if (!this.closed && this.receipt !== undefined && !this.binding.signal.aborted) await this.active().send({ kind: 'stop', id: text(idText) }) }
   /** Close this finite channel and proof client; original identity and persistent registration remain owned by native storage. */
   close(): Promise<void> {
     if (this.closing !== undefined) return this.closing

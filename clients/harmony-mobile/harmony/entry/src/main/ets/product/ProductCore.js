@@ -16307,16 +16307,17 @@ var PairedProductTransport = class {
   receive(raw) {
     if (this.closed || !this.authorized) return;
     try {
-      if (new TextEncoder().encode(raw).length > this.policy.maxPacketBytes) throw new Error("capacity");
+      const bytes = new TextEncoder().encode(raw).length;
+      if (bytes > this.policy.maxPacketBytes) throw new Error("capacity");
       const candidate = JSON.parse(raw);
       if (candidate === null || typeof candidate !== "object" || !("kind" in candidate)) throw new Error("kind");
       const packet = fields(candidate, candidate.kind === "result" || candidate.kind === "frame" ? ["kind", "id", "value"] : candidate.kind === "error" ? ["kind", "id", "code"] : ["kind", "id"]);
       if (typeof packet.id !== "string") throw new Error("id");
       const wait = this.pending.get(packet.id);
       if (wait === void 0) return;
-      if (packet.kind === "result" || packet.kind === "frame") wait.receive(jsonPayload(packet.value), packet.kind === "result");
-      else if (packet.kind === "end") wait.receive(null, true);
-      else if (packet.kind === "error") wait.fail(new TransportError("unknown-outcome"));
+      if (packet.kind === "result" || packet.kind === "frame") wait.receive(jsonPayload(packet.value), packet.kind === "result", bytes);
+      else if (packet.kind === "end") wait.receive(null, true, bytes);
+      else if (packet.kind === "error") wait.fail(new TransportError(packet.code === "history-too-large" ? "history-too-large" : "unknown-outcome"));
       else throw new Error("kind");
     } catch (error51) {
       void error51;
@@ -16424,7 +16425,7 @@ var PairedProductTransport = class {
     const connection = await this.connected(signal);
     if (this.pending.size >= this.policy.maxPending) throw new TransportError("queue-full");
     const id2 = "product-follow-" + ++this.counter, queue = [];
-    let complete = false, failure, wake = () => {
+    let queuedBytes = 0, complete = false, failure, wake = () => {
     }, cancel = () => {
     };
     const fail = (error51) => {
@@ -16435,15 +16436,17 @@ var PairedProductTransport = class {
       complete = true;
       wake();
     };
-    this.pending.set(id2, { receive: (value, end) => {
+    this.pending.set(id2, { receive: (value, end, bytes) => {
+      if (complete) return;
       if (end) complete = true;
       else {
-        if (queue.length >= this.policy.maxQueuedFrames) {
+        if (queue.length >= this.policy.maxQueuedFrames || queuedBytes + bytes > this.policy.maxPacketBytes) {
           fail(new TransportError("queue-full"));
           return;
         }
         ;
-        queue.push(parseWireItem(value));
+        queue.push({ value: parseWireItem(value), bytes });
+        queuedBytes += bytes;
       }
       ;
       wake();
@@ -16458,7 +16461,9 @@ var PairedProductTransport = class {
       await connection.follow(id2, JSON.stringify({ argument: { version: PROFILE_RPC_CODEC, packet: JSON.stringify(command) }, resume }));
       while (!signal?.aborted) {
         if (queue.length > 0) {
-          yield queue.shift();
+          const item = queue.shift();
+          queuedBytes -= item.bytes;
+          yield item.value;
           continue;
         }
         ;
@@ -18424,7 +18429,8 @@ function failureView(failure) {
 // src/follow-policy.ts
 function validateFollowPolicy(policy) {
   if (policy.mode === "once") return;
-  for (const value of [policy.maxSegments, policy.maxFailures, policy.retryDelayMs]) if (!Number.isSafeInteger(value) || value < 1) throw new TransportError("invalid-config");
+  const values2 = policy.mode === "bounded" ? [policy.maxSegments, policy.maxFailures, policy.retryDelayMs] : [policy.maxFailures, policy.retryDelayMs];
+  for (const value of values2) if (!Number.isSafeInteger(value) || value < 1) throw new TransportError("invalid-config");
 }
 async function followPause(delayMs, signal) {
   signal.throwIfAborted();
@@ -18473,29 +18479,29 @@ var PhoneCore = class {
     }
     return { protocol: MOBILE_LINK_PROTOCOL, desktopId: this.model.owner.desktopId, deviceId: this.model.owner.deviceId, commandId, grantEpoch: this.config.grantEpoch, expiresAt, operation, payload };
   }
-  /** @param signal - foreground lifetime. @returns admitted views; bounded recovery mints fresh session.sync reads at the last admitted cursor. Task, action and cancellation commands are never retried here. */
+  /** @param signal - foreground lifetime. @returns admitted views; read renewal uses fresh session.sync commands at the last admitted cursor. Continuous mode resets consecutive failures after a clean segment. Task, action and cancellation commands are never retried here. */
   async *follow(signal) {
     const policy = this.config.follow;
     let segments = 0, failures = 0;
     try {
       while (!signal.aborted) {
-        if (policy.mode === "bounded" && segments >= policy.maxSegments) throw new TransportError("follow-budget-exhausted");
-        segments++;
+        if (policy.mode === "bounded" && segments++ >= policy.maxSegments) throw new TransportError("follow-budget-exhausted");
         try {
           for await (const item of this.provider.follow(this.command("session.sync", { sessionId: this.model.owner.sessionId, afterSeq: this.model.view.cursor }), this.model.resume, signal)) if (this.model.accept(item)) yield this.model.view;
           if (policy.mode === "once" || signal.aborted) return;
+          if (policy.mode === "continuous") failures = 0;
         } catch (error51) {
           if (signal.aborted) return;
           if (policy.mode === "once" || !(error51 instanceof TransportError) || !["timeout", "transport-lost"].includes(error51.code)) throw error51;
           if (++failures >= policy.maxFailures) throw new TransportError("follow-recovery-exhausted", { cause: error51 });
         }
-        if (policy.mode === "bounded") await followPause(policy.retryDelayMs, signal);
+        await followPause(policy.retryDelayMs, signal);
       }
     } catch (error51) {
       if (!signal.aborted) {
         const code = error51 instanceof TransportError ? error51.code : "follow-failed";
         this.model.failFollow(code);
-        const diagnostic = ["domain-too-large", "domain-window-full", "domain-live-gap", "domain-gap", "domain-invalid", "domain-conflict", "domain-rollback", "follow-budget-exhausted", "follow-recovery-exhausted", "timeout", "transport-lost", "unknown-outcome", "request-expired"].includes(code) ? code : "follow-failed";
+        const diagnostic = ["domain-too-large", "domain-window-full", "domain-live-gap", "domain-gap", "domain-invalid", "domain-conflict", "domain-rollback", "follow-budget-exhausted", "follow-recovery-exhausted", "timeout", "transport-lost", "unknown-outcome", "request-expired", "history-too-large"].includes(code) ? code : "follow-failed";
         try {
           console.info("DSH_PHONE_READ_FAILURE=" + diagnostic);
         } catch (error52) {
@@ -19631,6 +19637,33 @@ var DeviceBindingClient = class {
   }
 };
 
+// src/device-session-directory.ts
+var identifier5 = external_exports.string().min(1).max(256);
+var deviceSessionRowSchema = external_exports.object({
+  profileId: external_exports.literal("desktop"),
+  sessionId: identifier5,
+  title: external_exports.string(),
+  projectId: external_exports.string().max(256).nullable(),
+  updatedAt: external_exports.number().int().nonnegative().default(0),
+  running: external_exports.boolean().default(false),
+  pinned: external_exports.boolean().default(false),
+  archived: external_exports.boolean().default(false),
+  blank: external_exports.boolean().default(false)
+}).strict();
+var deviceProjectRowSchema = external_exports.object({ projectId: identifier5, title: external_exports.string() }).strict();
+var deviceSessionActionSchema = external_exports.union([
+  external_exports.object({ action: external_exports.literal("create"), projectId: identifier5.nullable() }).strict(),
+  external_exports.object({ action: external_exports.enum(["archive", "unarchive", "pin", "unpin"]), sessionId: identifier5 }).strict()
+]);
+var deviceSessionManagedSchema = external_exports.object({ sessionId: identifier5 }).strict();
+var metadataSchema = external_exports.object({ desktopId: identifier5, profileId: external_exports.literal("desktop"), sessions: external_exports.array(deviceSessionRowSchema), projects: external_exports.array(deviceProjectRowSchema).optional() }).strict();
+function deviceSessionDirectory(candidate, desktopId) {
+  const value = metadataSchema.parse(candidate);
+  if (value.desktopId !== desktopId) throw new Error("device catalogue identity denied");
+  if (new Set(value.sessions.map((row) => row.sessionId)).size !== value.sessions.length) throw new Error("device duplicate catalogue row");
+  return { sessions: value.sessions, projects: value.projects ?? null };
+}
+
 // src/mobile-device-product.ts
 var DeviceBoundMobileProduct = class {
   /** @param authority - native UI capability, never exported to a rich guest. @param proof - original HUKS proof client. @param ports - existing native encrypted transport adapter. @param clock - native expiry clock. @param scheduler - explicit native cleanup timer owner. @param publish - safe view callback. */
@@ -19663,7 +19696,7 @@ var DeviceBoundMobileProduct = class {
   failed = false;
   disconnecting;
   connecting;
-  state = { state: "disconnected", sessions: [], selected: null, content: "", error: "" };
+  state = { state: "disconnected", sessions: [], projects: [], manageable: false, selected: null, content: "", error: "" };
   local(authority) {
     if (authority !== this.authority || this.closed || this.failed) throw new Error("device mobile operation denied");
   }
@@ -19786,11 +19819,23 @@ var DeviceBoundMobileProduct = class {
     const connection = this.connection, ticket = this.ticket;
     if (connection === void 0 || ticket === void 0) throw new Error("device mobile connection required");
     this.current(connection, ticket);
-    const schema = external_exports.array(external_exports.object({ profileId: external_exports.literal("desktop"), sessionId: external_exports.string().min(1).max(256), title: external_exports.string(), projectId: external_exports.string().nullable() }).strict()), rows = schema.parse(await connection.catalog(ticket));
+    const directory = await connection.catalog(ticket), rows = external_exports.array(deviceSessionRowSchema).parse(directory.sessions), projects = directory.projects === null ? null : external_exports.array(deviceProjectRowSchema).parse(directory.projects);
     this.current(connection, ticket);
     if (new Set(rows.map((row) => row.sessionId)).size !== rows.length) throw new Error("device mobile duplicate catalogue row");
-    this.state = { ...this.state, sessions: rows };
+    this.state = { ...this.state, sessions: rows, projects: projects ?? [], manageable: projects !== null && connection.manage !== void 0 };
     this.emit();
+  }
+  /** @param authority - native list-management intent. @param action - create, archive, unarchive, pin or unpin. @returns affected Session id after desktop acknowledgement and a catalogue refresh; the current selection is unchanged and nothing is retried. */
+  async manage(authority, action) {
+    this.local(authority);
+    const connection = this.connection, ticket = this.ticket;
+    if (connection === void 0 || ticket === void 0) throw new Error("device mobile connection required");
+    this.current(connection, ticket);
+    if (connection.manage === void 0 || !this.state.manageable) throw new Error("device mobile management unavailable");
+    const sessionId = await connection.manage(deviceSessionActionSchema.parse(action), ticket);
+    this.current(connection, ticket);
+    await this.refresh(authority);
+    return sessionId;
   }
   /** @param authority - native row selection. @param sessionId - current admitted row. @returns only after previous follow/rich owner retires; late old callbacks cannot update this view. */
   select(authority, sessionId) {
@@ -19879,7 +19924,7 @@ var DeviceBoundMobileProduct = class {
       const failure = cause === void 0 ? void 0 : connection?.failure?.(cause) ?? cause, cleanupFailed = attempt?.cleanupFailed === true || results.some((result) => result.status === "rejected");
       if (cleanupFailed) failure?.cleanupFailed();
       if (generation === this.generation) {
-        this.state = { state: this.closed ? "closed" : cleanupFailed ? "blocked" : "disconnected", sessions: [], selected: null, content: "", error: cleanupFailed ? "connection-cleanup-failed" : failure === void 0 ? "" : "connection-unavailable", diagnostic: failure?.diagnostic ?? { stage: "local-stop", category: "closed", cleanupFailed } };
+        this.state = { state: this.closed ? "closed" : cleanupFailed ? "blocked" : "disconnected", sessions: [], projects: [], manageable: false, selected: null, content: "", error: cleanupFailed ? "connection-cleanup-failed" : failure === void 0 ? "" : "connection-unavailable", diagnostic: failure?.diagnostic ?? { stage: "local-stop", category: "closed", cleanupFailed } };
         this.emit();
       }
       if (cleanupFailed) {
@@ -20020,7 +20065,7 @@ var DeviceProductRpc = class {
       return;
     }
   }
-  /** @param value - fixed metadata/select request only, constructed by native code. @returns acknowledged public result; timeout never retries the operation. */
+  /** @param value - fixed metadata/select/manage request only, constructed by native code. @returns acknowledged public result; timeout never retries the operation. */
   call(value) {
     if (this.closed || this.pending.size >= this.maxPending) return Promise.reject(new TransportError("queue-full"));
     const id2 = this.prefix + "-rpc-" + ++this.counter;
@@ -20053,9 +20098,7 @@ var DeviceProductRpc = class {
       if (selected === void 0) return;
       let value = data.value;
       if (selected.metadata && data.kind === "result") {
-        const catalog2 = fields(value, ["desktopId", "profileId", "sessions"]);
-        if (catalog2.desktopId !== route2.desktopId || catalog2.profileId !== route2.profileId || !Array.isArray(catalog2.sessions)) throw new Error("device catalogue identity denied");
-        const sessions = catalog2.sessions.map(object2).filter((row) => row.sessionId === route2.sessionId).map((row) => ({ sessionId: string4(row.sessionId, 256), title: string4(row.title, 65536), projectId: row.projectId === null ? null : string4(row.projectId, 256) }));
+        const sessions = deviceSessionDirectory(value, route2.desktopId).sessions.filter((row) => row.sessionId === route2.sessionId).map((row) => ({ sessionId: row.sessionId, title: string4(row.title, 65536), projectId: row.projectId }));
         if (sessions.length !== 1) throw new Error("selected device Session no longer visible");
         value = { desktopId: route2.desktopId, profileId: route2.profileId, catalog: { projects: [], sessions } };
       }
@@ -20581,10 +20624,10 @@ var PairedRelayEndpoint = class {
 };
 
 // src/device-route-protocol.ts
-var identifier5 = external_exports.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
+var identifier6 = external_exports.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
 var signature3 = external_exports.string().regex(/^[A-Za-z0-9_-]{1,192}$/);
 var time3 = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1);
-var body = external_exports.object({ schema: external_exports.literal("harmony-device-route-offer/1"), binding: deviceBindingSchema, routeId: identifier5, routeEpoch: external_exports.literal(1), nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), issuedAt: time3, expiresAt: time3 }).strict();
+var body = external_exports.object({ schema: external_exports.literal("harmony-device-route-offer/1"), binding: deviceBindingSchema, routeId: identifier6, routeEpoch: external_exports.literal(1), nonce: external_exports.string().regex(/^[A-Za-z0-9_-]{43}$/), issuedAt: time3, expiresAt: time3 }).strict();
 var deviceRouteOfferSchema = body.extend({ signature: signature3 }).strict().refine((value) => !value.binding.revoked && value.routeId !== value.binding.bindingId && value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 18e5);
 var deviceRouteSchema = external_exports.object({ schema: external_exports.literal("harmony-device-route/1"), offer: deviceRouteOfferSchema, signature: signature3 }).strict();
 function deviceRouteOfferBytes(value) {
@@ -20799,7 +20842,7 @@ var NativeDeviceCore = class {
     if (value.desktopId !== binding.desktopId) throw new Error("native device route denied");
     return value;
   }
-  /** @param idText - native-owned correlation id. @param raw - only metadata/select/request with an explicit route for Session operations. @returns after encrypted send, never task completion. */
+  /** @param idText - native-owned correlation id. @param raw - only metadata, manage, or select/request with an explicit route for Session operations. @returns after encrypted send, never task completion. */
   async request(idText, raw) {
     const endpoint = this.active();
     if (new TextEncoder().encode(raw).length > this.policy.e2e.maxPlaintextBytes) throw new Error("native device packet capacity");
@@ -20809,6 +20852,7 @@ var NativeDeviceCore = class {
       if (packet.argument !== null) throw new Error("native device metadata denied");
     } else if (method === "select") this.selected(fields(value, ["method", "route"]).route);
     else if (method === "request") this.selected(fields(value, ["method", "route", "argument"]).route);
+    else if (method === "manage") deviceSessionActionSchema.parse(fields(value, ["method", "action"]).action);
     else throw new Error("native device method denied");
     await endpoint.send(jsonPayload({ kind: "request", id: text(idText), value }));
   }
@@ -20819,9 +20863,9 @@ var NativeDeviceCore = class {
     this.selected(value.route);
     await endpoint.send(jsonPayload({ kind: "follow", id: text(idText), value }));
   }
-  /** @param idText - existing subscriber/request wait. @returns after wait cancellation; accepted tasks are never cancelled implicitly. */
+  /** @param idText - existing subscriber/request wait. @returns after wait cancellation; a retired crypto binding has no remaining remote wait to stop. Channel cleanup remains owned by close; active send failures still reject. Accepted tasks are never cancelled implicitly. */
   async stop(idText) {
-    if (!this.closed && this.receipt !== void 0) await this.active().send({ kind: "stop", id: text(idText) });
+    if (!this.closed && this.receipt !== void 0 && !this.binding.signal.aborted) await this.active().send({ kind: "stop", id: text(idText) });
   }
   /** Close this finite channel and proof client; original identity and persistent registration remain owned by native storage. */
   close() {
@@ -21117,6 +21161,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   client;
   device;
   selected;
+  resumeSessionId = "";
   closed = false;
   connectionApproved = false;
   revoked = false;
@@ -21172,7 +21217,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   project(view) {
     if (view.state !== "connected") this.stopCatalog();
     const session = view.content === "" ? {} : JSON.parse(view.content);
-    this.publish(JSON.stringify({ ...session, pairing: "paired", connectionDiagnostic: deviceConnectionDiagnosticText(view.diagnostic), connection: view.state === "connected" ? "connected" : view.state, error: view.error || this.catalogError || session.error || "", projects: [], sessions: view.sessions.map((row) => ({ sessionId: row.sessionId, projectId: row.projectId, title: row.title })), selected: view.selected?.sessionId ?? "", task: session.task ?? "idle", readOnly: session.readOnly ?? true, messages: session.messages ?? [], liveText: session.liveText ?? "", richJson: session.richJson ?? "" }));
+    this.publish(JSON.stringify({ ...session, pairing: "paired", connectionDiagnostic: deviceConnectionDiagnosticText(view.diagnostic), connection: view.state === "connected" ? "connected" : view.state, error: view.error || this.catalogError || session.error || "", projects: view.projects, manageable: view.manageable, sessions: view.sessions, selected: view.selected?.sessionId ?? "", task: session.task ?? "idle", readOnly: session.readOnly ?? true, messages: session.messages ?? [], liveText: session.liveText ?? "", richJson: session.richJson ?? "" }));
   }
   sessionView(view) {
     return JSON.stringify({ task: view.transcript?.task ?? "idle", readOnly: view.transcript?.readOnly ?? true, error: view.error, messages: view.transcript?.messages.filter((message) => message.role === "user" || message.role === "assistant").map((message) => ({ id: message.id, role: message.role, text: message.parts.flatMap((part) => part.kind === "text" || part.kind === "reasoning" ? [part.text] : []).join("\n") })) ?? [], liveText: view.transcript?.liveText ?? "", richJson: view.rich === null ? "" : JSON.stringify(view.rich) });
@@ -21256,6 +21301,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
       })(), (async () => {
         await acquisition?.close();
       })()]);
+      for (const [index3, result] of results.entries()) if (result.status === "rejected") console.info("DSH_CONNECTION_CLEANUP=" + ["rpc", "channel", "native"][index3] + "-failed");
       if (results.some((result) => result.status === "rejected")) throw new Error("native device network cleanup failed");
     })();
     const abort = () => {
@@ -21297,11 +21343,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
       lifetime.throwIfAborted();
       this.local(this.authority);
       const network = core, calls = rpc;
-      return { authentication: "native", ...context === void 0 ? {} : { route: context }, binding: network.binding, failure: (fallback) => network.connectionFailure(fallback, "active-channel"), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => {
-        const value = fields(await calls.call({ method: "metadata", argument: null }), ["desktopId", "profileId", "sessions"]);
-        if (value.desktopId !== registration.desktopId || value.profileId !== "desktop") throw new Error("native device catalogue identity denied");
-        return external_exports.array(external_exports.object({ profileId: external_exports.literal("desktop"), sessionId: external_exports.string(), title: external_exports.string(), projectId: external_exports.string().nullable() }).strict()).parse(value.sessions);
-      }, select: async (route3, ticket, publish, lifetime2) => {
+      return { authentication: "native", ...context === void 0 ? {} : { route: context }, binding: network.binding, failure: (fallback) => network.connectionFailure(fallback, "active-channel"), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => deviceSessionDirectory(await calls.call({ method: "metadata", argument: null }), registration.desktopId), manage: async (action) => deviceSessionManagedSchema.parse(await calls.call({ method: "manage", action })).sessionId, select: async (route3, ticket, publish, lifetime2) => {
         const result = fields(await calls.call({ method: "select", route: route3 }), ["selected"]);
         if (JSON.stringify(result.selected) !== JSON.stringify(route3)) throw new Error("native device selection acknowledgement denied");
         const session = new DevicePhoneSession(route3, registration, ticket, network.binding, proof, this.authority, this.policy, calls, this.scheduler, this.clock, (view) => publish(this.sessionView(view)), context);
@@ -21410,14 +21452,20 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
     if (raw === null) throw new Error("native device not bound");
     return raw;
   }
-  /** @param networkApproved - current native page's explicit host decision, never inferred from a saved binding. @returns after a fresh finite channel proof; no model is submitted. */
+  /** @param networkApproved - current native page's explicit host decision, never inferred from a saved binding. @returns after a fresh channel proof and reopening the last selected Session when still visible. Only reads resume; no model message or mutation is replayed. */
   async connect(networkApproved) {
     this.local(this.authority);
     if (networkApproved !== true) throw new Error("native device host consent required");
     if (this.revoked || this.device === void 0) throw new Error("native device not bound");
+    const resume = this.resumeSessionId;
     this.connectionApproved = true;
     await this.device.connect(this.authority);
+    this.catalogError = "";
     this.scheduleCatalog();
+    if (resume !== "" && resume === this.resumeSessionId) {
+      if (this.device.view.sessions.some((row) => row.sessionId === resume)) await this.device.select(this.authority, resume);
+      else this.resumeSessionId = "";
+    }
   }
   scheduleCatalog() {
     this.stopCatalog();
@@ -21445,11 +21493,18 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
       });
     });
   }
-  /** @param sessionId - current catalogue row. @returns after canonical old rich/subscription cleanup and selected Session start. */
+  /** @param sessionId - current catalogue row, retained in memory for channel recovery. @returns after canonical old rich/subscription cleanup and selected Session start. */
   async select(sessionId) {
     this.local(this.authority);
     if (this.device === void 0) throw new Error("native device not bound");
+    this.resumeSessionId = sessionId;
     await this.device.select(this.authority, sessionId);
+  }
+  /** @param raw - strict list-management intent JSON from the native page. @returns affected Session id after the desktop acknowledged it and the catalogue refreshed; selection is unchanged. */
+  async manage(raw) {
+    this.local(this.authority);
+    if (this.device === void 0) throw new Error("native device not bound");
+    return this.device.manage(this.authority, deviceSessionActionSchema.parse(JSON.parse(raw)));
   }
   /** Refresh dynamic catalogue without resuming an Agent. */
   async refresh() {
@@ -21575,7 +21630,7 @@ var AutomaticConnection = class {
 // src/native-product-facade.ts
 var positive = external_exports.number().int().positive().max(2147483647);
 var recovery = external_exports.object({ maxAttempts: positive, retryDelayMs: positive }).strict();
-var policySchema = external_exports.object({ enabled: external_exports.boolean(), trustMaxBytes: positive, transport: external_exports.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: external_exports.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: external_exports.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: external_exports.discriminatedUnion("mode", [external_exports.object({ mode: external_exports.literal("once") }).strict(), external_exports.object({ mode: external_exports.literal("bounded"), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: external_exports.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/) }).strict();
+var policySchema = external_exports.object({ enabled: external_exports.boolean(), trustMaxBytes: positive, transport: external_exports.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: external_exports.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: external_exports.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: external_exports.discriminatedUnion("mode", [external_exports.object({ mode: external_exports.literal("once") }).strict(), external_exports.object({ mode: external_exports.literal("bounded"), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict(), external_exports.object({ mode: external_exports.literal("continuous"), maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: external_exports.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/) }).strict();
 function parseProductPolicy(raw) {
   return policySchema.parse(JSON.parse(raw));
 }

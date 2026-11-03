@@ -45,11 +45,11 @@ test('actual Facade separates route refusal from original native identity read',
 // These execute the actual ETS acquisition owner against the existing fixed-key SDK substitute.
 const native=await import('../tests/helpers/product-native-harness.mjs')
 test('real native ports forward only allowlisted content-free control and E2E facts',async()=>{
- native.resetProductSdk();native.state.aliases.add('fixture-original');const authority={},facts=[],logs=[],owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-original',2,26,65536,4194304,policy.relay)),original=console.info;console.info=value=>logs.push(value)
+ native.resetProductSdk();native.state.aliases.add('fixture-original');const authority={},facts=[],logs=[],owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-original',2,26,65536,policy.maxTotalSendBytes,policy.relay)),original=console.info;console.info=value=>logs.push(value)
  try{const ports=await owner.acquireDevicePortsNative(authority,'desktop',fact=>facts.push(fact));assert.deepEqual(facts,['identity-read','native-channel']);ports.diagnostic('peer-verified');ports.controlDiagnostic('challenge-validated');ports.diagnostic(secret);ports.controlDiagnostic(secret);assert.deepEqual(logs,['DSH_E2E_STAGE=phone-peer-verified','DSH_CONTROL_STAGE=phone-challenge-validated']);assert.equal(native.network.requests.length,0);assert.equal(native.state.calls.includes('create'),false)}finally{console.info=original;await owner.closeNative(authority)}
 })
 test('real native identity failure stays at identity-read without creating or replacing a key',async()=>{
- native.resetProductSdk();const authority={},facts=[],owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-missing',2,26,65536,4194304,policy.relay))
+ native.resetProductSdk();const authority={},facts=[],owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-missing',2,26,65536,policy.maxTotalSendBytes,policy.relay))
  try{await assert.rejects(owner.acquireDevicePortsNative(authority,'desktop',fact=>facts.push(fact)));assert.equal(facts[0],'identity-read');assert.equal(facts.includes('native-channel'),false);assert.equal(native.state.calls.includes('create'),false);assert.equal(native.network.requests.length,0)}finally{await owner.closeNative(authority)}
 })
 
@@ -73,6 +73,15 @@ test('explicit local stop differs from ticket expiry and unexpected closure',asy
 test('protocol timeout alone does not manufacture a resource cleanup failure',async()=>{
  const core=nativeCore();core.fail('timeout');const primary=await core.ready().catch(error=>error);await core.close();assert.equal(primary.diagnostic.cleanupFailed,false);assert.equal(primary.diagnostic.category,'timeout')
 })
+
+test('a retired crypto binding needs no remote unsubscribe while native resource cleanup remains awaited',async()=>{
+ const core=nativeCore(),controller=new AbortController();let sends=0,releases=0
+ core.receipt={expiresAt:5000};core.originalBinding={signal:controller.signal};core.endpoint={send:async()=>{sends++},close(){},settled:async()=>{releases++}}
+ controller.abort();await core.stop('fixture-follow');assert.equal(sends,0)
+ await core.close();assert.equal(releases,1)
+ const active=nativeCore(),failure=Error('synthetic active send refusal');active.receipt={expiresAt:5000};active.originalBinding={signal:new AbortController().signal};active.endpoint={send:async()=>{throw failure},close(){},settled:async()=>{}}
+ await assert.rejects(active.stop('fixture-follow'),error=>error===failure);await active.close()
+})
 test('active-channel diagnostic remains owned after authorization, including late failure during teardown',async()=>{
  const core=nativeCore();core.phase='active-channel';core.receipt={};core.encryptedFact('failure-data:decrypt-failed');assert.equal(core.connectionFailure(raw(),'native-channel').diagnostic.stage,'active-channel');await core.close()
  const late=nativeCore();late.phase='active-channel';late.unexpectedClose=true;await late.close();late.encryptedFact('failure-data:sequence');assert.deepEqual(late.connectionFailure(raw(),'native-channel').diagnostic,{stage:'active-channel',category:'refused',cleanupFailed:false})
@@ -81,4 +90,4 @@ test('active-channel diagnostic remains owned after authorization, including lat
 test('actual ticket timer retires the connection with expiry disposition',async()=>{let expire;const f=fixture({scheduler:{after:(_ms,callback)=>{expire=callback;return()=>{}}}});await f.app.connect(f.authority);expire();await f.app.disconnecting;assert.deepEqual(f.app.view.diagnostic,{stage:'connection-expiry',category:'timeout',cleanupFailed:false});assert.equal(f.app.view.state,'disconnected');await f.app.close()})
 
 test('protocol rejection and resource-release failure remain orthogonal at the real endpoint boundary',async()=>{const protocol=nativeCore();protocol.endpoint={close(){},settled:async()=>{throw new api.PairedRelayFailure(true,false)}};await protocol.close();const cleanup=nativeCore();cleanup.endpoint={close(){},settled:async()=>{throw new api.PairedRelayFailure(true,true)}};await assert.rejects(cleanup.close(),error=>error.cleanupFailed===true);const unknown=nativeCore();unknown.endpoint={close(){},settled:async()=>{throw raw()}};await assert.rejects(unknown.close())})
-test('real native port send refusal does not manufacture a socket release failure',async()=>{native.resetProductSdk();native.state.aliases.add('fixture-original');const authority={},owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-original',2,26,65536,4194304,policy.relay));const ports=await owner.acquireDevicePortsNative(authority,'desktop');ports.control.send(new TextEncoder().encode('{}'));await ports.control.tail;await owner.closeNative(authority);assert.equal(native.network.requests.length,0);assert.equal(native.state.calls.includes('create'),false)})
+test('real native port send refusal does not manufacture a socket release failure',async()=>{native.resetProductSdk();native.state.aliases.add('fixture-original');const authority={},owner=new native.NativePairedConnectionOwner(authority,new native.NativePairedPolicy('relay.example','fixture-route','fixture-original',2,26,65536,policy.maxTotalSendBytes,policy.relay));const ports=await owner.acquireDevicePortsNative(authority,'desktop');ports.control.send(new TextEncoder().encode('{}'));await ports.control.tail;await owner.closeNative(authority);assert.equal(native.network.requests.length,0);assert.equal(native.state.calls.includes('create'),false)})

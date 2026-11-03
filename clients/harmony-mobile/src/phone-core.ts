@@ -44,29 +44,29 @@ export class PhoneCore {
     catch (error) { void error; this.commandObservationFailures++ } // Only the optional diagnostic sink is contained; the clock and provider remain product owners.
     return { protocol: MOBILE_LINK_PROTOCOL, desktopId: this.model.owner.desktopId, deviceId: this.model.owner.deviceId, commandId, grantEpoch: this.config.grantEpoch, expiresAt, operation, payload }
   }
-  /** @param signal - foreground lifetime. @returns admitted views; bounded recovery mints fresh session.sync reads at the last admitted cursor. Task, action and cancellation commands are never retried here. */
+  /** @param signal - foreground lifetime. @returns admitted views; read renewal uses fresh session.sync commands at the last admitted cursor. Continuous mode resets consecutive failures after a clean segment. Task, action and cancellation commands are never retried here. */
   async *follow(signal: AbortSignal): AsyncIterable<PhoneView> {
     const policy = this.config.follow
     let segments = 0, failures = 0
     try {
       while (!signal.aborted) {
-        if (policy.mode === 'bounded' && segments >= policy.maxSegments) throw new TransportError('follow-budget-exhausted')
-        segments++
+        if (policy.mode === 'bounded' && segments++ >= policy.maxSegments) throw new TransportError('follow-budget-exhausted')
         try {
           for await (const item of this.provider.follow(this.command('session.sync', { sessionId: this.model.owner.sessionId, afterSeq: this.model.view.cursor }), this.model.resume, signal)) if (this.model.accept(item)) yield this.model.view
           if (policy.mode === 'once' || signal.aborted) return
+          if (policy.mode === 'continuous') failures = 0
         } catch (error) {
           if (signal.aborted) return
           if (policy.mode === 'once' || !(error instanceof TransportError) || !['timeout', 'transport-lost'].includes(error.code)) throw error
           if (++failures >= policy.maxFailures) throw new TransportError('follow-recovery-exhausted', { cause: error })
         }
-        if (policy.mode === 'bounded') await followPause(policy.retryDelayMs, signal)
+        await followPause(policy.retryDelayMs, signal)
       }
     } catch (error) {
       if (!signal.aborted) {
         const code = error instanceof TransportError ? error.code : 'follow-failed'
         this.model.failFollow(code)
-        const diagnostic = ['domain-too-large', 'domain-window-full', 'domain-live-gap', 'domain-gap', 'domain-invalid', 'domain-conflict', 'domain-rollback', 'follow-budget-exhausted', 'follow-recovery-exhausted', 'timeout', 'transport-lost', 'unknown-outcome', 'request-expired'].includes(code) ? code : 'follow-failed'
+        const diagnostic = ['domain-too-large', 'domain-window-full', 'domain-live-gap', 'domain-gap', 'domain-invalid', 'domain-conflict', 'domain-rollback', 'follow-budget-exhausted', 'follow-recovery-exhausted', 'timeout', 'transport-lost', 'unknown-outcome', 'request-expired', 'history-too-large'].includes(code) ? code : 'follow-failed'
         try { console.info('DSH_PHONE_READ_FAILURE=' + diagnostic) }
         catch (error) { void error; /* The model retains the read failure when the diagnostic sink is unavailable. */ }
         throw error
