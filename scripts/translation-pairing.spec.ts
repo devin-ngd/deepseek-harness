@@ -389,6 +389,8 @@ describe('translation scope discovery', () => {
     'python/guide.md',
     'python/sdk-runtime/README.md',
     'python/sdk-runtime/src/deepseek_harness_runtime/README.md',
+    'clients/harmony-mobile/handoff/phase29/README.md',
+    'clients/harmony-mobile/docs/handoff/README.md',
   ])('includes %s', (file) => {
     expect(isTranslationScopeFile(file)).toBe(true)
   })
@@ -404,6 +406,9 @@ describe('translation scope discovery', () => {
     'packages/example/node_modules/dependency/README.md',
     'packages/example/lib/README.md',
     'coverage/report/README.md',
+    'clients/harmony-mobile/handoff/mvp-rc2.33/README.md',
+    'clients/harmony-mobile/handoff/phone-rc2.33/README.zh.md',
+    'clients/harmony-mobile/handoff/deploy-rc233/profile-backup/plugin/README.i18n.yaml',
     'python/sdk-runtime/src/deepseek_harness_runtime/runtime/deepseek-harness-sdk-runtime-macos-arm64/README.md',
     'python/sdk-runtime/src/deepseek_harness_runtime/runtime/node/README.md',
     'python/sdk-runtime/src/deepseek_harness_runtime/runtime/macos-arm64/office-skills/office-docx/SKILL.md',

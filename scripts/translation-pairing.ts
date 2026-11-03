@@ -141,6 +141,10 @@ export const TRANSLATION_SCOPE_GLOB_EXCLUDES = [
   '**/dist-exe/**',
   '**/__pycache__/**',
   '**/.pytest_cache/**',
+  // Versioned mobile handoffs contain built packages and installed-profile backups.
+  'clients/harmony-mobile/handoff/mvp-*/**',
+  'clients/harmony-mobile/handoff/phone-*/**',
+  'clients/harmony-mobile/handoff/deploy-*/**',
   'apps/web/dist/**',
   '.artifacts/**',
   'python/sdk-runtime/src/deepseek_harness_runtime/runtime/**',
@@ -154,6 +158,7 @@ function isTranslationSourceExcluded(file: string): boolean {
       || segment.startsWith('.doc-typecheck-')
     || segment.startsWith('.node-next-types-'))
     || file.startsWith('apps/web/dist/')
+    || /^clients\/harmony-mobile\/handoff\/(?:mvp-|phone-|deploy-)/u.test(file)
     || file.startsWith('python/sdk-runtime/src/deepseek_harness_runtime/runtime/')
 }
 

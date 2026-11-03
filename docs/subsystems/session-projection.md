@@ -122,8 +122,9 @@ The persisted projection cache service. Opens the `session_projcache` domain at 
 ```ts cordis-catalog
 /**
  * The zero-I/O listing read: whole values viewed straight from the stored
- * rows (version-matching keys only) of the record bound to the caller's
- * lifecycle. The header is the only identity witness a listing holds, so
+ * rows of the record bound to the caller's lifecycle — keys whose row
+ * version matches the live unit, plus a mismatched row the unit's `migrate`
+ * hook can still interpret. The header is the only identity witness a listing holds, so
  * this face matches the lifecycle identity (`formatVersion`, `createdAt`,
  * `cwd`, `isSeeded`) and not the inherited cut: within one format
  * generation the cut is fixed at fork time, so it distinguishes no
