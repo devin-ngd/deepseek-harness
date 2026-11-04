@@ -92,6 +92,11 @@ export class RichPreview {
       if (this.stopped) { await this.native.release(reservation.lease); return }
       this.unsubscribe = this.native.subscribe(reservation.lease, (packet) => {
         if (this.stopped) return
+        if (packet.type === 'native.close-request' && typeof packet.requestId === 'string') {
+          void this.native?.send(reservation.lease, { type: 'native.close-ready', requestId: packet.requestId, ok: true }).catch(() => { this.publish({ error: true }) })
+          return
+        }
+        if (packet.type === 'native.closed') { void this.close().catch(() => { this.publish({ error: true }) }); return }
         if (packet.type === 'preview.ready') { this.ready = true; this.schedule() }
         if (packet.type === 'preview.resize' && typeof packet.height === 'number' && Number.isFinite(packet.height))
           this.publish({ height: Math.max(24, Math.min(12000, Math.ceil(packet.height) + 1)) })

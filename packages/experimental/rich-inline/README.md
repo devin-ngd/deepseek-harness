@@ -183,6 +183,8 @@ Replacement is staged while mounted or dirty. The trusted update button flushes 
 
 Each block has a fresh nonpersistent partition and separate native process. `sandbox`, `contextIsolation` and `webSecurity` stay enabled, with Node disabled. The preload exposes bounded JSON transport; main binds packets to the actual owner and lease. Network, WebRTC, navigation, windows, downloads, permissions, guest file picking and drag/drop are denied. A looping guest can be closed and reloaded while chat stays responsive. DOM, inline CSS, data images/media and the separate `js` field are supported. HTML event attributes, external dependencies, workers and dynamic evaluation are restricted.
 
+A trusted carrier can provide `globalThis.__DSH_RICH_CARRIER__` before client boot. It implements the existing reservation, packet and release interface and may attach its own view to the provided DOM container. The same package and guest SDK are used on both platforms. The carrier owns isolation, resource limits and teardown; generated content must not receive the workspace transport. Without that adapter, Web keeps the saved text fallback and Desktop keeps its native guest.
+
 Defaults: 2 MiB publication, 128 KiB input, 10 MiB/file, 128 blocks and 2,000 actions/Session. Native SDK reserve is 64 KiB; restored Host-to-guest snapshots allow 16 MiB. UTF-8 limits apply before mutation. Failed saves retain editable local input with a trusted warning: copy or correct it before refreshing. Oversized restored state retains complete durable data and shows text. Packet flooding visibly terminates its guest. Polling defaults to one second, configurable from 250–60,000 ms.
 
 Verification commands (use new result directories):

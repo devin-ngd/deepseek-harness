@@ -50,7 +50,7 @@ function harness(initial: RichAppearance = { theme: 'cyber', accent: 'auto' }) {
   const native: NativeRichBridge = {
     limits: { documentBytes: 2097152 + 65536, sdkBytes: 65536, guestPacketBytes: 131072, hostPacketBytes: 16777216 },
     acquire: vi.fn<NativeRichBridge['acquire']>(async request => ({ lease: `lease-${request.mountId}`, partition: `partition-${request.mountId}`, src: 'about:blank' })),
-    subscribe: vi.fn<NativeRichBridge['subscribe']>((lease, listener) => { listeners.set(lease, listener); return () => { listeners.delete(lease) } }),
+    subscribe: vi.fn<NativeRichBridge['subscribe']>((lease, listener) => { listeners.set(lease, (packet) => { void listener(packet) }); return () => { listeners.delete(lease) } }),
     send: vi.fn(async () => {}), release: vi.fn(async () => {}),
   }
   const copy = { text: '复制这部分', image: '复制图片', copied: '已复制', failed: '复制失败' }
@@ -59,7 +59,7 @@ function harness(initial: RichAppearance = { theme: 'cyber', accent: 'auto' }) {
     protocol: 'lumina-rich/1', mountId, renderRevision: 1, packetId: `${mountId}-packet-${seq}`, seq, type, payload,
   })
   const select = (next: RichAppearance): void => { appearance = next }
-  return { controller, rpc, native, emit, select }
+  return { controller, rpc, native, emit, select, emitNative: (packet: Record<string, unknown>) => listeners.get('lease-mount-1')?.(packet) }
 }
 
 function lastPacket(native: NativeRichBridge): { type: string; payload: Record<string, unknown> } {
@@ -72,6 +72,36 @@ beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('real rich controller async lifetimes', () => {
+  it('settles the native close draft without blocking the guest acknowledgement queue', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    vi.stubGlobal('getComputedStyle', () => ({ colorScheme: 'light', getPropertyValue: () => '' }))
+    vi.stubGlobal('document', { documentElement: {} })
+    const h = harness()
+    h.controller.open(messageId, blockId); await settle()
+    h.emit('lease-mount-1', 'mount-1', 1, 'ready', { sdkVersion: '1' }); await settle()
+    h.emitNative({ type: 'native.close-request', requestId: 'native-close' }); await settle()
+    const prepare = lastPacket(h.native)
+    expect(prepare.type).toBe('prepare.update')
+    h.emit('lease-mount-1', 'mount-1', 2, 'update.ready', { requestId: prepare.payload.requestId }); await settle()
+    expect(vi.mocked(h.native.send).mock.calls.at(-1)?.[1]).toEqual({ type: 'native.close-ready', requestId: 'native-close', ok: true })
+    h.emitNative({ type: 'native.closed' }); await settle()
+    expect(h.controller.getSnapshot()).toMatchObject({ closed: true, error: null, reservation: null })
+    expect(h.rpc.dispose).toHaveBeenCalledWith({ sessionId, mountId: 'mount-1' })
+  })
+  it('keeps a native guest open when its draft cannot settle', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    vi.stubGlobal('getComputedStyle', () => ({ colorScheme: 'light', getPropertyValue: () => '' }))
+    vi.stubGlobal('document', { documentElement: {} })
+    const h = harness()
+    h.controller.open(messageId, blockId); await settle()
+    h.emit('lease-mount-1', 'mount-1', 1, 'ready', { sdkVersion: '1' }); await settle()
+    h.emitNative({ type: 'native.close-request', requestId: 'native-close' }); await settle()
+    const prepare = lastPacket(h.native)
+    h.emit('lease-mount-1', 'mount-1', 2, 'update.ready', { requestId: prepare.payload.requestId, error: 'draft refused' }); await settle()
+    expect(vi.mocked(h.native.send).mock.calls.at(-1)?.[1]).toEqual({ type: 'native.close-ready', requestId: 'native-close', ok: false })
+    expect(h.controller.getSnapshot()).toMatchObject({ closed: false })
+    await h.controller.close()
+  })
   it('attaches the trusted Session after guest data before saving inputs', async () => {
     const h = harness()
     vi.mocked(h.rpc.saveDraft).mockResolvedValue({ accepted: true, code: 'DRAFT_SAVED', actionId: null, state: null, draftRevision: 1 })

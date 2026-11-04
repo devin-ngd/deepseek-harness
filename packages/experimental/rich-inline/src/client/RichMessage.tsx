@@ -1,5 +1,5 @@
 /** Generic guest embedded in the normal chat message flow, with trusted external controls. */
-import { createElement, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
 import {
   Button, IconCheckCircleOutlineRegular, IconChevronRightOutlineRegular, IconCloseOutlineRegular, IconInfoOutlineRegular,
@@ -16,6 +16,7 @@ import { richPaletteProperties } from '../shared/theme.ts'
 import type { RichAppearance } from '../shared/theme.ts'
 import { nativeRich } from './native.ts'
 import { RichPreview } from './preview.ts'
+import { RichGuest } from './RichGuest.tsx'
 
 type Translate = RichMessageProps['t']
 type Tone = 'info' | 'warning' | 'danger' | 'positive' | 'neutral'
@@ -150,10 +151,7 @@ function RichBlock({ messageId, blockId, useRich, open, close, addFile, update, 
       {t(action.state)}{action.progress === null ? '' : ` ${action.progress.done}/${action.progress.total}`}
       {action.lateAfterCancel && <span className={css.noticeMeta}>{t('lateAfterCancel')}</span>}
     </Notice>)}
-    {reservation !== null && !view.closed && createElement('webview', {
-      key: reservation.lease, name: reservation.lease, partition: reservation.partition, src: reservation.src,
-      className: css.guest, style: { height: view.height }, 'aria-label': t('label'),
-    })}
+    {reservation !== null && !view.closed && <RichGuest key={reservation.lease} reservation={reservation} height={view.height} className={css.guest} label={t('label')}/>}
     {fallback !== undefined && <div className={css.body}><MarkdownText text={fallback} labels={labels}/></div>}
     {view.error !== null && sourceText !== undefined && <Disclosure label={t('source')}><pre>{sourceText}</pre></Disclosure>}
     {legacyText !== undefined && reservation !== null && !view.closed && <Disclosure label={t('original')}>
@@ -184,8 +182,7 @@ function Preview({ source, stopped, t, appearance }: { source: string; stopped: 
   return <section className={css.block} style={palette} data-rich-theme={appearance.theme} data-rich-inline-preview aria-label={t('label')}>
     <Header t={t} state={t(view.closed ? 'previewClosed' : stopped ? 'incomplete' : 'preview')} live={!view.closed && !stopped} tools={tools}/>
     {view.error && <Notice tone="danger" role="alert">{t('previewError')}</Notice>}
-    {view.reservation !== null && !view.error && createElement('webview', { name: view.reservation.lease,
-      partition: view.reservation.partition, src: view.reservation.src, className: css.guest, style: { height: view.height }, 'aria-label': t('label') })}
+    {view.reservation !== null && !view.error && <RichGuest reservation={view.reservation} height={view.height} className={css.guest} label={t('label')}/>}
     {(view.error || view.closed || nativeRich() === undefined || stopped) && <Disclosure label={t('source')}><pre>{source}</pre></Disclosure>}
   </section>
 }

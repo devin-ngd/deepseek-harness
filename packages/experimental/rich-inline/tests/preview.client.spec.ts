@@ -12,7 +12,7 @@ function harness(appearance: RichAppearance = { theme: 'cyber', accent: 'auto' }
   const native: NativeRichBridge = {
     limits: { documentBytes: 2162688, sdkBytes: 65536, guestPacketBytes: 131072, hostPacketBytes: 16777216 },
     acquire: vi.fn(async () => ({ lease: 'preview-lease', partition: 'preview-partition', src: 'about:blank' })),
-    subscribe: vi.fn<NativeRichBridge['subscribe']>((_lease, listener) => { receive = listener; return vi.fn() }),
+    subscribe: vi.fn<NativeRichBridge['subscribe']>((_lease, listener) => { receive = (packet) => { void listener(packet) }; return vi.fn() }),
     send: vi.fn(async () => {}), release: vi.fn(async () => {}) }
   const preview = new RichPreview(native, appearance)
   return { preview, native, emit: (packet: Record<string, unknown>) => { receive(packet) } }

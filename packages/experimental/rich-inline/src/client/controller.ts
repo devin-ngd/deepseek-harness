@@ -181,10 +181,21 @@ export class RichBlockController {
     if (generation !== this.generation || mountId !== this.mountId) { await this.native.release(reservation.lease); return }
     this.stopNative = this.native.subscribe(reservation.lease, (value) => {
       if (generation !== this.generation || this.view.reservation?.lease !== reservation.lease) return
+      if (value.type === 'native.close-request' && typeof value.requestId === 'string') {
+        const requestId = value.requestId
+        // Guest draft and update acknowledgements continue through the packet queue while this barrier waits.
+        void this.settleDraft().then(
+          () => this.native?.send(reservation.lease, { type: 'native.close-ready', requestId, ok: true }),
+          () => this.native?.send(reservation.lease, { type: 'native.close-ready', requestId, ok: false }),
+        ).catch((error: unknown) => { if (generation === this.generation) this.publish({ error: String(error) }) })
+        return
+      }
+      if (value.type === 'native.closed') { void this.close().catch((error: unknown) => { this.publish({ error: String(error) }) }); return }
       if (value.type === 'native.error') { this.publish({ error: String(value.code) }); void this.close(); return }
       this.chain = this.chain.then(() => this.receive(value, generation)).catch((error: unknown) => {
         if (generation === this.generation) this.publish({ error: String(error) })
       })
+      return this.chain
     })
     this.styledAs = appearance.theme
     this.publish({ reservation })

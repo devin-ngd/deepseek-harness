@@ -28,6 +28,13 @@ export interface NativeRichLimits {
 }
 /** Native owner accepts bounded content bytes, never a guest-selected URL or preload. */
 export interface NativeRichBridge {
+  /**
+   * Optional carrier-owned DOM view; omission uses Desktop's native webview element.
+   * @param lease - current reservation to display.
+   * @param container - trusted renderer's element; generated content cannot access it.
+   * @returns view disposer; release() separately revokes the reservation.
+   */
+  attach?(this: void, lease: string, container: HTMLElement): () => void
   /** Present only when the carrier accepts copy.menu; absence keeps legacy copy controls. */
   readonly contentActions?: 1
   /** Fixed resource limits supplied by the trusted preload. */
@@ -44,8 +51,13 @@ export interface NativeRichBridge {
   }): Promise<RichReservation>
   /** @param lease - registered lease. @param packet - protocol envelope. */
   send(this: void, lease: string, packet: Record<string, unknown>): Promise<void>
-  /** @param lease - registered lease. @param listener - bounded guest-intent handler. @returns unsubscribe. */
-  subscribe(this: void, lease: string, listener: (packet: Record<string, unknown>) => void): () => void
+  /**
+   * @param lease - registered lease.
+   * @param listener - guest-intent handler; its completion may apply carrier backpressure.
+   * Native close requests settle drafts before native.closed.
+   * @returns unsubscribe.
+   */
+  subscribe(this: void, lease: string, listener: (packet: Record<string, unknown>) => void | Promise<void>): () => void
   /** @param lease - registered lease to revoke and terminate. */
   release(this: void, lease: string): Promise<void>
 }
@@ -55,8 +67,11 @@ export interface NativeRichBridge {
  * @returns no capability on ordinary Web clients.
  */
 export function nativeRich(): NativeRichBridge | undefined {
-  const carrier = (globalThis as typeof globalThis & {
+  const globals = globalThis as typeof globalThis & {
+    __DSH_RICH_CARRIER__?: NativeRichBridge
     dshDesktop?: { protocolVersion: number; rich?: NativeRichBridge }
-  }).dshDesktop
+  }
+  if (globals.__DSH_RICH_CARRIER__ !== undefined) return globals.__DSH_RICH_CARRIER__
+  const carrier = globals.dshDesktop
   return carrier?.protocolVersion === 1 ? carrier.rich : undefined
 }
