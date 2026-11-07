@@ -55,6 +55,44 @@ describe('HTML question form', () => {
     expect(screen.getByRole('group', { name: 'Describe the remaining issue' })).toBeTruthy()
   })
 
+  it('submits one activated single choice and does not submit the recommendation on mount', async () => {
+    const h = harness([{ id: 'one', question: 'Pick one', options: [{ label: 'Alpha (Recommended)' }, { label: 'Beta' }] }])
+    render(<h.Form />)
+    const option = screen.getByRole('button', { name: /Alpha/ })
+    expect(option.getAttribute('aria-describedby')).toBe(screen.getByText('选择一个选项即提交').id)
+    expect(option.hasAttribute('data-selected')).toBe(false)
+    expect(h.answer).not.toHaveBeenCalled()
+    fireEvent.click(option)
+    fireEvent.click(screen.getByRole('button', { name: 'Beta' }))
+    await expect(h.result).resolves.toEqual({ answers: [{ id: 'one', selected: ['Alpha (Recommended)'] }] })
+    expect(h.answer).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the activated option in the draft for manual retry after a submission failure', async () => {
+    const h = harness([{ id: 'one', question: 'Pick one', options: [{ label: 'Alpha' }, { label: 'Beta' }] }])
+    h.answer.mockRejectedValueOnce(new Error('Disconnected'))
+    const view = render(<h.Form />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'An earlier draft' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Beta' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('Disconnected') })
+    view.unmount()
+    render(<h.Form />)
+    expect(screen.getByRole('button', { name: 'Beta' }).getAttribute('data-selected')).toBe('true')
+    expect(h.answer).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: '提交回答' }))
+    await expect(h.result).resolves.toEqual({ answers: [{ id: 'one', selected: ['Beta'] }] })
+  })
+
+  it('waits for explicit submission when one question allows multiple choices', async () => {
+    const h = harness([{ id: 'many', question: 'Pick many', multiSelect: true, options: [{ label: 'A' }, { label: 'B' }] }])
+    render(<h.Form />)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'A' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'B' }))
+    expect(h.answer).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '提交回答' }))
+    await expect(h.result).resolves.toEqual({ answers: [{ id: 'many', selected: ['A', 'B'] }] })
+  })
+
   it('replaces a single choice with custom text and preserves multiple choices alongside a recovered supplement', async () => {
     const h = harness([
       { id: 'one', question: 'Choose an approach', options: [{ label: 'Native' }, { label: 'Cyber' }] },

@@ -46,16 +46,18 @@ export function RichQuestion(props: RichQuestionProps) {
   // The carrier's plan-review discriminator guarantees one question with detail and an approval intent.
   const review = pending.kind === 'plan-review' ? pending.questions[0] as PlanQuestion : undefined
   const decline = review?.options?.find(option => option.label !== review.intent.approve)
+  const submitOnChoice = pending.kind === 'question' && pending.questions.length === 1 && !pending.questions[0]?.multiSelect
   const signature = JSON.stringify(pending.questions)
   const initial = useMemo<RichQuestionDraft>(() => ({ signature, plan: review?.detail ?? '',
     answers: pending.questions.map((question) => {
       const recorded = pending.review?.find(answer => answer.id === question.id)
       const first = question.options?.[0]?.label
-      const selected = recorded?.selected ?? (first !== undefined && parseRecommendedLabel(first).recommended ? [first] : [])
+      const selected = recorded?.selected
+        ?? (!submitOnChoice && first !== undefined && parseRecommendedLabel(first).recommended ? [first] : [])
       return { id: question.id, selected,
         custom: recorded?.custom ?? '', skipped: false }
     }),
-  }), [pending, signature, review?.detail])
+  }), [pending, signature, review?.detail, submitOnChoice])
   const saved = useStore(state => state.byRequest[pending.key])
   const draft = useMemo(() => restoreRichQuestionDraft(saved, signature, pending.questions.map(question => question.id)) ?? initial,
     [saved, signature, pending.questions, initial])
@@ -158,22 +160,33 @@ export function RichQuestion(props: RichQuestionProps) {
       </div> : pending.questions.map((question, index) => {
         const answer = draft.answers[index]
         if (answer === undefined) return null
+        const choiceHintId = submitOnChoice && !readOnly && question.options?.length ? `${pending.key}-choice-hint` : undefined
         return <fieldset key={question.id} className={css.question} disabled={locked}>
           <legend className={css.questionTitle}><span className={css.questionNumber} aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>{question.header ?? question.question}</legend>
           {question.header !== undefined && <p className={css.prompt}>{question.question}</p>}
           {question.detail !== undefined && <MarkdownText text={question.detail} labels={markdownLabels} />}
+          {choiceHintId !== undefined && <p id={choiceHintId} className={css.description}>{t('questionSubmitOnChoice')}</p>}
           <div className={css.options}>{question.options?.map((option) => {
             const label = parseRecommendedLabel(option.label)
+            const checked = answer.selected.includes(option.label)
+            const copy = <span className={css.optionCopy}><span className={css.optionHeading}>
+              <span className={css.optionTitle}>{label.label}</span>
+              {label.recommended && <small className={css.recommended}>{t('questionRecommended')}</small>}
+            </span>{option.description !== undefined && <span className={css.description}>{option.description}</span>}</span>
+            if (submitOnChoice) return <button key={option.label} type="button" className={css.option}
+              data-selected={checked || undefined} aria-describedby={choiceHintId} onClick={() => {
+                if (locked || inFlight.current) return
+                const selected = [option.label]
+                updateAnswer(index, current => ({ ...current, selected, custom: '', skipped: false }))
+                send([{ id: question.id, selected }])
+              }}>{copy}</button>
             return <label key={option.label} className={css.option}>
               <input type={question.multiSelect ? 'checkbox' : 'radio'} name={`${pending.key}-${question.id}`}
-                checked={answer.selected.includes(option.label)} onChange={() => { updateAnswer(index, current => ({ ...current,
+                checked={checked} onChange={() => { updateAnswer(index, current => ({ ...current,
                   selected: question.multiSelect ? current.selected.includes(option.label)
                     ? current.selected.filter(value => value !== option.label) : [...current.selected, option.label] : [option.label],
                   custom: question.multiSelect ? current.custom : '', skipped: false })) }} />
-              <span className={css.optionCopy}><span className={css.optionHeading}>
-                <span className={css.optionTitle}>{label.label}</span>
-                {label.recommended && <small className={css.recommended}>{t('questionRecommended')}</small>}
-              </span>{option.description !== undefined && <span className={css.description}>{option.description}</span>}</span>
+              {copy}
             </label>
           })}</div>
           <label className={css.custom}><span className={css.fieldLabel}>{t('questionText')}</span>

@@ -174,16 +174,23 @@
   cursor: pointer;
 }
 
-.option:hover:not(:has(input:disabled)) {
+button.option {
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.option:hover:not(:disabled, :has(input:disabled)) {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.option:has(input:checked) {
+.option:is([data-selected], :has(input:checked)) {
   border-color: var(--dsw-alias-state-business-primary);
   background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 7%, transparent);
 }
 
-.option:has(input:disabled) {
+.option:is(:disabled, :has(input:disabled)) {
   cursor: default;
   opacity: .6;
 }
@@ -396,12 +403,12 @@
   transition: background-image 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
-.root[data-rich-theme] .option:hover:not(:has(input:disabled)) {
+.root[data-rich-theme] .option:hover:not(:disabled, :has(input:disabled)) {
   background-image: linear-gradient(145deg, color-mix(in srgb, var(--rich-accent) 9%, var(--rich-surface-raised)), color-mix(in srgb, var(--rich-surface-raised) 42%, transparent));
   border-color: color-mix(in srgb, var(--rich-accent) 30%, var(--rich-border-strong));
 }
 
-.root[data-rich-theme] .option:has(input:checked) {
+.root[data-rich-theme] .option:is([data-selected], :has(input:checked)) {
   background-image: linear-gradient(100deg, color-mix(in srgb, var(--rich-accent) 13%, transparent), color-mix(in srgb, var(--rich-accent-2) 6%, transparent) 72%);
   border-color: color-mix(in srgb, var(--rich-accent) 55%, var(--rich-border-strong));
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--rich-accent) 80%, var(--rich-accent-2));
@@ -591,12 +598,12 @@
   border-color: color-mix(in srgb, var(--rich-border-strong) 78%, transparent);
 }
 
-.root[data-rich-theme='cyber'] .option:hover:not(:has(input:disabled)) {
+.root[data-rich-theme='cyber'] .option:hover:not(:disabled, :has(input:disabled)) {
   background-image: linear-gradient(145deg, color-mix(in srgb, var(--rich-accent) 11%, var(--rich-surface-raised)), color-mix(in srgb, var(--rich-accent-2) 6%, var(--rich-surface-raised)));
   border-color: color-mix(in srgb, var(--rich-accent) 34%, var(--rich-border-strong));
 }
 
-.root[data-rich-theme='cyber'] .option:has(input:checked) {
+.root[data-rich-theme='cyber'] .option:is([data-selected], :has(input:checked)) {
   background-image: linear-gradient(100deg, color-mix(in srgb, var(--rich-accent) 14%, transparent), color-mix(in srgb, var(--rich-accent-2) 7%, transparent) 74%);
   border-color: color-mix(in srgb, var(--rich-accent) 62%, var(--rich-border-strong));
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--rich-accent) 80%, var(--rich-accent-2));
