@@ -246,3 +246,34 @@
    ui-web base.css's `body > :not(#root)` subtraction covers it wherever it
    overlaps a chrome row's drag — including above every column, which an in-root
    overlay could not promise once a chrome row declares drag itself. */
+
+@media (max-width: 720px) {
+  .panel {
+    flex-direction: column;
+    max-width: calc(100vw - 24px);
+  }
+
+  .nav {
+    width: 100%;
+    gap: 8px;
+    padding: 12px 12px 0;
+  }
+
+  .navList {
+    flex-direction: row;
+    overflow: auto hidden;
+  }
+
+  .navCell {
+    flex: none;
+    max-width: 100%;
+  }
+
+  .content {
+    min-height: 0;
+  }
+
+  .options {
+    padding-inline: 12px;
+  }
+}

@@ -154,21 +154,23 @@ export class WorkspaceController extends TypertRemoteService {
   /**
    * Hide one known Session from Workspace grouping surfaces.
    * @param request - Session identity to archive.
-   * @returns the complete resulting archive set.
+   * @returns the resulting archive set visible to the caller.
    */
   @Remote('archiveSession')
-  archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue> {
-    return this.commands.archiveSession(request)
+  async archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue> {
+    const { archivedSessionIds } = await this.commands.archiveSession(request)
+    return { archivedSessionIds: this.visibleSessions(archivedSessionIds) }
   }
 
   /**
    * Restore one archived Session to Workspace grouping surfaces.
    * @param request - Session identity to unarchive.
-   * @returns the complete resulting archive set.
+   * @returns the resulting archive set visible to the caller.
    */
   @Remote('unarchiveSession')
-  unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue> {
-    return this.commands.unarchiveSession(request)
+  async unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue> {
+    const { archivedSessionIds } = await this.commands.unarchiveSession(request)
+    return { archivedSessionIds: this.visibleSessions(archivedSessionIds) }
   }
 
   /**
@@ -206,8 +208,7 @@ export class WorkspaceController extends TypertRemoteService {
   async *follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame> {
     const access = this.ctx.remoteAccess
     const visible = (workspaceId: WorkspaceId): boolean => access.allows({ kind: 'workspace', id: workspaceId })
-    const sessions = (sessionIds: readonly SessionId[]): SessionId[] =>
-      sessionIds.filter(sessionId => access.allows({ kind: 'session', id: sessionId }))
+    const sessions = (sessionIds: readonly SessionId[]): SessionId[] => this.visibleSessions(sessionIds)
     /** Workspaces this generation has delivered and not yet removed. */
     const delivered = new Set<WorkspaceId>()
     /** The admitted part of `value`; it becomes the delivered set. */
@@ -257,6 +258,10 @@ export class WorkspaceController extends TypertRemoteService {
           assertNever(frame)
       }
     }
+  }
+
+  private visibleSessions(sessionIds: readonly SessionId[]): SessionId[] {
+    return sessionIds.filter(id => this.ctx.remoteAccess.allows({ kind: 'session', id }))
   }
 }
 

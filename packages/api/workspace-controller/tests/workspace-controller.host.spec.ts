@@ -89,10 +89,10 @@ const WORKSPACE_VIEWER: RemoteAccessRole<'workspace'> = { name: 'test:workspace-
 /** Shows one Session id in the follow stream. */
 const SESSION_VIEWER: RemoteAccessRole<'session'> = { name: 'test:session-viewer', resource: 'session', actions: ['workspace/follow'] }
 
-/** The Context a Gateway dispatch of `workspace/follow` binds for `principal`. */
-function followerContext(ctx: Context, principal: Principal): Context {
+/** The Context a Gateway dispatch binds for the selected workspace method and principal. */
+function followerContext(ctx: Context, principal: Principal, method = 'follow'): Context {
   const invocation: RemoteInvocation = {
-    request: { namespace: 'workspace', method: 'follow', args: {} },
+    request: { namespace: 'workspace', method, args: {} },
     service: 'workspaceController',
     peer: { id: 'workspace-access-peer' as PeerId, ctx, principal, interactions: 'answer', signal: new AbortController().signal, dispose: async () => {} },
     signal: new AbortController().signal,
@@ -116,6 +116,28 @@ async function nextFrame(
 }
 
 describe('WorkspaceController commands', () => {
+  it('filters archive mutation results for a non-owner while keeping the owner archive set complete', async () => {
+    const { controller, ctx } = await harness()
+    const shown = ctx.sessions.create(SessionId('archive-shown'))
+    const hidden = ctx.sessions.create(SessionId('archive-hidden'))
+    await controller.archiveSession({ sessionId: hidden.id })
+    ctx.remoteAccess.registerPolicy('test-guest', {
+      bindings: () => [{ role: { name: 'test:archive', resource: 'session', actions: ['workspace/archiveSession', 'workspace/unarchiveSession'] },
+        resource: { kind: 'session', id: shown.id } }],
+    })
+    const guest: Principal = { kind: 'test-guest', guest: 'archive-results' }
+    await expect(followerContext(ctx, guest, 'archiveSession').workspaceController.archiveSession({ sessionId: shown.id }))
+      .resolves.toEqual({ archivedSessionIds: [shown.id] })
+    expect(ctx.workspaceRegistry.archivedSessionIds).toEqual([hidden.id, shown.id])
+    await expect(followerContext(ctx, guest, 'unarchiveSession').workspaceController.unarchiveSession({ sessionId: shown.id }))
+      .resolves.toEqual({ archivedSessionIds: [] })
+    expect(ctx.workspaceRegistry.archivedSessionIds).toEqual([hidden.id])
+    await expect(controller.archiveSession({ sessionId: shown.id }))
+      .resolves.toEqual({ archivedSessionIds: [hidden.id, shown.id] })
+    await expect(controller.unarchiveSession({ sessionId: shown.id }))
+      .resolves.toEqual({ archivedSessionIds: [hidden.id] })
+  })
+
   it('serializes concurrent path adoption and preserves an existing title', async () => {
     const { controller, root } = await harness()
     const path = stageDir(root, 'alpha')

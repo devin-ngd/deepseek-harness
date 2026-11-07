@@ -129,7 +129,7 @@ export interface WorkspaceUnarchiveSessionRequest {
   readonly sessionId: SessionId
 }
 
-/** Complete archived Session set after a mutation. */
+/** Archived Sessions visible to the caller after a mutation. */
 export interface WorkspaceArchiveValue {
   readonly archivedSessionIds: readonly SessionId[]
 }
