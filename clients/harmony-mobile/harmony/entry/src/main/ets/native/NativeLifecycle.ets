@@ -1,16 +1,45 @@
-/** Ability owns background teardown; foreground recreates only the local document, never a task or desktop connection. */
+/** Orders Ability transitions so foreground restoration follows teardown of the previous native resources. */
 import { NativeRuntimeOwner } from './NativeRuntimeOwner'
 import { closeActivePairedConnections } from './NativePairedConnectionOwner'
 import { NativeProductOwner, closeActiveProducts } from '../product/NativeProductOwner'
 import { NativeProductRichOwner } from '../product/NativeProductRichOwner'
+import { NativeWorkspaceOwner } from '../product/NativeWorkspaceOwner'
 
 export class NativeLifecycle {
   private static current: NativeRuntimeOwner | null = null
   private static product: NativeProductOwner | null = null
   private static rich: NativeProductRichOwner | null = null
+  private static workspace: NativeWorkspaceOwner | null = null
+  private static settled: Promise<void> = Promise.resolve()
   static registerProduct(product: NativeProductOwner, rich: NativeProductRichOwner): void { NativeLifecycle.product = product; NativeLifecycle.rich = rich }
+  static registerWorkspace(workspace: NativeWorkspaceOwner): void { NativeLifecycle.workspace = workspace }
   static register(owner: NativeRuntimeOwner): void { NativeLifecycle.current = owner }
-  static async background(): Promise<void> { const results = await Promise.allSettled([NativeLifecycle.current?.close(), NativeLifecycle.rich?.close(), closeActiveProducts(), closeActivePairedConnections()]); for (const result of results) if (result.status === 'rejected') throw new Error('native background cleanup failed') }
-  static async foreground(): Promise<void> { await NativeLifecycle.current?.foreground(); await NativeLifecycle.product?.foreground(); await NativeLifecycle.rich?.foreground() }
-  static async destroy(): Promise<void> { const owner = NativeLifecycle.current; NativeLifecycle.current = null; NativeLifecycle.product = null; const rich = NativeLifecycle.rich; NativeLifecycle.rich = null; const results = await Promise.allSettled([owner?.close(), rich?.close(), closeActiveProducts(), closeActivePairedConnections()]); for (const result of results) if (result.status === 'rejected') throw new Error('native destroy cleanup failed') }
+  private static enqueue(operation: () => Promise<void>): Promise<void> {
+    const result = NativeLifecycle.settled.then(operation)
+    NativeLifecycle.settled = result.catch((error: Error) => { void error /* The Ability reports the original result. */ })
+    return result
+  }
+  static background(): Promise<void> {
+    return NativeLifecycle.enqueue(async () => {
+      const workspace = await Promise.allSettled([NativeLifecycle.workspace?.close()])
+      const results = await Promise.allSettled([NativeLifecycle.current?.close(), NativeLifecycle.rich?.close(), closeActiveProducts(), closeActivePairedConnections()])
+      if (workspace.some(result => result.status === 'rejected') || results.some(result => result.status === 'rejected')) throw new Error('native background cleanup failed')
+    })
+  }
+  static foreground(): Promise<void> {
+    return NativeLifecycle.enqueue(async () => {
+      await NativeLifecycle.current?.foreground()
+      await NativeLifecycle.product?.foreground()
+      await NativeLifecycle.rich?.foreground()
+    })
+  }
+  static destroy(): Promise<void> {
+    return NativeLifecycle.enqueue(async () => {
+      const owner = NativeLifecycle.current, rich = NativeLifecycle.rich, workspace = NativeLifecycle.workspace
+      NativeLifecycle.current = null; NativeLifecycle.product = null; NativeLifecycle.rich = null; NativeLifecycle.workspace = null
+      const retired = await Promise.allSettled([workspace?.close()])
+      const results = await Promise.allSettled([owner?.close(), rich?.close(), closeActiveProducts(), closeActivePairedConnections()])
+      if (retired.some(result => result.status === 'rejected') || results.some(result => result.status === 'rejected')) throw new Error('native destroy cleanup failed')
+    })
+  }
 }

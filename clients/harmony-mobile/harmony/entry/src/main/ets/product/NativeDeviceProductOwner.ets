@@ -3,7 +3,7 @@ import { util } from '@kit.ArkTS'
 import { huks } from '@kit.UniversalKeystoreKit'
 import { deviceInfo } from '@kit.BasicServicesKit'
 import { common } from '@kit.AbilityKit'
-import { NativeDeviceProductFacade, NativeDeviceNetwork, NativeDeviceCrypto, ProductStorage, AutomaticConnection } from './ProductCore'
+import { NativeDeviceProductFacade, NativeDeviceNetwork, NativeDeviceCrypto, NativeDeviceForegroundSelection, ProductStorage, AutomaticConnection } from './ProductCore'
 import { NativePorts } from '../paired/PairedCore'
 import { NativeProductConfiguration, NativeProductPublicStorage } from './NativeProductOwner'
 import { NativeDeviceTrustFile } from './NativeDeviceTrustFile'
@@ -33,6 +33,7 @@ export class NativeDeviceProductOwner {
   private authority: object = new DeviceAuthority()
   private config: NativeProductConfiguration
   private runtime: NativeDeviceProductFacade | undefined = undefined
+  private readonly foregroundSelection: NativeDeviceForegroundSelection = { binding: null, sessionId: '' }
   private originalSigner: NativeExistingIdentitySigner | undefined = undefined
   private storage: NativeProductPublicStorage | undefined = undefined
   private routeStorage: NativeProductPublicStorage | undefined = undefined
@@ -106,7 +107,7 @@ export class NativeDeviceProductOwner {
           const record = JSON.parse(NativeDeviceProductFacade.routingInput(raw)) as DeviceRoutingSelection, owner = new NativePairedConnectionOwner(authority, new NativePairedPolicy(this.host, record.routeId, this.alias, huks.HuksAuthStorageLevel.HUKS_AUTH_STORAGE_LEVEL_ECE, deviceInfo.sdkApiVersion, this.config.maxCryptoBytes, this.config.maxTotalSendBytes, this.config.relay))
           try { const ports = await owner.acquireDevicePortsNative(authority, record.desktopPublicSpki, diagnostic); if (this.closed || generation !== this.generation) throw new Error('native device network retired'); return new DeviceNetwork(ports, owner, authority) }
           catch (error) { try { await owner.closeNative(authority) } catch (cleanup) { void cleanup; diagnostic?.('cleanup-failed') }; throw (error as Error) }
-        }, view => { if (!this.closed && generation === this.generation) { const next = JSON.parse(view) as ProductView; if (typeof next.startupDiagnostic === 'string' && next.startupDiagnostic.length > 0) { this.startupReported = true; if (this.config.deviceRecovery !== undefined && (this.storage?.recoveryRequired?.() === true || this.routeStorage?.recoveryRequired?.() === true)) this.recoveryState = 'required' }; next.storageRecoveryAudit = this.recoveryAudit; next.storageRecovery = this.recoveryState; next.startupStorage = this.startupStorage; next.connectionGeneration = generation; this.connectionState = next.connection; this.publish(JSON.stringify(next)) } }, this.config.deviceCatalogRefreshMs === undefined ? 0 : this.config.deviceCatalogRefreshMs, this.routeStorage, this.config.deviceAutoConnect === true)
+        }, view => { if (!this.closed && generation === this.generation) { const next = JSON.parse(view) as ProductView; if (typeof next.startupDiagnostic === 'string' && next.startupDiagnostic.length > 0) { this.startupReported = true; if (this.config.deviceRecovery !== undefined && (this.storage?.recoveryRequired?.() === true || this.routeStorage?.recoveryRequired?.() === true)) this.recoveryState = 'required' }; next.storageRecoveryAudit = this.recoveryAudit; next.storageRecovery = this.recoveryState; next.startupStorage = this.startupStorage; next.connectionGeneration = generation; this.connectionState = next.connection; this.publish(JSON.stringify(next)) } }, this.config.deviceCatalogRefreshMs === undefined ? 0 : this.config.deviceCatalogRefreshMs, this.routeStorage, this.config.deviceAutoConnect === true, this.foregroundSelection)
         this.originalSigner = signer; this.runtime = runtime; await runtime.boot()
         if (this.config.deviceAutoConnect === true && !this.closed && generation === this.generation) {
           const retry = this.config.deviceReconnectMs
@@ -147,6 +148,14 @@ export class NativeDeviceProductOwner {
   refresh(): Promise<void> { return this.core().refresh() }
   /** @param raw - list-management intent JSON from the native page. @returns created or changed Session id after the catalogue refreshed. */
   manage(raw: string): Promise<string> { return this.core().manage(raw) }
+  creationOptions(): Promise<string> { return this.core().creationOptions() }
+  refreshSessions(): Promise<void> { return this.core().refreshSessions() }
+  workspaceGeneration(): number { return this.core().workspaceGeneration() }
+  workspaceContext(): Promise<string> { return this.core().workspaceContext() }
+  workspacePrepare(requestId: string, generation: number): Promise<string> { return this.core().workspacePrepare(requestId, generation) }
+  workspaceRequest(requestId: string, raw: string, generation: number): Promise<string> { return this.core().workspaceRequest(requestId, raw, generation) }
+  workspaceResource(requestId: string, url: string, generation: number, maxBytes: number, maxChunkBytes: number): Promise<string> { return this.core().workspaceResource(requestId, url, generation, maxBytes, maxChunkBytes) }
+  cancelWorkspaceRequest(requestId: string): void { this.runtime?.cancelWorkspaceRequest(requestId) }
   submit(request: string, text: string): Promise<string> { return this.core().submit(request, text) }
   receipt(request: string): Promise<string> { return this.core().receipt(request) }
   cancel(): Promise<void> { return this.core().cancel() }

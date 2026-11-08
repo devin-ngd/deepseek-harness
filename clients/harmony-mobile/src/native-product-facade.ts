@@ -11,8 +11,10 @@ import { string } from './domain.ts'
 import { parseFirstUseOffer, firstUseOfferBytes } from './first-use-protocol.ts'
 import { enrollmentProofBytes } from './pairing-protocol.ts'
 import { trustScope, readTrustScopes, addTrustScope } from './trust-scopes.ts'
+import { workspaceRichPolicySchema } from './workspace-rich-protocol.ts'
+export { workspaceRichRequest, workspaceRichPacket, workspaceRichGuestMessage } from './workspace-rich-protocol.ts'
 const positive = z.number().int().positive().max(0x7fffffff), recovery = z.object({ maxAttempts: positive, retryDelayMs: positive }).strict()
-const policySchema = z.object({ enabled: z.boolean(), trustMaxBytes: positive, transport: z.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: z.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: z.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: z.discriminatedUnion('mode', [z.object({ mode: z.literal('once') }).strict(), z.object({ mode: z.literal('bounded'), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict(), z.object({ mode: z.literal('continuous'), maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: z.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/) }).strict()
+const policySchema = z.object({ enabled: z.boolean(), trustMaxBytes: positive, transport: z.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: z.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: z.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: z.discriminatedUnion('mode', [z.object({ mode: z.literal('once') }).strict(), z.object({ mode: z.literal('bounded'), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict(), z.object({ mode: z.literal('continuous'), maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: z.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/), workspace: z.object({ closeTimeoutMs: positive, maxResourceRequests: positive, maxQueuedResources: positive, maxPending: positive, maxPacketBytes: positive, maxRequestBytes: positive, maxResponseBytes: positive, maxChunkBytes: positive.max(1048576), cache: z.object({ maxEntries: positive, maxBytes: positive }).strict().optional(), rich: workspaceRichPolicySchema.optional() }).strict().refine(value => value.maxResourceRequests < value.maxPending).optional() }).strict()
 /** @param raw - native-owned app settings. @returns strict validated product capacities; no IO or key is created. */
 export function parseProductPolicy(raw: string): z.infer<typeof policySchema> { return policySchema.parse(JSON.parse(raw)) }
 /** Native-owned byte/storage/network methods; rich HTML cannot supply them. */
@@ -70,3 +72,5 @@ export { NativeDeviceProductFacade } from './native-device-product.ts'
 export type { NativeDeviceNetwork, NativeDeviceCrypto } from './native-device-product.ts'
 
 export { AutomaticConnection } from './automatic-connection.ts'
+export { workspacePortMessage } from './workspace-document-protocol.ts'
+export { workspaceDiagnosticFailure } from './workspace-diagnostic.ts'

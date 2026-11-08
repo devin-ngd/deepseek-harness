@@ -1,6 +1,9 @@
 {
   "string": [
-    { "name": "error_history_too_large", "value": "这段会话内容超过手机读取上限，请在电脑查看。你仍可返回并打开其他会话。" },
+    {
+      "name": "error_history_too_large",
+      "value": "这段会话内容超过手机读取上限，请在电脑查看。你仍可返回并打开其他会话。"
+    },
     {
       "name": "product_storage_audit",
       "value": "恢复校验（仅结论与计数）：%s"
@@ -755,7 +758,47 @@
     },
     {
       "name": "new_session_hint",
-      "value": "选择会话所属的项目。会话在电脑上创建，发送第一条消息后才开始任务。"
+      "value": "选择类型、模型和所属项目。会话在电脑上创建，发送第一条消息后才开始任务。"
+    },
+    {
+      "name": "creation_desktop_default",
+      "value": "使用电脑端默认设置"
+    },
+    {
+      "name": "creation_model_default",
+      "value": "使用模型默认强度"
+    },
+    {
+      "name": "creation_type",
+      "value": "任务类型"
+    },
+    {
+      "name": "creation_model",
+      "value": "主模型"
+    },
+    {
+      "name": "creation_effort",
+      "value": "思考强度"
+    },
+    {
+      "name": "creation_loading",
+      "value": "正在读取电脑端的类型和模型…"
+    },
+    {
+      "name": "creation_unavailable",
+      "value": "暂时无法读取类型和模型。下面的创建操作将明确使用电脑端默认设置。"
+    },
+    {
+      "name": "creation_session_only",
+      "value": "这些选择仅用于本次会话，电脑端默认模型不会改变。"
+    },
+    {
+      "name": "creation_failed",
+      "value": "创建结果未确认。请刷新会话列表，检查新出现的空白会话，再决定是否重新创建。"
+    },
+    {
+      "name": "creation_refresh",
+      "value": "刷新会话列表"
     },
     {
       "name": "new_session_no_project",
@@ -776,6 +819,62 @@
     {
       "name": "project_sessions",
       "value": "%d 个会话"
+    },
+    {
+      "name": "workspace_title",
+      "value": "完整工作区"
+    },
+    {
+      "name": "workspace_draft_retained",
+      "value": "草稿已保留，返回聊天后可继续编辑"
+    },
+    {
+      "name": "workspace_closed",
+      "value": "插件工作区已关闭。可以重新打开，或返回聊天。"
+    },
+    {
+      "name": "workspace_failed",
+      "value": "工作区暂时无法使用。请确认电脑已允许工作区访问，或返回聊天查看任务状态。"
+    },
+    {
+      "name": "workspace_grant_required",
+      "value": "电脑尚未授权或授权已失效。请在电脑的设置 → 插件 → 手机连接中允许工作区访问，再重新打开。"
+    },
+    {
+      "name": "workspace_start_timeout",
+      "value": "打开工作区超时。请确认电脑在线后重试。"
+    },
+    {
+      "name": "workspace_retry",
+      "value": "重新打开"
+    },
+    {
+      "name": "workspace_rich_title",
+      "value": "交互内容"
+    },
+    {
+      "name": "workspace_rich_saving",
+      "value": "正在保存交互内容…"
+    },
+    {
+      "name": "workspace_rich_save_failed",
+      "value": "尚未确认保存成功，页面和输入仍保留。可以重试返回，或关闭并放弃未保存的输入。"
+    },
+    {
+      "name": "workspace_rich_discard",
+      "value": "关闭并放弃未保存输入"
+    },
+    {
+      "name": "workspace_plugins",
+      "value": "插件设置"
+    },
+    {
+      "name": "workspace_plugin_target",
+      "value": "电脑插件包名（可选）"
+    },
+    {
+      "name": "workspace_plugin_hint",
+      "value": "留空显示插件列表"
     }
   ]
 }

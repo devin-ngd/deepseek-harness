@@ -8,12 +8,16 @@ const ts = await productLayoutParser(), page = (await readFile('harmony/entry/sr
 const replace = (from, to) => { assert.ok(page.includes(from), from); return page.replace(from, to) }
 
 test('native history uses remaining height between a fixed header and a conversation footer in the resized page', () => {
-  assert.deepEqual(auditProductLayout(ts, page), { nativeScrollOwners: 1, pageHeight: '100%', headerHeight: 'intrinsic', viewportHeight: 'remaining', contentHeight: 'intrinsic', keyboardAvoidance: 'RESIZE', wrappedButtonGroups: 7, iconButtons: 9, errorBannerInHeader: true, composerOutsideScroll: true, sendOutsideScroll: true, taskActionsOutsideScroll: true })
+  assert.deepEqual(auditProductLayout(ts, page), { nativeScrollOwners: 1, pageHeight: '100%', headerHeight: 'intrinsic', viewportHeight: 'remaining', contentHeight: 'intrinsic', keyboardAvoidance: 'RESIZE', wrappedButtonGroups: 8, iconButtons: 12, errorBannerInHeader: true, composerOutsideScroll: true, sendOutsideScroll: true, taskActionsOutsideScroll: true })
 })
 
 test('the recorded clipped predecessor is rejected before a candidate can be built', async () => {
   const previous = await readFile('tests/fixtures/product-clipped-page.ets', 'utf8')
   assert.throws(() => auditProductLayout(ts, previous), /fixed header, history and conditional conversation controls/)
+})
+
+test('a retained workspace Web cannot prevent controller detachment during close', () => {
+  assert.throws(() => auditProductLayout(ts, replace('this.workspaceMounted ? [this.workspaceViewGeneration] : []', '[this.workspaceViewGeneration]')), /workspace must unmount/)
 })
 
 test('scroll content cannot regain a viewport-sized height or a nested fixed catalogue viewport', () => {

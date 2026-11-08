@@ -1,3 +1,4 @@
+import type { WorkspaceRichPolicy } from './workspace-rich-protocol.ts'
 /** Native product flow reuses PhoneCore, semantic projections and rich validation; only app-owned ports can select trust or execute commands. */
 import { ProductTrustOwner, PublicTrustExpiredError, type ProductTrustRecord, type ProductTrustStorage } from './product-trust.ts'
 import { parsePublicTrustDocument, publicTrustRecord, canonicalPublicTrust, assertPublicTrustSuccessor, type PublicTrustDocument } from './public-trust-protocol.ts'
@@ -12,7 +13,7 @@ import type { JsonValue, RichMountValue } from './upstream.ts'
 import type { CleanupScheduler } from '../integration/connection-lifetime.ts'
 import type { MobileOperation } from './link-protocol.ts'
 /** All capacities and retry choices belong to the local app policy, never a paired/guest packet. */
-export interface MobileProductPolicy { readonly enabled: boolean; readonly trustMaxBytes: number; readonly transport: ProductTransportPolicy; readonly domain: DomainLimits; readonly duplicateCap: number; readonly core: Omit<PhoneCoreConfig, 'grantEpoch' | 'clock' | 'nextCommandId'>; readonly commandPrefix: string }
+export interface MobileProductPolicy { readonly enabled: boolean; readonly trustMaxBytes: number; readonly transport: ProductTransportPolicy; readonly domain: DomainLimits; readonly duplicateCap: number; readonly core: Omit<PhoneCoreConfig, 'grantEpoch' | 'clock' | 'nextCommandId'>; readonly commandPrefix: string; readonly workspace?: { readonly closeTimeoutMs: number; readonly cache?: { readonly maxEntries: number; readonly maxBytes: number } | undefined; readonly rich?: WorkspaceRichPolicy | undefined; readonly maxResourceRequests: number; readonly maxQueuedResources: number; readonly maxPending: number; readonly maxPacketBytes: number; readonly maxRequestBytes: number; readonly maxResponseBytes: number; readonly maxChunkBytes: number } | undefined }
 /** Native owns SDK connections. Fixed replay tests supply the actual ETS owner with substituted platform IO. */
 export interface MobileProductPorts { readonly storage: ProductTrustStorage; readonly scheduler: CleanupScheduler; readonly clock: () => number; verifyTrust(record: ProductTrustRecord, document: PublicTrustDocument, previous?: PublicTrustDocument): Promise<void>; connect(record: ProductTrustRecord, status: (state: string) => void, received: (packet: string) => void): Promise<ProductConnection> }
 /** Sanitized product DTO: no pairing record, HUKS alias, raw Session log or host path reaches the visual layer. */

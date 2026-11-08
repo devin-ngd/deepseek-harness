@@ -5,6 +5,7 @@ import type { PeerScope } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
 import type {} from '@deepseek-ai/dsh-app-boot'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { id } from '../../src/protocol.ts'
 import { deviceGrantOperations } from '../../src/pairing-protocol.ts'
 import { deviceConnectionTicketSchema, type DeviceConnectionTicket } from '../../src/device-binding-protocol.ts'
@@ -30,9 +31,52 @@ export function deviceProfileSessionPorts(ctx: Context): DeviceBindingSessionPor
       return value.items.filter(row => row.origin !== 'subagent').map((row): DeviceSessionRow => ({ profileId: 'desktop', sessionId: row.sessionId, title: typeof row.projections?.values.title === 'string' ? row.projections.values.title : row.sessionId, projectId: owners.get(row.sessionId) ?? null, updatedAt: row.updatedAt, running: row.running, pinned: pinned.has(row.sessionId), archived: archived.has(row.sessionId), blank: row.blank }))
     },
     projects: async signal => { desktop(); signal.throwIfAborted(); return ctx.workspaceRegistry.list().map((workspace): DeviceProjectRow => ({ projectId: workspace.id, title: workspace.title })) },
+    creationOptions: async signal => {
+      desktop(); signal.throwIfAborted()
+      const registry = ctx.get('agentPresets'), roster = registry === undefined ? undefined : await registry.remoteExportList()
+      const catalog = await ctx.sessionController.modelCatalog()
+      signal.throwIfAborted()
+      return {
+        presets: roster?.presets.filter(row => row.broken === undefined)
+          .map(row => ({ id: row.id, name: row.name ?? row.id, isDefault: row.isDefault })) ?? [],
+        models: catalog.groups.flatMap(group => group.models.map(model => ({
+          provider: group.id, model: model.id, label: group.name + ' / ' + model.name,
+          efforts: model.reasoning?.efforts.map(effort => effort.id) ?? [],
+        }))),
+        defaultModel: catalog.default,
+      }
+    },
     manage: async (action, signal) => {
       desktop(); signal.throwIfAborted()
-      if (action.action === 'create') return { sessionId: (await ctx.sessionController.create(action.projectId === null ? {} : { workspaceId: id<'WorkspaceId'>(action.projectId) })).sessionId }
+      if (action.action === 'create') {
+        const requestedModel = action.model
+        if (requestedModel !== undefined) {
+          const catalog = await ctx.sessionController.modelCatalog()
+          const model = catalog.groups.find(group => group.id === requestedModel.provider)?.models.find(row => row.id === requestedModel.model)
+          if (model === undefined || requestedModel.reasoningEffort !== undefined
+            && !model.reasoning?.efforts.some(effort => effort.id === requestedModel.reasoningEffort)) {
+            throw new Error('device creation model unavailable')
+          }
+        }
+        signal.throwIfAborted()
+        const created = await ctx.sessionController.create({
+          ...(action.projectId === null ? {} : { workspaceId: id<'WorkspaceId'>(action.projectId) }),
+          ...(action.agentPreset === undefined ? {} : { agentPreset: action.agentPreset }),
+        })
+        if (requestedModel !== undefined) {
+          signal.throwIfAborted()
+          const before = await ctx.sessionController.readModelSelection({ sessionId: created.sessionId })
+          signal.throwIfAborted()
+          const selected = await ctx.sessionController.compareAndSelectModel({
+            sessionId: created.sessionId, expectedSelectionRevision: before.selectionRevision,
+            selection: { provider: requestedModel.provider, model: requestedModel.model,
+              ...(requestedModel.reasoningEffort === undefined ? {} : { reasoningEffort: requestedModel.reasoningEffort }) },
+          })
+          if (!selected.applied) throw new Error('device creation model selection conflict')
+          await ctx.sessionPersistence.flush()
+        }
+        return { sessionId: created.sessionId }
+      }
       const sessionId = id<'SessionId'>(action.sessionId), registry = ctx.workspaceRegistry
       switch (action.action) {
         case 'archive': await registry.archiveSession(sessionId, { stopActivity: true }); break
@@ -106,6 +150,8 @@ export class DeviceBoundProfileChannel {
   catalog(): Promise<readonly DeviceSessionRow[]> { if (this.closed) return Promise.reject(new LinkError('closed')); return this.owner.catalog(this.transport, this.ticket) }
   /** @returns current desktop projects without paths. */
   projects(): Promise<readonly DeviceProjectRow[]> { if (this.closed) return Promise.reject(new LinkError('closed')); return this.owner.projects(this.transport, this.ticket) }
+  /** @returns current choices for this admitted device, without creating a Session. */
+  creationOptions() { if (this.closed) return Promise.reject(new LinkError('closed')); return this.owner.creationOptions(this.transport, this.ticket) }
   /** @param action - unparsed phone list-management intent. @returns the created or changed Session; selection and followers are unchanged. */
   manage(action: unknown): Promise<{ readonly sessionId: string }> { if (this.closed) return Promise.reject(new LinkError('closed')); return this.owner.manage(this.transport, this.ticket, action) }
   /** @param route - exact native desktop/profile/Session route. @returns after old Peer and rich/follow owners retire; no pairing or persistent grant is created. */

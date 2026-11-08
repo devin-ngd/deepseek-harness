@@ -5,10 +5,11 @@ import { resolve, dirname, isAbsolute } from 'node:path'
 import { createHash } from 'node:crypto'
 import { resolveBrokerPolicy, type RelayPairTrust, type BrokerPolicy } from './broker-policy.ts'
 import type { PublicPairRevocations } from './room-broker.ts'
+import { RecoverableLock } from './recoverable-lock.ts'
 /** Operator-selected public file and explicit resource budgets; opening never initializes state. */
 export interface PublicTrustPolicy { readonly path: string; readonly maxBytes: number; readonly maxRecords: number }
 /** Stable content-free state error; an unknown append is terminal until a clean reopen. */
-export class PublicTrustError extends Error { constructor(readonly code: 'invalid' | 'missing' | 'locked' | 'corrupt' | 'capacity' | 'closed' | 'write-unknown' | 'cleanup-failed') { super(code); this.name = 'PublicTrustError' } }
+export class PublicTrustError extends Error { constructor(readonly code: 'invalid' | 'missing' | 'locked' | 'corrupt' | 'capacity' | 'closed' | 'write-unknown' | 'cleanup-failed', cause?: unknown) { super(code, { cause }); this.name = 'PublicTrustError' } }
 /** Tests inject interrupted append/sync without changing real configuration. Production uses explicit file IO below. */
 export interface PublicTrustWrites { append(file: FileHandle, bytes: Uint8Array): Promise<void>; sync(file: FileHandle): Promise<void>; directorySync(path: string): Promise<void> }
 const writes: PublicTrustWrites = { async append(file, bytes) { let offset = 0; while (offset < bytes.length) { const result = await file.write(bytes, offset, bytes.length - offset, null); if (result.bytesWritten === 0) throw new PublicTrustError('write-unknown'); offset += result.bytesWritten } }, sync: file => file.sync(), async directorySync(path) { const file = await open(path, constants.O_RDONLY); try { await file.sync() } finally { await file.close() } } }
@@ -25,17 +26,17 @@ function snapshot(candidate: unknown, broker: BrokerPolicy, audience: string): S
 }
 function same(a: RelayPairTrust, b: RelayPairTrust): boolean { return a.pairId === b.pairId && a.desktopPublicSpki === b.desktopPublicSpki && a.phonePublicSpki === b.phonePublicSpki && a.epoch === b.epoch && a.expiresAt === b.expiresAt && a.revoked === b.revoked }
 function successor(before: Snapshot, next: Snapshot): boolean { if (next.generation !== before.generation + 1 || next.pairs.length !== before.pairs.length) return false; let changes = 0; for (const previous of before.pairs) { const current = next.pairs.find(pair => pair.pairId === previous.pairId); if (current === undefined) return false; if (same(previous, current)) continue; if (previous.revoked || !current.revoked || current.epoch !== previous.epoch + 1 || current.desktopPublicSpki !== previous.desktopPublicSpki || current.phonePublicSpki !== previous.phonePublicSpki || current.expiresAt !== previous.expiresAt) return false; changes++ }; return changes === 1 }
-/** One exclusive local writer; revoked identities remain revoked across clean process restarts. Stale lock requires operator investigation, never automatic deletion. */
+/** One exclusive writer; opt-in local Linux recovery refuses unknown or interrupted writes. */
 export class PublicTrustStore implements PublicPairRevocations {
   private tail: Promise<void> = Promise.resolve()
   private closed = false
   private failed = false
   private closing: Promise<void> | undefined
-  private constructor(private readonly policy: PublicTrustPolicy, private readonly broker: BrokerPolicy, private value: Snapshot, private head: string, private bytes: number, private records: number, private readonly file: FileHandle, private readonly anchor: FileHandle, private readonly lock: FileHandle, private readonly io: PublicTrustWrites) {}
+  private constructor(private readonly policy: PublicTrustPolicy, private readonly broker: BrokerPolicy, private value: Snapshot, private head: string, private bytes: number, private records: number, private readonly file: FileHandle, private readonly anchor: FileHandle, private readonly lock: RecoverableLock, private readonly io: PublicTrustWrites) {}
   /** @param policy - explicit public file/budgets. @param broker - operator-approved initial pins and bounds. @param audience - selected relay host. @param io - interruption seam for synthetic tests. @returns exclusive validated writer; missing/corrupt state denies all startup before listening. */
   static async reopen(policy: PublicTrustPolicy, broker: BrokerPolicy, audience: string, io: PublicTrustWrites = writes): Promise<PublicTrustStore> {
-    policyCheck(policy); await directoryCheck(policy.path); let lock: FileHandle
-    try { lock = await open(policy.path + '.lock', constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600) } catch (error) { void error; throw new PublicTrustError('locked') }
+    policyCheck(policy); await directoryCheck(policy.path); let lock: RecoverableLock
+    try { lock = await RecoverableLock.acquire(policy.path, io.directorySync) } catch (error) { throw new PublicTrustError('locked', error) }
     let file: FileHandle | undefined, anchor: FileHandle | undefined
     try {
       await io.directorySync(dirname(policy.path))
@@ -63,7 +64,7 @@ export class PublicTrustStore implements PublicPairRevocations {
     if (this.closed || this.closing !== undefined) return Promise.reject(new PublicTrustError('closed'))
     const operation = this.tail.then(async () => { if (this.closed || this.failed) throw new PublicTrustError('closed'); const old = this.value.pairs.find(value => value.pairId === pair.pairId); if (old === undefined) throw new PublicTrustError('invalid'); if (old.revoked && same(old, pair)) return
       const next = snapshot({ ...this.value, generation: this.value.generation + 1, previous: this.head, pairs: this.value.pairs.map(value => value.pairId === pair.pairId ? pair : value) }, this.broker, this.value.audience); if (!successor(this.value, next)) throw new PublicTrustError('invalid'); const bytes = new TextEncoder().encode(JSON.stringify(next) + '\n'); if (this.records >= this.policy.maxRecords || this.bytes + bytes.length > this.policy.maxBytes) { this.failed = true; throw new PublicTrustError('capacity') }
-      try { await this.io.append(this.file, bytes); await this.io.sync(this.file); await this.io.append(this.anchor, new TextEncoder().encode(JSON.stringify({ generation: next.generation, digest: digest(bytes) }) + '\n')); await this.io.sync(this.anchor); this.value = next; this.head = digest(bytes); this.records++; this.bytes += bytes.length } catch (error) { void error; this.failed = true; throw new PublicTrustError('write-unknown') }
+      try { await this.lock.beginWrite(); await this.io.append(this.file, bytes); await this.io.sync(this.file); await this.io.append(this.anchor, new TextEncoder().encode(JSON.stringify({ generation: next.generation, digest: digest(bytes) }) + '\n')); await this.io.sync(this.anchor); await this.lock.finishWrite(); this.value = next; this.head = digest(bytes); this.records++; this.bytes += bytes.length } catch (error) { void error; this.failed = true; throw new PublicTrustError('write-unknown') }
     }); this.tail = operation.catch(error => { void error; /* Caller receives the original stable result; serialization continues only to reject a terminal writer. */ }); return operation
   }
   /** @returns after queued commit and descriptor/lock cleanup; unknown write remains a visible failure. */

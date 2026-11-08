@@ -1,7 +1,8 @@
 /** Original command implementation on synthetic records in the full shell's temporary profile. */
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { resolve, sep } from 'node:path'
+import { join, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { vi } from 'vitest'
@@ -9,18 +10,28 @@ import { FixedIdentityProtection, fixedProtectedIdentity } from './fixed-identit
 import { desktopKey, phoneKey, fixtureSource } from './phase39-fixture.ts'
 import { nodeE2EPrimitives, p256CredentialId } from './p256-channel.ts'
 import { WindowsCurrentUserProtection } from '../desktop-plugin/src/windows-protection.ts'
+import type { DeviceBindingDesktopRelay } from '../desktop-plugin/src/device-binding-relay.ts'
 import { CredentialDeviceBindingStorage } from '../desktop-plugin/src/device-binding-storage.ts'
 import { DeviceBindingOwner } from '../desktop-plugin/src/device-binding.ts'
 import { deviceProfileSessionPorts } from '../desktop-plugin/src/device-binding-profile.ts'
 import * as DeviceCommand from '../desktop-plugin/src/device-binding-command.ts'
 import { deviceBindingReplyBytes } from '../src/device-binding-protocol.ts'
+import { id } from '../src/protocol.ts'
 
-/** @param ctx - full Web shell root. @param world - private test directory containing the profile. @returns synthetic binding verification and teardown; no answerer or transport is substituted. */
-export async function installShellDeviceFixture(ctx: Context, world: string) {
+/** @param ctx - full Web shell root. @param world - private test directory. @param hostFixture - sealed Host projection for paired recovery. @param sourceWorkspace - enable grant commands in the source-only Settings fixture. @returns synthetic binding verification and teardown. */
+export async function installShellDeviceFixture(ctx: Context, world: string, hostFixture?: string, sourceWorkspace = false) {
   assert.equal(ctx.profileContext.name, 'desktop')
   assert.ok(resolve(ctx.profileContext.dir).startsWith(resolve(world) + sep))
   const authority = {}, protection = new FixedIdentityProtection(), alias = 'shell-fixture-desktop'
-  const unprotect = vi.spyOn(WindowsCurrentUserProtection.prototype, 'unprotect').mockImplementation((value, binding) => protection.unprotect(value, binding))
+  const sealed: typeof DeviceCommand & { WindowsCurrentUserProtection: typeof WindowsCurrentUserProtection; DeviceBindingDesktopRelay: typeof DeviceBindingDesktopRelay } | undefined =
+    hostFixture === undefined ? undefined : await import(pathToFileURL(hostFixture).href)
+  const protectionType = sealed?.WindowsCurrentUserProtection ?? WindowsCurrentUserProtection
+  const unprotect = vi.spyOn(protectionType.prototype, 'unprotect').mockImplementation((value, binding) => protection.unprotect(value, binding))
+  let mounts = 0, releases = 0
+  const mount = sealed === undefined ? undefined : vi.spyOn(sealed.DeviceBindingDesktopRelay.prototype, 'mount').mockImplementation(async () => {
+    mounts++
+    return async () => { releases++ }
+  })
   const policy = { desktopId: 'field-replay-desktop', profileId: 'desktop' as const, deviceId: 'field-phone', identityAlias: 'shell-fixture-phone', audience: 'relay.example', enrollmentTtlMs: 60000, connectionTtlMs: 60000, challengeTtlMs: 10000, maxChallenges: 100, maxCatalogRows: 100, maxPublicBytes: 65536 }
   const storage = new CredentialDeviceBindingStorage(ctx, policy.desktopId, policy.deviceId)
   const owner = new DeviceBindingOwner(authority, policy, storage, desktopKey, deviceProfileSessionPorts(ctx), Date.now, fixtureSource(), { after: (ms, callback) => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } })
@@ -30,7 +41,7 @@ export async function installShellDeviceFixture(ctx: Context, world: string) {
     try {
       try { await plugin?.dispose() } catch (error) { failures.push(error) }
       try { await owner.close() } catch (error) { failures.push(error) }
-    } finally { unprotect.mockRestore() }
+    } finally { unprotect.mockRestore(); mount?.mockRestore() }
     if (failures.length) throw new AggregateError(failures, 'Synthetic device fixture cleanup failed')
   }
   try {
@@ -39,9 +50,21 @@ export async function installShellDeviceFixture(ctx: Context, world: string) {
     const offer = await owner.offer(authority, { publicSpki: phoneKey.publicSpki, credentialId: p256CredentialId(phoneKey.publicSpki) })
     await owner.confirm(authority, { schema: 'harmony-device-binding-reply/1', offer, signature: nodeE2EPrimitives.encode(await phoneKey.sign(deviceBindingReplyBytes(offer))) }, async () => true)
     const originalBinding = await storage.read()
-    const options = JSON.parse(await readFile(new URL('../desktop-plugin/device.enabled.example.json', import.meta.url), 'utf8'))
-    Object.assign(options, { enabled: true, connectionMode: 'window', desktopId: policy.desktopId, deviceId: policy.deviceId, identityAlias: alias, phoneIdentityAlias: policy.identityAlias, audience: policy.audience, wss: { ...options.wss, host: policy.audience } })
-    plugin = ctx.plugin(DeviceCommand, options); await plugin
+    const defaults: DeviceCommand.DeviceCommandOptions = JSON.parse(await readFile(new URL('../desktop-plugin/device.enabled.example.json', import.meta.url), 'utf8'))
+    const options: DeviceCommand.DeviceCommandOptions = { ...defaults, enabled: true, connectionMode: sealed === undefined ? 'window' : 'paired',
+      desktopId: policy.desktopId, deviceId: policy.deviceId, identityAlias: alias, phoneIdentityAlias: policy.identityAlias, audience: policy.audience, wss: { ...defaults.wss, host: policy.audience } }
+    if (hostFixture !== undefined) {
+      const { workspace }: Pick<DeviceCommand.DeviceCommandOptions, 'workspace'> =
+        JSON.parse(await readFile(join(hostFixture, '../../workspace.enabled.example.json'), 'utf8'))
+      assert.ok(workspace?.shell)
+      options.workspace = { ...workspace, shell: { ...workspace.shell, distIndex: join(hostFixture, '../../workspace-shell/index.html') } }
+    } else if (sourceWorkspace) {
+      options.workspace = {
+        ttlMs: 60000, channel: { maxRequestBytes: 1048576, maxResponseBytes: 16777216 },
+        wire: { maxChunkBytes: 65536, maxBufferedBytes: 33554432, maxBodyBytes: 16777216, maxBodies: 64, maxStreams: 32, maxRequestBytes: 1048576 },
+      }
+    }
+    plugin = ctx.plugin(sealed ?? DeviceCommand, options); await plugin
     const events: { sessionId: string; type: string; commandId: string; state?: string; kind?: string }[] = []
     const turns: string[] = []
     const stopEvents = ctx.on('session/event', (session, event) => {
@@ -55,6 +78,11 @@ export async function installShellDeviceFixture(ctx: Context, world: string) {
     })
     return {
       events,
+      stopWorkspace: async (sessionId: string) => {
+        const agent = ctx.agents.get(id<'SessionId'>(sessionId)); assert.ok(agent)
+        return ctx.commands.execute(agent, '/harmony-device workspace-stop', [], AbortSignal.timeout(10000))
+      },
+      connections: () => ({ mounts, releases }),
       verify: async () => {
         assert.deepEqual(turns, [], 'Panel interactions must not start model turns')
         assert.equal(await storage.read(), originalBinding)

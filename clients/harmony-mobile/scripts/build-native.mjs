@@ -24,6 +24,7 @@ const pairingTest = process.argv.includes('--pairing-test')
 const pairingFlowTest = process.argv.includes('--pairing-flow-test')
 const pairedProductTest = process.argv.includes('--paired-product-test')
 const productTest = process.argv.includes('--product-test') || projectArgs.length > 0
+const workspaceReview = ['--project=.build/native-controls-workspace-review', '--project=.build/native-controls-creation-review', '--project=.build/native-controls-keyboard-review', '--project=.build/native-controls-keyboard-focus-review', '--project=.build/native-controls-cipher-review', '--project=.build/native-controls-cipher-diagnostic-boot-review', '--project=.build/native-controls-creation-cipher-review', '--project=.build/native-controls-cipher-keyboard-review', '--project=.build/native-controls-keyboard-web-control', '--project=.build/native-controls-resource-review', '--project=.build/native-controls-plugin-review', '--project=.build/native-controls-plugin-host-review', '--project=.build/native-controls-plugin-cipher-review'].includes(projectArgs[0]) || /^--project=\.build[\\/]native-controls-workspace-startup-rc2-\d+$/.test(projectArgs[0] ?? '') || /^--project=\.build[\\/]native-controls-cipher-diagnostic-rc2-\d+-review$/.test(projectArgs[0] ?? '') || /^--project=\.build[\\/]native-controls-creation-cipher-rc2-\d+-review$/.test(projectArgs[0] ?? '')
 const firstUseWiring = process.argv.includes('--first-use-wiring')
 const identityPresence = process.argv.includes('--identity-presence')
 const enrollmentDiagnostics = process.argv.includes('--enrollment-diagnostics')
@@ -56,7 +57,7 @@ const module = JSON.parse(await readFile(join(native, 'entry/src/main/module.jso
 const profile = JSON.parse(await readFile(join(native, 'build-profile.json5'), 'utf8'))
 const app = JSON.parse(await readFile(join(native, 'AppScope/app.json5'), 'utf8'))
 const expectedPermissions = networkTest || firstUseTest || productTest || !cryptoTest && !pairingTest && !pairingFlowTest && !pairedProductTest ? [{ name: 'ohos.permission.INTERNET' }] : []
-if (JSON.stringify(module.module.requestPermissions) !== JSON.stringify(expectedPermissions) || profile.app.signingConfigs.length !== 0 || app.app.bundleName !== (productTest || firstUseTest ? 'local.dsh.mobile.offlineproduct' : pairedProductTest ? 'local.dsh.mobile.pairedproductcheck' : pairingFlowTest ? 'local.dsh.mobile.pairingflowcheck' : pairingTest ? 'local.dsh.mobile.pairingcheck' : cryptoTest ? 'local.dsh.mobile.cryptocheck' : networkTest ? 'local.dsh.mobile.netreplay' : 'local.dsh.mobile.lab')) {
+if (JSON.stringify(module.module.requestPermissions) !== JSON.stringify(expectedPermissions) || profile.app.signingConfigs.length !== 0 || app.app.bundleName !== (workspaceReview ? 'local.dsh.mobile.workspacecheck' : productTest || firstUseTest ? 'local.dsh.mobile.offlineproduct' : pairedProductTest ? 'local.dsh.mobile.pairedproductcheck' : pairingFlowTest ? 'local.dsh.mobile.pairingflowcheck' : pairingTest ? 'local.dsh.mobile.pairingcheck' : cryptoTest ? 'local.dsh.mobile.cryptocheck' : networkTest ? 'local.dsh.mobile.netreplay' : 'local.dsh.mobile.lab')) {
   throw new Error('Build accepts only the default permission-free app or the isolated INTERNET-only unsigned replay variant.')
 }
 const scope = join(native, 'node_modules/@ohos')

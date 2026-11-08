@@ -1,8 +1,9 @@
 /** Maintained ws client adapter; construction is inert. Only an explicit approved caller may dial an approved WSS endpoint. */
 import WebSocket from 'ws'
 import type { RelaySocket } from './relay-core.ts'
-import { RELAY_PATH, RELAY_SUBPROTOCOL } from './relay-protocol.ts'
+import { RELAY_MAX_MESSAGE_FRAGMENTS, RELAY_PATH, RELAY_SUBPROTOCOL } from './relay-protocol.ts'
 export { RELAY_PATH, RELAY_SUBPROTOCOL } from './relay-protocol.ts'
+const WSS_DATA_FRAGMENT_BYTES = 64 * 1024
 /** Dial policy; bearer capabilities are supplied in memory by an approved owner, never configuration or a URL. */
 export interface WssDialPlan { readonly url: string; readonly expectedHost: string; readonly room: string; readonly role: 'phone' | 'desktop'; readonly token: string; readonly handshakeTimeoutMs: number; readonly maxFrameBytes: number; readonly maxBufferedBytes: number }
 /** @param plan - explicit in-memory dial request. @returns parsed URL after strict WSS/audience/path checks; no DNS or socket is opened. */
@@ -27,6 +28,16 @@ export function dialApprovedWss(plan: WssDialPlan): RelaySocket {
   }, onEnd(callback) { ws.on('close', callback); ws.on('error', callback); return () => { ws.off('close', callback); ws.off('error', callback) } },
     ready: () => { throw new Error('client cannot issue relay readiness') }, send: bytes => {
       if (ws.readyState !== WebSocket.OPEN || bytes.byteLength === 0 || bytes.byteLength > plan.maxFrameBytes || ws.bufferedAmount + bytes.byteLength > plan.maxBufferedBytes) { ws.terminate(); throw new Error('WSS send denied') }
-      ws.send(bytes, { binary: true }, error => { if (error != null) ws.terminate() })
+      // Continuations limit the bytes the relay buffers before it can consume a frame.
+      const fragmentBytes = Math.max(WSS_DATA_FRAGMENT_BYTES, Math.ceil(bytes.byteLength / RELAY_MAX_MESSAGE_FRAGMENTS))
+      try {
+        for (let offset = 0; offset < bytes.byteLength; offset += fragmentBytes) {
+          const end = Math.min(offset + fragmentBytes, bytes.byteLength)
+          ws.send(bytes.subarray(offset, end), { binary: true, fin: end === bytes.byteLength }, error => { if (error != null) ws.terminate() })
+        }
+      } catch (error) {
+        ws.terminate()
+        throw error
+      }
     }, terminate: () => { ws.terminate() } }
 }

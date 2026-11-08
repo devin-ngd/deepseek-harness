@@ -16,7 +16,7 @@ const actions = productButtonActions(ts, source), controls = ['product-connect',
 const enabled = (control, value) => Function('return ' + control.enabled).call(value), click = (control, value) => Function('return ' + control.onClick).call(value)()
 function fixture() {
   const calls = [], owner = { enabled: true, host: 'relay.example', connectionEnabled() { return this.enabled }, connectionHost() { return this.host }, async pairWithConnection(_raw, _compared, approved) { assert.equal(approved, true) }, async connect(approved) { calls.push(approved) }, async close() {} }
-  const value = new Page(); Object.assign(value, { product: owner, networkApproved: false, connectionEnabled: false, connectionHost: '', view: { selected: '', richJson: '', connectionGeneration: 0 }, drafts: new Map(), draft: '', lastRequest: '', dismissedError: '', rich: { setMount() {}, async close() {} }, preview: { audience: owner.host }, publicOffer: 'synthetic-public-receipt', compared: true, busy: false, run: operation => operation() })
+  const value = new Page(); Object.assign(value, { product: owner, networkApproved: false, connectionEnabled: false, connectionHost: '', view: { selected: '', richJson: '', connectionGeneration: 0 }, drafts: new Map(), draft: '', draftSessionId: '', lastRequest: '', dismissedError: '', rich: { setMount() {}, async close() {} }, workspaceOpening: false, workspace: { async close() {} }, preview: { audience: owner.host }, publicOffer: 'synthetic-public-receipt', compared: true, busy: false, run: operation => operation() })
   const view = (generation = 1, more = {}) => ({ selected: '', richJson: '', connectionGeneration: generation, pairing: 'paired', connection: 'disconnected', error: '', ...more })
   return { value, owner, calls, view }
 }

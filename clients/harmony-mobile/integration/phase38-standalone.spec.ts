@@ -10,7 +10,7 @@ import { RelayUpgrade } from './relay-upgrade.ts'
 import { id } from '../src/protocol.ts'
 const config = { enabled: true, host: '127.0.0.1', port: 0, publicHost: 'dsh.devinho.me', sweepIntervalMs: 1000, maxControlFrames: 4, maxConnections: 8, shutdownTimeoutMs: 3000, requestTimeoutMs: 1000, headersTimeoutMs: 500, connectionCheckIntervalMs: 100, maxHeaderBytes: 4096, maxRooms: 2, maxRoomTtlMs: 1000, pairTimeoutMs: 100, maxFrameBytes: 8192, maxBufferedBytes: 16384, maxFrames: 32, idleTimeoutMs: 200 }
 const room = id<'harmony-relay-room'>('phase38-fixture-room'), desktop = '1'.repeat(64), phone = '2'.repeat(64)
-async function fixture() { const authority = {}; let now = 1000; const owner = createStandaloneRelay(config, authority, () => now, () => {}); if (owner === undefined) throw new Error('fixture absent'); await owner.start(); return { owner, authority, port: owner.port(), advance: (ms: number) => { now += ms; owner.sweep() }, provision: () => owner.provision(authority, { room, desktopDigest: relayTokenDigest(desktop), phoneDigest: relayTokenDigest(phone), expiresAt: 1500 }) } }
+async function fixture(roomDiagnostics = false) { const authority = {}; let now = 1000; const owner = createStandaloneRelay(roomDiagnostics ? { ...config, roomDiagnostics } : config, authority, () => now, () => {}); if (owner === undefined) throw new Error('fixture absent'); await owner.start(); return { owner, authority, port: owner.port(), advance: (ms: number) => { now += ms; owner.sweep() }, provision: () => owner.provision(authority, { room, desktopDigest: relayTokenDigest(desktop), phoneDigest: relayTokenDigest(phone), expiresAt: 1500 }) } }
 function client(port: number, role: string, token: string, extra: { path?: string; headers?: Record<string, string>; protocol?: string } = {}) {
   const ws = new WebSocket('ws://127.0.0.1:' + port + (extra.path ?? RELAY_PATH), extra.protocol ?? RELAY_SUBPROTOCOL, { headers: { Host: config.publicHost, Authorization: 'Bearer ' + token, 'X-DSH-Relay-Room': room, 'X-DSH-Relay-Role': role, ...extra.headers }, perMessageDeflate: false, handshakeTimeout: 2000 })
   const closed = new Promise<void>(resolve => ws.once('close', () => resolve())), opened = new Promise<boolean>((resolve, reject) => { ws.once('open', () => resolve(true)); ws.once('error', error => { if ('code' in error && ['EACCES', 'EPERM', 'ECONNREFUSED'].includes(String(error.code))) reject(new Error('local test transport unavailable')); else resolve(false) }) }), messages: { bytes: Buffer; binary: boolean }[] = []
@@ -21,6 +21,34 @@ it('independent host defaults to disabled and validates every listener/resource 
   const timers = vi.spyOn(globalThis, 'setInterval')
   try { expect(createStandaloneRelay()).toBeUndefined(); expect(timers).not.toHaveBeenCalled(); for (const value of [{}, { enabled: false, token: 'not-accepted' }, { ...config, host: '0.0.0.0' }, { ...config, port: 65536 }, { ...config, maxConnections: 0 }, { ...config, maxBufferedBytes: 1 }, { ...config, maxFrameBytes: 0x80000000, maxBufferedBytes: 0x80000000 }, { ...config, sweepIntervalMs: 0x80000000 }, { ...config, shutdownTimeoutMs: 0x80000000 }, { ...config, room }, { ...config, privateKey: 'not-accepted' }]) expect(() => resolveRelayConfig(value)).toThrow('invalid relay configuration') }
   finally { timers.mockRestore() }
+})
+it.each([
+  ['peer-close', { at: 1000, reason: 'data-ended', role: 'phone', frames: 0 }],
+  ['oversize', { at: 1000, reason: 'data-ended', role: 'desktop', socketFailure: 'ws-message-limit', frames: 0 }],
+  ['parts-limit', { at: 1000, reason: 'data-ended', role: 'desktop', socketFailure: 'ws-parts-limit', frames: 0 }],
+  ['control-limit', { at: 1000, reason: 'data-ended', role: 'desktop', socketFailure: 'control-frame-limit', frames: 0 }],
+  ['default', undefined],
+] as const)('loopback room diagnostics report %s without payload or identities', async (kind, expected) => {
+  const output = vi.spyOn(console, 'info')
+  try {
+    const f = await fixture(expected !== undefined); f.provision()
+    try {
+      const a = client(f.port, 'desktop', desktop), b = client(f.port, 'phone', phone)
+      expect(await a.opened).toBe(true); expect(await b.opened).toBe(true)
+      await messageCount(a, 1); await messageCount(b, 1)
+      if (kind === 'oversize') a.ws.send(Buffer.alloc(config.maxFrameBytes + 1, 0x61))
+      else if (kind === 'parts-limit') {
+        const fragment = Buffer.from([1])
+        for (let index = 0; index < 129; index++) a.ws.send(fragment, { fin: index === 128 })
+      }
+      else if (kind === 'control-limit') for (let count = 0; count <= config.maxControlFrames; count++) a.ws.ping()
+      else b.ws.terminate()
+      await Promise.all([a.closed, b.closed])
+      const tag = 'DSH_RELAY_ROOM_CLOSE '
+      const records = output.mock.calls.flatMap(([line]) => typeof line === 'string' && line.startsWith(tag) ? [JSON.parse(line.slice(tag.length))] : [])
+      expect(records).toStrictEqual(expected === undefined ? [] : [expected])
+    } finally { await f.owner.close() }
+  } finally { output.mockRestore() }
 })
 it('empty room core and actual loopback upgrade both deny syntactically valid capabilities without a WS acceptance', async () => {
   const rooms = new RelayRooms({}, { maxRooms: config.maxRooms, maxRoomTtlMs: config.maxRoomTtlMs, pairTimeoutMs: config.pairTimeoutMs, maxFrameBytes: config.maxFrameBytes, maxBufferedBytes: config.maxBufferedBytes, maxFrames: config.maxFrames, idleTimeoutMs: config.idleTimeoutMs }, () => 1000)

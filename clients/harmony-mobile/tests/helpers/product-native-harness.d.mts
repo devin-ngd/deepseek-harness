@@ -12,3 +12,14 @@ export const sdk: { files: Map<string, { bytes: Uint8Array }>; dirs: Set<string>
 export function context(): object
 export function resetProductSdk(): void
 export function closeActiveProducts(): Promise<void>
+export class NativeWorkspaceOwner {
+  constructor(product: NativeProductOwner, policyJson: string)
+  close(): Promise<void>
+}
+export class NativeLifecycle {
+  static registerProduct(product: NativeProductOwner, rich: NativeProductRichOwner): void
+  static registerWorkspace(workspace: NativeWorkspaceOwner): void
+  static background(): Promise<void>
+  static foreground(): Promise<void>
+  static destroy(): Promise<void>
+}

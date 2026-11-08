@@ -1,5 +1,5 @@
 /** Behavioral resource/race checks, with memory ports only; no model, actual trust or external transport. */
-import { it, expect } from 'vitest'
+import { it, expect, vi } from 'vitest'
 import { ProductTrustOwner } from '../src/product-trust.ts'
 import { MobileProduct } from '../src/mobile-product.ts'
 import { ConnectionSupervisor } from '../src/connection-supervisor.ts'
@@ -9,7 +9,7 @@ import { p256CredentialId } from './p256-channel.ts'
 import { id } from '../src/protocol.ts'
 import { MOBILE_LINK_PROTOCOL } from '../src/link-protocol.ts'
 import { readFile } from 'node:fs/promises'
-import { NativeProductOwner, closeActiveProducts, resetProductSdk } from '../tests/helpers/product-native-harness.mjs'
+import { NativeLifecycle, NativeProductOwner, NativeProductRichOwner, NativeWorkspaceOwner, closeActiveProducts, resetProductSdk } from '../tests/helpers/product-native-harness.mjs'
 const config = JSON.parse(await readFile(new URL('../product.config.json', import.meta.url), 'utf8'))
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(value => { resolve = value }); return { promise, resolve } }
 it('transport disconnect observer failure never skips the acquired platform owner close', async () => { const clock = new FixtureClock(); let closes = 0; const transport = new PairedProductTransport({ maxPending: 2, maxQueuedFrames: 2, maxPacketBytes: 4096, timeoutMs: 100, recovery: { maxAttempts: 2, retryDelayMs: 10 } }, 10000, () => clock.now, clock, async status => { queueMicrotask(() => status('authorized')); return { request: async () => {}, follow: async () => {}, stop: async () => {}, close: async () => { closes++ } } }, state => { if (state === 'disconnected') throw new Error('presentation fault') }, new AbortController().signal); await transport.start(); await expect(transport.close()).rejects.toThrow('cleanup'); expect(closes).toBe(1); expect(clock.pending.size).toBe(0) })
@@ -23,3 +23,39 @@ it('recovery closes each generation before its next finite attempt, and local ex
 it('unary timer acquisition failure removes its pending admission so another request can use the same bounded capacity', async () => { const clock = new FixtureClock(); let failNext = false, deliver: (raw: string) => void = () => {}; const scheduler = { after: (ms: number, callback: () => void) => { if (failNext) { failNext = false; throw new Error('scheduler fault') }; return clock.after(ms, callback) } }, policy = { maxPending: 1, maxQueuedFrames: 1, maxPacketBytes: 4096, timeoutMs: 100, recovery: { maxAttempts: 2, retryDelayMs: 10 } }, transport = new PairedProductTransport(policy, 10000, () => clock.now, scheduler, async (status, receive) => { deliver = receive; queueMicrotask(() => status('authorized')); return { request: async request => deliver(JSON.stringify({ kind: 'result', id: request, value: { admitted: true } })), follow: async () => {}, stop: async () => {}, close: async () => {} } }, () => {}, new AbortController().signal); await transport.start(); failNext = true; await expect(transport.metadata()).rejects.toThrow('scheduler fault'); expect(await transport.metadata()).toEqual({ admitted: true }); await transport.close(); expect(clock.pending.size).toBe(0) })
 it('failed stop does not mask original follow transport loss and all timers retire', async () => { const clock = new FixtureClock(); let statusPort: (state: string) => void = () => {}; const transport = new PairedProductTransport({ maxPending: 2, maxQueuedFrames: 2, maxPacketBytes: 4096, timeoutMs: 100, recovery: { maxAttempts: 1, retryDelayMs: 10 } }, 10000, () => clock.now, clock, async status => { statusPort = status; queueMicrotask(() => status('authorized')); return { request: async () => {}, follow: async () => { queueMicrotask(() => statusPort('disconnected')) }, stop: async () => { throw new Error('old connection closed') }, close: async () => {} } }, () => {}, new AbortController().signal); await transport.start(); const stream = transport.follow({ protocol: MOBILE_LINK_PROTOCOL, desktopId: id<'mobile-desktop'>('fault-desktop'), deviceId: id<'mobile-device'>('fault-phone'), commandId: id<'mobile-command'>('follow'), grantEpoch: 1, expiresAt: 1050, operation: 'session.sync', payload: { sessionId: 'fault-session', afterSeq: -1 } }, { instance: null, relayCursor: -1 })[Symbol.asyncIterator](); await expect(stream.next()).rejects.toMatchObject({ code: 'transport-lost' }); await transport.close(); expect(clock.pending.size).toBe(0) })
 it('native foreground waits for old shared cleanup before active product registration is reused', async () => { resetProductSdk(); const cleanup = deferred<void>(); let closes = 0; const native = new NativeProductOwner({ ...config, corePolicyJson: JSON.stringify(config.core) }), storage = { read: async () => null, write: async () => {}, close: async () => { if (++closes === 1) await cleanup.promise } }; await native.start(storage, () => {}); const oldClose = native.close(), foreground = native.foreground(); expect(closes).toBe(0); cleanup.resolve(); await Promise.all([oldClose, foreground]); await closeActiveProducts(); expect(closes).toBe(2) })
+
+it('foreground restores the product after the background workspace and product close', async () => {
+  resetProductSdk()
+  const workspaceClosing = deferred<void>()
+  const workspaceClosed = deferred<void>()
+  const native = new NativeProductOwner({ ...config, corePolicyJson: JSON.stringify(config.core) })
+  const rich = new NativeProductRichOwner(native, JSON.stringify(config.core))
+  const workspace = new NativeWorkspaceOwner(native, JSON.stringify(config.core))
+  const order: string[] = []
+  await native.start({ read: async () => null, write: async () => {}, close: async () => { order.push('product closed') } }, () => {})
+  const restore = native.foreground.bind(native)
+  const foreground = vi.spyOn(native, 'foreground')
+  foreground.mockImplementation(() => { order.push('product restored'); return restore() })
+  NativeLifecycle.registerProduct(native, rich)
+  NativeLifecycle.registerWorkspace(workspace)
+  const close = vi.spyOn(workspace, 'close').mockImplementationOnce(async () => {
+    workspaceClosing.resolve()
+    await workspaceClosed.promise
+    order.push('workspace closed')
+  })
+  const background = NativeLifecycle.background()
+  await workspaceClosing.promise
+  const resumed = NativeLifecycle.foreground()
+  try {
+    await new Promise<void>(resolve => setImmediate(resolve))
+    workspaceClosed.resolve()
+    await Promise.all([background, resumed])
+    expect(order).toEqual(['workspace closed', 'product closed', 'product restored'])
+  } finally {
+    workspaceClosed.resolve()
+    await Promise.allSettled([background, resumed])
+    foreground.mockRestore()
+    close.mockRestore()
+    await NativeLifecycle.destroy()
+  }
+})

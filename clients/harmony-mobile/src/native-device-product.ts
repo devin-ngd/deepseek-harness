@@ -13,6 +13,13 @@ import { parseProductPolicy } from './native-product-facade.ts'
 import type { MobileProductPolicy, MobileProductView } from './mobile-product.ts'
 import type { ProductTrustStorage } from './product-trust.ts'
 import type { DeviceBindingStorage } from '../desktop-plugin/src/device-binding.ts'
+import { sessionCreationOptionsSchema } from './session-creation.ts'
+import { workspaceRequestSchema, workspaceResponseSchema, type WorkspaceRequest } from './workspace-protocol.ts'
+import { workspaceDiagnosticFailure, workspaceDiagnosticOperation } from './workspace-diagnostic.ts'
+import { TransportError } from './wire.ts'
+import { readWorkspaceBytes } from './workspace-bytes.ts'
+import { deviceWorkspaceOrigin } from './workspace-origin.ts'
+import { prepareWorkspace } from './workspace-prepare.ts'
 import type { E2EPrimitives, P256IdentitySigner } from './e2e-channel.ts'
 import type { PairedRelayPorts, PairedRelayPolicy } from './paired-relay.ts'
 import type { CleanupScheduler } from '../integration/connection-lifetime.ts'
@@ -26,6 +33,8 @@ import { deviceSessionDirectory, deviceSessionActionSchema, deviceSessionManaged
 export interface NativeDeviceNetwork { readonly ports: PairedRelayPorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
 /** JSON-free native original-identity crypto; no private bytes are exposed. */
 export interface NativeDeviceCrypto { readonly signer: P256IdentitySigner; readonly primitives: E2EPrimitives }
+/** Last admitted Session and its exact public binding, retained only by the native page owner. */
+export interface NativeDeviceForegroundSelection { binding: string | null; sessionId: string }
 /** One actual native page composition. Default-disabled construction and boot acquire no network. */
 export class NativeDeviceProductFacade {
   private readonly policy: MobileProductPolicy
@@ -33,7 +42,7 @@ export class NativeDeviceProductFacade {
   private client: DeviceBindingClient | undefined
   private device: DeviceBoundMobileProduct | undefined
   private selected: DevicePhoneSession | undefined
-  private resumeSessionId = ''
+  private readonly workspaceRequests = new Map<string, { readonly controller: AbortController; readonly operation: Promise<unknown> }>()
   private closed = false
   private connectionApproved = false
   private revoked = false
@@ -52,9 +61,11 @@ export class NativeDeviceProductFacade {
   private hasRoute = false
   private routeDeadline = 0
   private readonly routingLeaseMs: number
-  /** @param authority - exact native UI owner. @param policyJson - existing default-disabled product/domain limits. @param identityAlias - original selected HUKS alias. @param host - approved existing relay host. @param routingExpiresAt - independent public relay directory deadline. @param relay - existing control/E2E capacities. @param publicStorage - separate app-private device public file. @param crypto - original native signer and maintained backend. @param scheduler - native timers. @param clock - trusted native clock. @param acquire - original native WSS acquisition, called only on connect. @param publish - sanitized original page DTO sink. */
-  constructor(private readonly authority: object, policyJson: string, private readonly identityAlias: string, private readonly host: string, private readonly routingExpiresAt: number, private readonly relay: PairedRelayPolicy, private readonly publicStorage: ProductTrustStorage, private readonly crypto: NativeDeviceCrypto, private readonly scheduler: CleanupScheduler, private readonly clock: () => number, private readonly acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, private readonly publish: (view: string) => void, private readonly catalogRefreshMs: number, routeStorage?: ProductTrustStorage, private readonly pairedConnection = false) {
+  /** @param authority - exact native UI owner. @param policyJson - existing default-disabled product/domain limits. @param identityAlias - original selected HUKS alias. @param host - approved existing relay host. @param routingExpiresAt - independent public relay directory deadline. @param relay - existing control/E2E capacities. @param publicStorage - separate app-private device public file. @param crypto - original native signer and maintained backend. @param scheduler - native timers. @param clock - trusted native clock. @param acquire - original native WSS acquisition, called only on connect. @param publish - sanitized original page DTO sink. @param foregroundSelection - in-memory selection shared with the next facade of the same native page. */
+  constructor(private readonly authority: object, policyJson: string, private readonly identityAlias: string, private readonly host: string, private readonly routingExpiresAt: number, private readonly relay: PairedRelayPolicy, private readonly publicStorage: ProductTrustStorage, private readonly crypto: NativeDeviceCrypto, private readonly scheduler: CleanupScheduler, private readonly clock: () => number, private readonly acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, private readonly publish: (view: string) => void, private readonly catalogRefreshMs: number, routeStorage?: ProductTrustStorage, private readonly pairedConnection = false, private readonly foregroundSelection: NativeDeviceForegroundSelection = { binding: null, sessionId: '' }) {
     this.policy = parseProductPolicy(policyJson)
+    if (this.policy.workspace !== undefined && (this.policy.workspace.maxPending + this.policy.transport.maxPending > relay.maxProofs
+      || this.policy.workspace.maxPacketBytes > relay.e2e.maxPlaintextBytes)) throw new Error('native workspace exceeds device carrier capacity')
     this.routingLeaseMs = routingExpiresAt - clock()
     if (pairedConnection && (!Number.isSafeInteger(this.routingLeaseMs) || this.routingLeaseMs <= relay.maxRoomTtlMs || this.routingLeaseMs > 0x7fffffff)) throw new Error('invalid paired connection lease')
     if (!Number.isSafeInteger(catalogRefreshMs) || catalogRefreshMs <= 0 || catalogRefreshMs > 0x7fffffff) throw new Error('native device catalogue interval denied')
@@ -127,14 +138,25 @@ export class NativeDeviceProductFacade {
       lifetime.throwIfAborted()
       const acquired = acquisition
       core = new NativeDeviceCore(JSON.stringify(registration), expiresAt, this.relay, acquisition.ports, state => { if (state === 'identity-authenticated') acquired.authenticated() }, packet => rpc?.receive(packet), route ?? undefined)
-      rpc = new DeviceProductRpc(core, this.scheduler, this.policy.transport.timeoutMs, this.policy.transport.maxPending, this.policy.commandPrefix)
+      rpc = new DeviceProductRpc(core, this.scheduler, this.policy.transport.timeoutMs, this.policy.transport.maxPending, this.policy.commandPrefix, this.policy.workspace?.maxPending ?? 0)
       lifetime.addEventListener('abort', abort, { once: true })
       stage = 'identity-read'; await core.initialize(); lifetime.throwIfAborted(); stage = 'native-channel'; await acquired.open(); lifetime.throwIfAborted(); stage = 'control-handshake'; await core.ready(); lifetime.throwIfAborted(); this.local(this.authority)
       const network = core, calls = rpc
-      return { authentication: 'native', ...(context === undefined ? {} : { route: context }), binding: network.binding, failure: fallback => network.connectionFailure(fallback, 'active-channel'), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => deviceSessionDirectory(await calls.call({ method: 'metadata', argument: null }), registration.desktopId), manage: async action => deviceSessionManagedSchema.parse(await calls.call({ method: 'manage', action })).sessionId, select: async (route, ticket, publish, lifetime) => {
+      let selectionGeneration = 0
+      return {
+        authentication: 'native', ...(context === undefined ? {} : { route: context }), binding: network.binding,
+        failure: fallback => network.connectionFailure(fallback, 'active-channel'),
+        readyTicket: async () => JSON.parse(network.ticketJson()),
+        catalog: async () => deviceSessionDirectory(await calls.call({ method: 'metadata', argument: null }), registration.desktopId),
+        creationOptions: async () => sessionCreationOptionsSchema.parse(await calls.call({ method: 'creation-options' })),
+        workspace: (argument, _ticket, signal) => calls.call({ method: 'workspace', argument }, signal),
+        manage: async action => deviceSessionManagedSchema.parse(await calls.call({ method: 'manage', action })).sessionId,
+        select: async (route, ticket, publish, lifetime) => {
         const result = fields(await calls.call({ method: 'select', route }), ['selected'])
         if (JSON.stringify(result.selected) !== JSON.stringify(route)) throw new Error('native device selection acknowledgement denied')
-        const session = new DevicePhoneSession(route, registration, ticket, network.binding, proof, this.authority, this.policy, calls, this.scheduler, this.clock, view => publish(this.sessionView(view)), context)
+        // The Host may reuse the peer and its command cache when reopening the same Session.
+        const sessionPolicy = { ...this.policy, commandPrefix: 'device-' + network.binding.id + ':' + ++selectionGeneration }
+        const session = new DevicePhoneSession(route, registration, ticket, network.binding, proof, this.authority, sessionPolicy, calls, this.scheduler, this.clock, view => publish(this.sessionView(view)), context)
         try { await session.start(); if (lifetime.aborted) throw new Error('native device selection retired'); this.selected = session; return { richRequest: raw => session.richRequest(raw), close: async () => { if (this.selected === session) this.selected = undefined; await session.close() } } }
         catch (error) { await session.close(); throw error }
       }, close }
@@ -166,11 +188,12 @@ export class NativeDeviceProductFacade {
   /** @param networkApproved - current native page's explicit host decision, never inferred from a saved binding. @returns after a fresh channel proof and reopening the last selected Session when still visible. Only reads resume; no model message or mutation is replayed. */
   async connect(networkApproved: boolean): Promise<void> {
     this.local(this.authority); if (networkApproved !== true) throw new Error('native device host consent required'); if (this.revoked || this.device === undefined) throw new Error('native device not bound')
-    const resume = this.resumeSessionId
+    const { binding, sessionId } = this.foregroundSelection
     this.connectionApproved = true; await this.device.connect(this.authority); this.catalogError = ''; this.scheduleCatalog()
-    if (resume !== '' && resume === this.resumeSessionId) {
-      if (this.device.view.sessions.some(row => row.sessionId === resume)) await this.device.select(this.authority, resume)
-      else this.resumeSessionId = ''
+    if (binding !== null && binding === this.cached && binding === this.foregroundSelection.binding
+      && sessionId !== '' && sessionId === this.foregroundSelection.sessionId) {
+      if (this.device.view.sessions.some(row => row.sessionId === sessionId)) await this.device.select(this.authority, sessionId)
+      else this.foregroundSelection.sessionId = ''
     }
   }
   private scheduleCatalog(): void {
@@ -185,9 +208,86 @@ export class NativeDeviceProductFacade {
     })
   }
   /** @param sessionId - current catalogue row, retained in memory for channel recovery. @returns after canonical old rich/subscription cleanup and selected Session start. */
-  async select(sessionId: string): Promise<void> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); this.resumeSessionId = sessionId; await this.device.select(this.authority, sessionId) }
+  async select(sessionId: string): Promise<void> {
+    this.local(this.authority)
+    const device = this.device, binding = this.cached
+    if (device === undefined) throw new Error('native device not bound')
+    await device.select(this.authority, sessionId)
+    if (!this.closed && !this.revoked && binding !== null && binding === this.cached && device.view.selected?.sessionId === sessionId) {
+      this.foregroundSelection.binding = binding
+      this.foregroundSelection.sessionId = sessionId
+    }
+  }
   /** @param raw - strict list-management intent JSON from the native page. @returns affected Session id after the desktop acknowledged it and the catalogue refreshed; selection is unchanged. */
   async manage(raw: string): Promise<string> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); return this.device.manage(this.authority, deviceSessionActionSchema.parse(JSON.parse(raw))) }
+  /** @returns current desktop choices for the native new-task sheet. */
+  async creationOptions(): Promise<string> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); return JSON.stringify(await this.device.creationOptions(this.authority)) }
+  /** Refresh the original native catalogue after returning from the standard workspace; no task is started. */
+  async refreshSessions(): Promise<void> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); await this.device.refresh(this.authority) }
+  private async workspaceTask<T>(requestId: string, generation: number, execute: (device: DeviceBoundMobileProduct, signal: AbortSignal) => Promise<T>): Promise<T> {
+    this.local(this.authority)
+    if (this.device === undefined) throw new TransportError('scope-denied')
+    if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId) || this.workspaceRequests.has(requestId)) throw new TransportError('invalid-packet')
+    if (this.policy.workspace === undefined) throw new TransportError('scope-denied')
+    if (this.workspaceRequests.size >= this.policy.workspace.maxPending) throw new TransportError('queue-full')
+    if (this.device.workspaceGeneration(this.authority) !== generation) throw new TransportError('scope-denied')
+    const controller = new AbortController()
+    const operation = execute(this.device, controller.signal)
+    this.workspaceRequests.set(requestId, { controller, operation })
+    try { return await operation }
+    finally { this.workspaceRequests.delete(requestId) }
+  }
+  /** @returns the current native connection generation; old Web documents cannot operate a replacement connection. */
+  workspaceGeneration(): number { this.local(this.authority); if (this.device === undefined || this.policy.workspace === undefined) throw new Error('native workspace unavailable'); return this.device.workspaceGeneration(this.authority) }
+  /** @returns public origin and local generation for a trusted ArkWeb workspace, with persistent Web state partitioned by the original desktop identity. */
+  async workspaceContext(): Promise<string> {
+    const generation = this.workspaceGeneration()
+    if (this.client === undefined) throw new Error('native device not bound')
+    const record = await this.client.load(this.authority)
+    if (this.workspaceGeneration() !== generation) throw new Error('native workspace connection changed')
+    return JSON.stringify({ origin: deviceWorkspaceOrigin(record.desktopCredentialId), generation })
+  }
+  /** @param requestId - native startup request. @param generation - original connection. @returns a verified shell inventory after an explicit authorized bootstrap; reopening never retries a mutation. */
+  async workspacePrepare(requestId: string, generation: number): Promise<string> {
+    const policy = this.policy.workspace
+    if (policy === undefined) throw new Error('native workspace unavailable')
+    return this.workspaceTask(requestId, generation, async (device, signal) => JSON.stringify(await prepareWorkspace({
+      request: value => device.workspace(this.authority, value, generation, signal),
+      release: value => device.workspace(this.authority, value, generation),
+      decode: value => this.crypto.primitives.decode(value),
+    }, { maxBytes: policy.maxResponseBytes, maxChunkBytes: policy.maxChunkBytes })))
+  }
+  /** @param requestId - native port's request identity. @param raw - strict message from the trusted workspace, never a rich guest. @param generation - captured native connection generation. @returns a JSON result under the separate desktop workspace grant. */
+  async workspaceRequest(requestId: string, raw: string, generation: number): Promise<string> {
+    let request: WorkspaceRequest | undefined
+    try {
+      if (this.policy.workspace === undefined || new TextEncoder().encode(raw).byteLength > this.policy.workspace.maxPacketBytes) throw new Error('native workspace packet too large')
+      const parsed = workspaceRequestSchema.parse(JSON.parse(raw))
+      request = parsed
+      return await this.workspaceTask(requestId, generation, async (device, signal) => JSON.stringify(await device.workspace(this.authority, parsed, generation, signal)))
+    } catch (error) {
+      const failure = request === undefined ? 'invalid-packet' : workspaceDiagnosticFailure(error)
+      if (failure !== 'cancelled') console.warn('DSH_WORKSPACE_RPC operation=' + workspaceDiagnosticOperation(request) + ' failure=' + failure)
+      throw error
+    }
+  }
+  /** @param requestId - native resource owner. @param url - logical same-origin URL, validated again by Host. @param generation - original native connection generation. @param maxBytes - native assembly budget. @param maxChunkBytes - native chunk budget. @returns validated response metadata and platform-encoded binary bytes, without Web Fetch/URL dependencies in native JS. */
+  async workspaceResource(requestId: string, url: string, generation: number, maxBytes: number, maxChunkBytes: number): Promise<string> {
+    if (![maxBytes, maxChunkBytes].every(value => Number.isSafeInteger(value) && value > 0) || this.policy.workspace === undefined
+      || maxBytes > this.policy.workspace.maxResponseBytes || maxChunkBytes > this.policy.workspace.maxChunkBytes) throw new Error('native workspace resource limits denied')
+    const request = workspaceRequestSchema.parse({ operation: 'fetch', url, method: 'GET', headers: [] })
+    return this.workspaceTask(requestId, generation, async (device, signal) => {
+      const response = workspaceResponseSchema.parse(await device.workspace(this.authority, request, generation, signal))
+      const bytes = await readWorkspaceBytes(response.body, {
+        request: value => device.workspace(this.authority, value, generation, signal),
+        release: value => device.workspace(this.authority, value, generation),
+        decode: value => this.crypto.primitives.decode(value),
+      }, { maxBytes, maxChunkBytes })
+      return JSON.stringify({ status: response.status, headers: response.headers, body: this.crypto.primitives.encode(bytes) })
+    })
+  }
+  /** @param requestId - exact native port request to retire. Accepted desktop mutations remain uncertain and are never retried. */
+  cancelWorkspaceRequest(requestId: string): void { this.workspaceRequests.get(requestId)?.controller.abort() }
   /** Refresh dynamic catalogue without resuming an Agent. */
   async refresh(): Promise<void> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); await this.device.refresh(this.authority) }
   private session(): DevicePhoneSession { this.local(this.authority); if (this.selected === undefined || this.device?.view.selected?.sessionId !== this.selected.route.sessionId || this.device.view.state !== 'connected') throw new Error('native device Session required'); return this.selected }
@@ -202,7 +302,7 @@ export class NativeDeviceProductFacade {
   /** @param raw - existing bounded rich SDK request. @returns scoped result from the original rich-inline owner, with no control/selection/credential entry. */
   richRequest(raw: string): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('native device not bound')); return this.device.richRequest(raw) }
   /** Store sticky phone-local revocation and disconnect; desktop and relay revocation still require their separate explicit acknowledgements. */
-  async revoke(): Promise<void> { this.local(this.authority); if (this.client === undefined) throw new Error('native device not bound'); this.revoked = true; this.hasRoute = false; const results = await Promise.allSettled([this.client.revokeLocal(this.authority), this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]); if (results.some(result => result.status === 'rejected')) throw new Error('native device local revocation outcome unknown'); this.empty('device-binding-locally-revoked') }
+  async revoke(): Promise<void> { this.local(this.authority); if (this.client === undefined) throw new Error('native device not bound'); this.revoked = true; this.hasRoute = false; this.foregroundSelection.binding = null; this.foregroundSelection.sessionId = ''; const results = await Promise.allSettled([this.client.revokeLocal(this.authority), this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]); if (results.some(result => result.status === 'rejected')) throw new Error('native device local revocation outcome unknown'); this.empty('device-binding-locally-revoked') }
   /** Native foreground retirement closes network and per-Session resources, retaining public binding and original HUKS identity. */
-  async close(): Promise<void> { if (this.closed) return; this.closed = true; this.stopCatalog(); const results = await Promise.allSettled([this.device?.close(), this.writeTail, this.publicRead, this.polling, this.routes?.close()]); this.client?.close(); const stores = await Promise.allSettled([this.publicStorage.close(), this.routeStorage?.close()]); if ([...results, ...stores].some(result => result.status === 'rejected')) throw new Error('native device product close failed') }
+  async close(): Promise<void> { if (this.closed) return; this.closed = true; this.stopCatalog(); for (const request of this.workspaceRequests.values()) request.controller.abort(); await Promise.allSettled([...this.workspaceRequests.values()].map(request => request.operation)); const results = await Promise.allSettled([this.device?.close(), this.writeTail, this.publicRead, this.polling, this.routes?.close()]); this.client?.close(); const stores = await Promise.allSettled([this.publicStorage.close(), this.routeStorage?.close()]); if ([...results, ...stores].some(result => result.status === 'rejected')) throw new Error('native device product close failed') }
 }

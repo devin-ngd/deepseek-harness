@@ -1,6 +1,6 @@
 /** Bounded two-role room issuer. It verifies existing public identity pins; private keys, DSH grants, messages and persistent room state are absent. */
 import { p256CredentialId, verifyP256 } from '../../integration/p256-public.ts'
-import { RelayRooms, type RelaySocket } from '../../integration/relay-core.ts'
+import { RelayRooms, type RelayControlEnd, type RelaySocket } from '../../integration/relay-core.ts'
 import { ShortPairingRooms } from '../../integration/short-room.ts'
 import { id } from '../../src/protocol.ts'
 import { RELAY_CONTROL_PROTOCOL, relayProof, relayProofBytes, type RelayChallenge, type RelayPairId, type RelayRoundId, type RelayRoomReceipt } from '../../src/relay-control-protocol.ts'
@@ -34,7 +34,7 @@ export class RoomBroker {
     const pair = this.pairs.get(id<'harmony-relay-pair'>(pairText)); if (pair === undefined || !this.usable(pair)) { socket.terminate(); throw new Error('room denied') }
     const peer: Peer = { socket, role, pair, stops: [], challenge: undefined, provedUntil: 0, count: 0, closed: false }; this.peers.add(peer)
     try {
-      peer.stops.push(socket.onEnd(() => { this.attempt(() => this.remove(peer)); this.contain() }))
+      peer.stops.push(socket.onEnd(() => { this.attempt(() => this.remove(peer, true, { reason: 'control-ended', role, socketFailure: socket.endFailure })); this.contain() }))
       peer.stops.push(socket.onFrame((bytes, binary) => { try { if (binary || bytes.byteLength > this.policy.maxControlPayloadBytes || peer.closed) throw new Error('room denied'); this.proof(peer, JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))) } catch (error) { void error; this.attempt(() => this.remove(peer)) }; this.contain() }))
       if (this.waitForPeer) {
         const other = [...this.peers].find(value => value.pair === pair && value.role !== role && !value.closed)
@@ -66,12 +66,16 @@ export class RoomBroker {
     this.send(pair.desktop, { ...base, role: 'desktop', token: lease.desktopToken() }); if (pair.lease !== lease || pair.phone === undefined) return
     this.send(pair.phone, { ...base, role: 'phone', token: lease.phoneToken() })
   }
-  private clearRoom(pair: Pair): void { const lease = pair.lease, lifetime = pair.lifetime; pair.lease = undefined; pair.lifetime = undefined; this.attempt(() => lifetime?.abort()); this.attempt(() => lease?.close()) }
-  private reset(pair: Pair): void { this.clearRoom(pair); pair.round = this.round(); if (this.waitForPeer && (pair.desktop === undefined || pair.phone === undefined)) { for (const peer of [pair.desktop, pair.phone]) if (peer !== undefined) { peer.challenge = undefined; peer.provedUntil = 0 }; return }; const round = pair.round; for (const peer of [pair.desktop, pair.phone]) { if (pair.round !== round) return; if (peer !== undefined) this.challenge(peer) } }
-  private remove(peer: Peer | undefined, renew = true): void {
+  private clearRoom(pair: Pair, controlEnd?: RelayControlEnd): void {
+    const lease = pair.lease, lifetime = pair.lifetime; pair.lease = undefined; pair.lifetime = undefined
+    if (lease !== undefined && controlEnd !== undefined) this.attempt(() => this.relay.revoke(this.authority, lease.room, controlEnd))
+    this.attempt(() => lifetime?.abort()); this.attempt(() => lease?.close())
+  }
+  private reset(pair: Pair, controlEnd?: RelayControlEnd): void { this.clearRoom(pair, controlEnd); pair.round = this.round(); if (this.waitForPeer && (pair.desktop === undefined || pair.phone === undefined)) { for (const peer of [pair.desktop, pair.phone]) if (peer !== undefined) { peer.challenge = undefined; peer.provedUntil = 0 }; return }; const round = pair.round; for (const peer of [pair.desktop, pair.phone]) { if (pair.round !== round) return; if (peer !== undefined) this.challenge(peer) } }
+  private remove(peer: Peer | undefined, renew = true, controlEnd?: RelayControlEnd): void {
     if (peer === undefined || peer.closed) return; peer.closed = true; peer.challenge = undefined; this.peers.delete(peer); const current = peer.pair[peer.role] === peer
     if (current) peer.pair[peer.role] = undefined; for (const stop of peer.stops) this.attempt(stop); this.attempt(() => peer.socket.terminate())
-    if (current && !this.closed) { if (renew && this.usable(peer.pair)) this.reset(peer.pair); else this.clearRoom(peer.pair) }
+    if (current && !this.closed) { if (renew && this.usable(peer.pair)) this.reset(peer.pair, controlEnd); else this.clearRoom(peer.pair, controlEnd) }
   }
   /** @returns nothing; data disconnect/expiry invalidates old capabilities and sends fresh proof challenges, never an old room receipt. */
   sweep(): void {

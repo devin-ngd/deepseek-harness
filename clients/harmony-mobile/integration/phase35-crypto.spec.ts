@@ -14,6 +14,7 @@ import { ImportedP256Agreement, P256SecureChannel, nodeE2EPrimitives, p256Creden
 import type { E2EPrimitives } from '../src/e2e-channel.ts'
 import { P256EnrollmentVerifier, enrollmentBytes, deviceProofBytes } from './p256-enrollment.ts'
 import { DeviceAuthorizationOwner } from './device-auth.ts'
+import { transcriptBytes } from '../src/signing-bytes.ts'
 import { jsonPayload } from '../src/wire.ts'
 
 function key(scalar: number) {
@@ -31,6 +32,24 @@ async function pair(room = 'phase35-offline-room', phonePort: E2EPrimitives = no
   await Promise.all([phone.receiveHello(desktop.hello()), desktop.receiveHello(phone.hello())])
   return { phone, desktop, finish: async () => { const [a, b] = await Promise.all([phone.finish(phoneIdentity), desktop.finish(desktopIdentity)]); await Promise.all([desktop.acceptFinished(JSON.stringify(a)), phone.acceptFinished(JSON.stringify(b))]); return [a, b] } }
 }
+it.each([
+  ['phase35-binding-0', 'b', ''],
+  ['phase35-binding-6', '-', 'b-'],
+  ['phase35-binding-61', '_', 'b-'],
+])('authenticates and exchanges frames for transcript %s', async (room, first, prefix) => {
+  const digest = createHash('sha256').update(transcriptBytes(['dsh-mobile-e2e/1', room,
+    'phone', phoneTransient.publicSpki, Buffer.alloc(32, 1).toString('base64url'),
+    'desktop', desktopTransient.publicSpki, Buffer.alloc(32, 2).toString('base64url')])).digest('base64url')
+  expect(digest[0]).toBe(first)
+  const channel = await pair(room)
+  try {
+    await channel.finish()
+    expect(channel.phone.binding().id).toBe(prefix + digest)
+    expect(channel.desktop.binding().id).toBe(prefix + digest)
+    const frame = await channel.phone.seal({ ready: true })
+    expect(await channel.desktop.open(JSON.stringify(frame))).toEqual({ ready: true })
+  } finally { channel.phone.close(); channel.desktop.close() }
+})
 it('shared asynchronous state authenticates fixed fixture identities and hides rich HTML/Session data from relay frames', async () => {
   const p = await pair(), proofs = await p.finish()
   expect(p.phone.binding().id).toBe(p.desktop.binding().id); expect(p.phone.binding()).not.toBe(p.desktop.binding())

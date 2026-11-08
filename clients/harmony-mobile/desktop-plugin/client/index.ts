@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { publicFeedback } from './feedback.ts'
 import { registerControlPanel } from './control-panel-entry.ts'
+import { registerWorkspaceNavigation } from './workspace-navigation.ts'
 
 const zh = { failed: 'Harmony 命令未完成。请先核对本机会话和授权状态，再决定是否重试。', unavailable: 'Harmony 命令已返回，但结果格式无法安全显示。请检查此会话的命令记录。' }
 type FeedbackKey = keyof typeof zh
@@ -19,6 +20,7 @@ export const name = '@deepseek-ai/dsh-experimental-harmony-mobile/client'
 export const inject = ['sessions', 'commandUi', 'locale', 'slots', 'remote', 'remote.commands']
 /** @param ctx - browser plugin lifetime. @returns after registering one owned, Session-addressed observer. */
 export function apply(ctx: Context): void {
+  registerWorkspaceNavigation(ctx)
   registerControlPanel(ctx)
   ctx.effect(() => ctx.locale.register('harmony-feedback', { zh, en }))
   const t = ctx.locale.bind('harmony-feedback')

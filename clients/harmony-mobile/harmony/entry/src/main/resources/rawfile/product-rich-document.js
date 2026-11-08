@@ -27,9 +27,9 @@ function canonical(value) {
   if (value !== null && typeof value === "object") {
     return "{" + Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => JSON.stringify(key) + ":" + canonical(item)).join(",") + "}";
   }
-  const encoded = JSON.stringify(value);
-  if (encoded === void 0) throw new MobileError("invalid-request");
-  return encoded;
+  const encoded2 = JSON.stringify(value);
+  if (encoded2 === void 0) throw new MobileError("invalid-request");
+  return encoded2;
 }
 
 // ../../packages/experimental/rich-inline/src/shared/validate.ts
@@ -147,9 +147,9 @@ var PartialArguments = class _PartialArguments {
    * @param text - the complete argument JSON text.
    * @returns a sealed view.
    */
-  static fromText(text3) {
+  static fromText(text5) {
     const view = new _PartialArguments();
-    view.append(text3);
+    view.append(text5);
     view.sealed = true;
     return view;
   }
@@ -214,15 +214,15 @@ var PartialArguments = class _PartialArguments {
    * @param text - the final argument text, which replaces missing or conflicting deltas.
    * @returns this view sealed with its caches retained when every character matches; otherwise a new sealed view.
    */
-  settle(text3) {
-    if (this.object !== void 0 || text3.length !== this.#size) return _PartialArguments.fromText(text3);
+  settle(text5) {
+    if (this.object !== void 0 || text5.length !== this.#size) return _PartialArguments.fromText(text5);
     let offset = 0;
     for (const chunk of this.chunks) {
-      if (!text3.startsWith(chunk, offset)) return _PartialArguments.fromText(text3);
+      if (!text5.startsWith(chunk, offset)) return _PartialArguments.fromText(text5);
       offset += chunk.length;
     }
-    this.chunks = text3.length === 0 ? [] : [text3];
-    this.#ends = text3.length === 0 ? [] : [text3.length];
+    this.chunks = text5.length === 0 ? [] : [text5];
+    this.#ends = text5.length === 0 ? [] : [text5.length];
     this.sealed = true;
     return this;
   }
@@ -394,12 +394,12 @@ var PartialArguments = class _PartialArguments {
     const entry = this.#entries.get(key);
     if (entry?.kind !== "string") return void 0;
     if (entry.text === void 0 && entry.end >= 0 && entry.needsDecoding && entry.invalidAt === void 0) {
-      let text3;
+      let text5;
       try {
-        text3 = JSON.parse(`"${this.slice(entry.start, entry.end)}"`);
+        text5 = JSON.parse(`"${this.slice(entry.start, entry.end)}"`);
       } catch (_error) {
       }
-      if (text3 !== void 0) entry.text = { at: entry.end, length: text3.length, text: text3 };
+      if (text5 !== void 0) entry.text = { at: entry.end, length: text5.length, text: text5 };
     }
     const read = entry.text ??= { at: entry.start, length: 0, text: "" };
     this.readString(entry, read, Number.POSITIVE_INFINITY, true);
@@ -908,8 +908,8 @@ var RelayGuestGate = class {
     } catch (error51) {
       return Promise.reject(error51);
     }
-    const fingerprint2 = canonical(packet), old = this.replies.get(packet.packetId);
-    if (old !== void 0) return old.fingerprint === fingerprint2 ? old.result : Promise.reject(new MobileError("id-conflict"));
+    const fingerprint3 = canonical(packet), old = this.replies.get(packet.packetId);
+    if (old !== void 0) return old.fingerprint === fingerprint3 ? old.result : Promise.reject(new MobileError("id-conflict"));
     if (packet.seq !== this.sequence + 1) return Promise.reject(new MobileError("sequence-gap"));
     if (this.replies.size >= this.binding.maxPackets) return Promise.reject(new MobileError("forbidden"));
     const payload = { ...packet.payload, sessionId: this.binding.sessionId, mountId: this.binding.mountId };
@@ -955,7 +955,7 @@ var RelayGuestGate = class {
     };
     const result = this.tail.then(dispatch);
     this.tail = result.then(() => void 0, () => void 0);
-    this.replies.set(packet.packetId, { fingerprint: fingerprint2, result });
+    this.replies.set(packet.packetId, { fingerprint: fingerprint3, result });
     return result;
   }
   /** Revoke local routing before awaiting in-flight requests and host disposal; never cancels durable actions. */
@@ -2919,16 +2919,16 @@ function cleanEnum(obj) {
 }
 function base64ToUint8Array(base643) {
   const binaryString = atob(base643);
-  const bytes = new Uint8Array(binaryString.length);
+  const bytes2 = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+    bytes2[i] = binaryString.charCodeAt(i);
   }
-  return bytes;
+  return bytes2;
 }
-function uint8ArrayToBase64(bytes) {
+function uint8ArrayToBase64(bytes2) {
   let binaryString = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binaryString += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes2.length; i++) {
+    binaryString += String.fromCharCode(bytes2[i]);
   }
   return btoa(binaryString);
 }
@@ -2937,22 +2937,22 @@ function base64urlToUint8Array(base64url3) {
   const padding = "=".repeat((4 - base643.length % 4) % 4);
   return base64ToUint8Array(base643 + padding);
 }
-function uint8ArrayToBase64url(bytes) {
-  return uint8ArrayToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+function uint8ArrayToBase64url(bytes2) {
+  return uint8ArrayToBase64(bytes2).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 function hexToUint8Array(hex3) {
   const cleanHex = hex3.replace(/^0x/, "");
   if (cleanHex.length % 2 !== 0) {
     throw new Error("Invalid hex string length");
   }
-  const bytes = new Uint8Array(cleanHex.length / 2);
+  const bytes2 = new Uint8Array(cleanHex.length / 2);
   for (let i = 0; i < cleanHex.length; i += 2) {
-    bytes[i / 2] = Number.parseInt(cleanHex.slice(i, i + 2), 16);
+    bytes2[i / 2] = Number.parseInt(cleanHex.slice(i, i + 2), 16);
   }
-  return bytes;
+  return bytes2;
 }
-function uint8ArrayToHex(bytes) {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+function uint8ArrayToHex(bytes2) {
+  return Array.from(bytes2).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 var Class = class {
   constructor(..._args) {
@@ -9302,8 +9302,8 @@ function ko_default() {
 }
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/lt.js
-var capitalizeFirstCharacter = (text3) => {
-  return text3.charAt(0).toUpperCase() + text3.slice(1);
+var capitalizeFirstCharacter = (text5) => {
+  return text5.charAt(0).toUpperCase() + text5.slice(1);
 };
 function getUnitTypeFromNumber(number4) {
   const abs = Math.abs(number4);
@@ -16254,8 +16254,8 @@ function authoredContent(source) {
 function authoredBlockId(messageId, key) {
   return `inline-${messageId}-${key}`;
 }
-function authoredFences(text3) {
-  return [...text3.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
+function authoredFences(text5) {
+  return [...text5.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
 }
 
 // .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/source-projection.ts
@@ -16309,8 +16309,8 @@ function createRichSourceProjection(hash2) {
         if (message.role !== "assistant" || part?.type !== "text" || originalPart?.type !== "text" || part.text.slice(target.start, target.end) !== originalPart.text.slice(target.start, target.end)) {
           throw new Error("rich-inline/source-offload: another projection changed the selected occurrence");
         }
-        const text3 = `${part.text.slice(0, target.start)}[Rich artifact ${target.blockId}; render revision 1; data revision 1; sourceRef ${target.sourceRef}. Read source or values with rich_inline_read.]${part.text.slice(target.end)}`;
-        changed.set(target.seq, { ...message, content: message.content.map((item, position) => position === target.partIndex ? { type: "text", text: text3 } : item) });
+        const text5 = `${part.text.slice(0, target.start)}[Rich artifact ${target.blockId}; render revision 1; data revision 1; sourceRef ${target.sourceRef}. Read source or values with rich_inline_read.]${part.text.slice(target.end)}`;
+        changed.set(target.seq, { ...message, content: message.content.map((item, position) => position === target.partIndex ? { type: "text", text: text5 } : item) });
       }
       return changed;
     }
@@ -16431,11 +16431,11 @@ function abytes(value, length, title = "") {
     return value;
   if (length !== void 0)
     anumber(length, "length");
-  const bytes = isBytes(value);
+  const bytes2 = isBytes(value);
   const ofLen = length !== void 0 ? ` of length ${length}` : "";
-  const got = bytes ? `length=${value.length}` : `type=${typeof value}`;
+  const got = bytes2 ? `length=${value.length}` : `type=${typeof value}`;
   const message = atitle(title) + "expected Uint8Array" + ofLen + ", got " + got;
-  if (!bytes)
+  if (!bytes2)
     throw new TypeError(message);
   throw new RangeError(message);
 }
@@ -16480,13 +16480,13 @@ var hasHexBuiltin = /* @__PURE__ */ (() => (
   typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function"
 ))();
 var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
-function bytesToHex(bytes) {
-  abytes(bytes);
+function bytesToHex(bytes2) {
+  abytes(bytes2);
   if (hasHexBuiltin)
-    return bytes.toHex();
+    return bytes2.toHex();
   let hex3 = "";
-  for (let i = 0; i < bytes.length; i++) {
-    hex3 += hexes[bytes[i]];
+  for (let i = 0; i < bytes2.length; i++) {
+    hex3 += hexes[bytes2[i]];
   }
   return hex3;
 }
@@ -16847,14 +16847,14 @@ var BrowserRichRenderer = class {
       if (event.source === null || event.source !== this.frame.contentWindow || this.gate !== current) return;
       const packet = event.data;
       if (packet === null || typeof packet !== "object" || !("packetId" in packet) || !("type" in packet) || !("mountId" in packet) || packet.mountId !== mount.mountId) return;
-      let encoded;
+      let encoded2;
       try {
-        encoded = JSON.stringify(packet);
+        encoded2 = JSON.stringify(packet);
       } catch (error51) {
         this.errorValue = "invalid-guest-json";
         return;
       }
-      void current.receive(encoded, event.source).then(async (result) => {
+      void current.receive(encoded2, event.source).then(async (result) => {
         if (this.gate !== current) return;
         if (packet.type === "ready") this.send("init", { snapshot });
         if (["draft.save", "action.invoke", "action.status"].includes(String(packet.type))) {
@@ -17012,7 +17012,7 @@ var publicTrustRenewalSchema = external_exports.object({ schema: external_export
 var document2 = external_exports.discriminatedUnion("schema", [productTrustSchema, publicTrustRenewalSchema]);
 
 // src/semantic-phone.ts
-var richProjections = [createRichSourceProjection((text3) => bytesToHex(sha256(new TextEncoder().encode(text3)))), createRichToolSourceProjection((text3) => bytesToHex(sha256(new TextEncoder().encode(text3))))];
+var richProjections = [createRichSourceProjection((text5) => bytesToHex(sha256(new TextEncoder().encode(text5)))), createRichToolSourceProjection((text5) => bytesToHex(sha256(new TextEncoder().encode(text5))))];
 var richProjectionTypes = new Set(richProjections.map((projection) => projection.type));
 
 // src/first-use-protocol.ts
@@ -17036,6 +17036,37 @@ var firstUseReplySchema = external_exports.object({ schema: external_exports.lit
 var text2 = external_exports.string().min(1).max(256);
 var descriptor = external_exports.object({ key: external_exports.string().regex(/^[a-f0-9]{64}$/).transform((value) => id(value)), desktopId: text2.transform((value) => id(value)), profileId: text2.transform((value) => id(value)), sessions: external_exports.array(text2.transform((value) => id(value))).min(1) }).strict();
 var catalog = external_exports.object({ schema: external_exports.literal("harmony-product-scopes/1"), scopes: external_exports.array(descriptor).refine((values2) => new Set(values2.map((value) => value.key)).size === values2.length) }).strict();
+
+// src/workspace-rich-protocol.ts
+var text3 = external_exports.string().min(1).max(256);
+var copy = external_exports.object({
+  text: external_exports.string().max(1024),
+  image: external_exports.string().max(1024),
+  copied: external_exports.string().max(1024),
+  failed: external_exports.string().max(1024),
+  menu: external_exports.object({ plain: external_exports.string().max(1024), markdown: external_exports.string().max(1024), copyLink: external_exports.string().max(1024), openLink: external_exports.string().max(1024), more: external_exports.string().max(1024), selectAll: external_exports.string().max(1024), openFailed: external_exports.string().max(1024) }).strict().optional()
+}).strict();
+var workspaceRichPolicySchema = external_exports.object({
+  maxGuests: external_exports.number().int().positive(),
+  maxQueuedPackets: external_exports.number().int().positive(),
+  maxQueuedBytes: external_exports.number().int().positive(),
+  documentBytes: external_exports.number().int().positive(),
+  sdkBytes: external_exports.number().int().positive(),
+  guestPacketBytes: external_exports.number().int().positive(),
+  hostPacketBytes: external_exports.number().int().positive(),
+  closeTimeoutMs: external_exports.number().int().positive()
+}).strict();
+var workspaceRichContentSchema = external_exports.object({ mountId: text3, mountNonce: text3, html: external_exports.string(), css: external_exports.string(), js: external_exports.string(), sdk: external_exports.string().optional(), copy: copy.optional() }).strict();
+var workspaceRichRequestSchema = external_exports.discriminatedUnion("operation", [
+  external_exports.object({ operation: external_exports.literal("acquire"), request: workspaceRichContentSchema }).strict(),
+  external_exports.object({ operation: external_exports.literal("open"), lease: text3 }).strict(),
+  external_exports.object({ operation: external_exports.literal("send"), lease: text3, packet: external_exports.record(external_exports.string(), external_exports.json()) }).strict(),
+  external_exports.object({ operation: external_exports.literal("release"), lease: text3 }).strict(),
+  external_exports.object({ operation: external_exports.literal("ack"), lease: text3, id: external_exports.string().regex(/^[0-9]{1,16}$/) }).strict()
+]);
+var workspaceRichOwnerPacketSchema = external_exports.record(external_exports.string(), external_exports.json());
+var workspaceRichReservationSchema = external_exports.object({ lease: text3, partition: text3, src: external_exports.string().max(8192) }).strict();
+var workspaceRichDocumentInitSchema = external_exports.object({ protocol: external_exports.literal("harmony-workspace-rich/1"), lease: text3, limits: workspaceRichPolicySchema, request: workspaceRichContentSchema }).strict();
 
 // src/device-binding-protocol.ts
 var identifier4 = external_exports.string().min(1).max(256).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
@@ -17100,6 +17131,24 @@ var ticketBody = external_exports.object({
 }).strict();
 var deviceConnectionTicketSchema = ticketBody.extend({ signature: signature2 }).strict().refine((value) => value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 18e5);
 
+// src/session-creation.ts
+var text4 = external_exports.string().min(1).max(256);
+var creationModelSelectionSchema = external_exports.object({
+  provider: text4,
+  model: text4,
+  reasoningEffort: text4.optional()
+}).strict();
+var sessionCreationOptionsSchema = external_exports.object({
+  presets: external_exports.array(external_exports.object({ id: text4, name: text4, isDefault: external_exports.boolean() }).strict()).max(256),
+  models: external_exports.array(external_exports.object({
+    provider: text4,
+    model: text4,
+    label: external_exports.string().min(1).max(1024),
+    efforts: external_exports.array(text4).max(32)
+  }).strict()).max(2048),
+  defaultModel: creationModelSelectionSchema
+}).strict();
+
 // src/device-session-directory.ts
 var identifier5 = external_exports.string().min(1).max(256);
 var deviceSessionRowSchema = external_exports.object({
@@ -17115,7 +17164,12 @@ var deviceSessionRowSchema = external_exports.object({
 }).strict();
 var deviceProjectRowSchema = external_exports.object({ projectId: identifier5, title: external_exports.string() }).strict();
 var deviceSessionActionSchema = external_exports.union([
-  external_exports.object({ action: external_exports.literal("create"), projectId: identifier5.nullable() }).strict(),
+  external_exports.object({
+    action: external_exports.literal("create"),
+    projectId: identifier5.nullable(),
+    agentPreset: identifier5.optional(),
+    model: creationModelSelectionSchema.optional()
+  }).strict(),
   external_exports.object({ action: external_exports.enum(["archive", "unarchive", "pin", "unpin"]), sessionId: identifier5 }).strict()
 ]);
 var deviceSessionManagedSchema = external_exports.object({ sessionId: identifier5 }).strict();
@@ -17129,16 +17183,98 @@ var body = external_exports.object({ schema: external_exports.literal("harmony-d
 var deviceRouteOfferSchema = body.extend({ signature: signature3 }).strict().refine((value) => !value.binding.revoked && value.routeId !== value.binding.bindingId && value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 18e5);
 var deviceRouteSchema = external_exports.object({ schema: external_exports.literal("harmony-device-route/1"), offer: deviceRouteOfferSchema, signature: signature3 }).strict();
 
+// src/workspace-protocol.ts
+var WORKSPACE_PLUGIN_EVENTS_PATH = "/plugins/events";
+var handle = external_exports.string().min(1).max(256).transform((value) => id(value));
+var bytes = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+var headers = external_exports.array(external_exports.tuple([external_exports.string().max(256), external_exports.string().max(8192)])).max(128);
+var encoded = external_exports.string().max(1398104).regex(/^[A-Za-z0-9_-]*$/);
+var workspaceBodySchema = external_exports.object({ id: handle, bytes }).strict();
+var workspaceRequestSchema = external_exports.discriminatedUnion("operation", [
+  external_exports.object({ operation: external_exports.literal("bootstrap") }).strict(),
+  external_exports.object({ operation: external_exports.literal("manifest") }).strict(),
+  external_exports.object({ operation: external_exports.literal("close") }).strict(),
+  external_exports.object({ operation: external_exports.literal("fetch"), url: external_exports.string().max(8192), method: external_exports.enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]), headers, body: encoded.optional() }).strict(),
+  external_exports.object({ operation: external_exports.literal("read"), id: handle, offset: bytes }).strict(),
+  external_exports.object({ operation: external_exports.literal("release"), id: handle }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-open"), endpoint: external_exports.string().min(1).max(512), payload: external_exports.unknown() }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-next"), id: handle }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-write"), id: handle, value: external_exports.unknown() }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-end"), id: handle }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-close"), id: handle }).strict()
+]);
+var workspaceResponseSchema = external_exports.object({ status: external_exports.number().int().min(200).max(599), headers, body: workspaceBodySchema }).strict();
+var workspaceChunkSchema = external_exports.object({ offset: bytes, body: encoded, done: external_exports.boolean() }).strict();
+var workspaceNextSchema = external_exports.discriminatedUnion("done", [
+  external_exports.object({ done: external_exports.literal(true), failure: external_exports.object({ code: external_exports.string(), message: external_exports.string(), details: external_exports.unknown().optional() }).strict().optional() }).strict(),
+  external_exports.object({ done: external_exports.literal(false), body: workspaceBodySchema }).strict()
+]);
+var workspaceStreamSchema = external_exports.object({ id: handle }).strict();
+var resourcePath = external_exports.string().min(1).max(8192).refine((value) => {
+  if (!value.startsWith("/") || value.startsWith("//") || /[#\\\u0000-\u0020]/.test(value)) return false;
+  const url2 = new URL(value, "https://workspace.dsh.invalid");
+  return url2.pathname + url2.search === value && !url2.pathname.startsWith("/api/") && url2.pathname !== WORKSPACE_PLUGIN_EVENTS_PATH;
+});
+var workspaceShellManifestSchema = external_exports.object({
+  revision: external_exports.string().regex(/^[a-f0-9]{64}$/),
+  resources: external_exports.array(external_exports.object({
+    path: resourcePath,
+    sha256: external_exports.string().regex(/^[a-f0-9]{64}$/),
+    bytes,
+    mediaType: external_exports.string().min(1).max(256)
+  }).strict()).max(2e4).refine((rows) => new Set(rows.map((row) => row.path)).size === rows.length)
+}).strict();
+
 // src/native-device-bridge.ts
 var route = external_exports.object({ desktopId: external_exports.string().min(1).max(256), profileId: external_exports.literal("desktop"), sessionId: external_exports.string().min(1).max(256) }).strict();
+
+// src/workspace-origin.ts
+var fingerprint2 = external_exports.string().regex(/^p256-sha256-[a-f0-9]{64}$/);
 
 // src/device-route-owner.ts
 var ledger = external_exports.object({ schema: external_exports.literal("harmony-device-route-ledger/1"), offers: external_exports.array(deviceRouteOfferSchema).max(64), routes: external_exports.array(deviceRouteSchema).max(64), retired: external_exports.array(external_exports.string()).max(64) }).strict();
 
+// src/workspace-document-protocol.ts
+var correlation = external_exports.string().regex(/^[0-9]{1,16}$/);
+var workspaceLoadFailure = external_exports.enum(["renderer-boot", "navigation", "native-reply", "script-error", "promise-rejection"]);
+var workspacePortMessageSchema = external_exports.discriminatedUnion("kind", [
+  external_exports.object({ kind: external_exports.literal("workspace.request"), id: correlation, request: external_exports.string() }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.rich-request"), id: correlation, request: external_exports.string() }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.cancel"), id: correlation }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.selection"), sessionId: external_exports.string().min(1).max(256).nullable() }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.ready") }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.failed"), stage: workspaceLoadFailure.optional() }).strict()
+]);
+var workspaceDocumentInitSchema = external_exports.object({
+  protocol: external_exports.literal("harmony-workspace/1"),
+  sessionId: external_exports.string().max(256),
+  plugin: external_exports.string().max(256).optional(),
+  limits: external_exports.object({
+    origin: external_exports.string(),
+    maxRequestBytes: external_exports.number().int().positive(),
+    maxResponseBytes: external_exports.number().int().positive(),
+    maxChunkBytes: external_exports.number().int().positive(),
+    maxPending: external_exports.number().int().positive(),
+    maxPacketBytes: external_exports.number().int().positive()
+  }).strict(),
+  rich: workspaceRichPolicySchema.optional()
+}).strict();
+var workspacePortReplySchema = external_exports.object({
+  kind: external_exports.literal("workspace.reply"),
+  id: correlation,
+  value: external_exports.string(),
+  error: external_exports.boolean()
+}).strict();
+var workspaceNativeMessageSchema = external_exports.union([
+  workspacePortReplySchema,
+  external_exports.object({ kind: external_exports.literal("workspace.rich-packet"), lease: external_exports.string().min(1).max(256), id: correlation.optional(), packet: external_exports.string() }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.closed") }).strict()
+]);
+
 // src/native-product-facade.ts
 var positive = external_exports.number().int().positive().max(2147483647);
 var recovery = external_exports.object({ maxAttempts: positive, retryDelayMs: positive }).strict();
-var policySchema = external_exports.object({ enabled: external_exports.boolean(), trustMaxBytes: positive, transport: external_exports.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: external_exports.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: external_exports.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: external_exports.discriminatedUnion("mode", [external_exports.object({ mode: external_exports.literal("once") }).strict(), external_exports.object({ mode: external_exports.literal("bounded"), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict(), external_exports.object({ mode: external_exports.literal("continuous"), maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: external_exports.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/) }).strict();
+var policySchema = external_exports.object({ enabled: external_exports.boolean(), trustMaxBytes: positive, transport: external_exports.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: external_exports.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: external_exports.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: external_exports.discriminatedUnion("mode", [external_exports.object({ mode: external_exports.literal("once") }).strict(), external_exports.object({ mode: external_exports.literal("bounded"), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict(), external_exports.object({ mode: external_exports.literal("continuous"), maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: external_exports.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/), workspace: external_exports.object({ closeTimeoutMs: positive, maxResourceRequests: positive, maxQueuedResources: positive, maxPending: positive, maxPacketBytes: positive, maxRequestBytes: positive, maxResponseBytes: positive, maxChunkBytes: positive.max(1048576), cache: external_exports.object({ maxEntries: positive, maxBytes: positive }).strict().optional(), rich: workspaceRichPolicySchema.optional() }).strict().refine((value) => value.maxResourceRequests < value.maxPending).optional() }).strict();
 function parseProductPolicy(raw) {
   return policySchema.parse(JSON.parse(raw));
 }
@@ -17196,14 +17332,14 @@ window.addEventListener("message", function bootstrap(event) {
   };
   port.onmessage = (message) => {
     if (closed || typeof message.data !== "string") return;
-    const raw = message.data, bytes = new TextEncoder().encode(raw).length;
-    if (bytes > policy.domain.maxBytes || queuedBytes + bytes > policy.transport.maxPacketBytes || queuedFrames >= policy.transport.maxQueuedFrames) {
+    const raw = message.data, bytes2 = new TextEncoder().encode(raw).length;
+    if (bytes2 > policy.domain.maxBytes || queuedBytes + bytes2 > policy.transport.maxPacketBytes || queuedFrames >= policy.transport.maxQueuedFrames) {
       port.postMessage('{"kind":"rich.failed"}');
       close();
       return;
     }
     ;
-    queuedBytes += bytes;
+    queuedBytes += bytes2;
     queuedFrames++;
     tail = tail.then(async () => {
       if (closed) return;
@@ -17243,7 +17379,7 @@ window.addEventListener("message", function bootstrap(event) {
         close();
       }
     }).finally(() => {
-      queuedBytes -= bytes;
+      queuedBytes -= bytes2;
       queuedFrames--;
     });
   };

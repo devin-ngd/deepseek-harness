@@ -8,7 +8,10 @@ const identifier = z.string().min(1).max(256)
 const publicSpki = z.string().regex(/^[A-Za-z0-9_-]{1,342}$/)
 const publicIdentity = z.object({ publicSpki, credentialId: z.string().regex(/^p256-sha256-[a-f0-9]{64}$/) }).strict()
 const status = z.object({ profileId: identifier, sessionId: identifier, state: z.enum(['not-started', 'offered', 'confirmed', 'transport-started']), publicResult: z.string().max(MAX_PUBLIC_RESULT_BYTES).optional(), steps: z.array(z.string()).max(6) }).strict()
-const deviceState = z.object({ profileId: z.literal('desktop'), sessionId: identifier, state: z.enum(['not-bound', 'offered', 'bound', 'transport-started', 'transport-closed', 'transport-failed', 'stopped', 'revoked', 'route-offered', 'route-ready', 'route-required']), publicResult: z.union([deviceBindingOfferSchema, deviceBindingSchema, deviceRouteOfferSchema, deviceRouteSchema]).optional(), relayPair: z.object({ pairId: identifier, desktopPublicSpki: publicSpki, phonePublicSpki: publicSpki, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER - 1), expiresAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1), revoked: z.boolean() }).strict().optional() }).strict()
+const workspaceState = z.object({ profileId: z.literal('desktop'), sessionId: identifier, state: z.enum(['workspace-enabled', 'workspace-disabled']),
+  publicResult: z.object({ enabled: z.boolean(), expiresAt: z.number().int().nonnegative().max(8640000000000000).nullable() }).strict(),
+}).strict()
+const deviceState = z.object({ profileId: z.literal('desktop'), sessionId: identifier, state: z.enum(['not-bound', 'offered', 'bound', 'transport-started', 'transport-closed', 'transport-failed', 'stopped', 'revoked', 'route-offered', 'route-ready', 'route-required']), savedConnectionReady: z.literal(true).optional(), publicResult: z.union([deviceBindingOfferSchema, deviceBindingSchema, deviceRouteOfferSchema, deviceRouteSchema]).optional(), relayPair: z.object({ pairId: identifier, desktopPublicSpki: publicSpki, phonePublicSpki: publicSpki, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER - 1), expiresAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1), revoked: z.boolean() }).strict().optional() }).strict()
 const idKeys = new Set(['identityAlias', 'desktopId', 'profileId', 'deviceId', 'credentialId', 'desktopCredentialId', 'pairId', 'challengeId'])
 const operations = new Set(['task.submit', 'task.receipt', 'session.cancel', 'session.sync', 'rich.mount', 'rich.snapshot', 'rich.saveDraft', 'rich.invoke', 'rich.status', 'rich.dispose'])
 function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) }
@@ -53,6 +56,15 @@ export function publicDeviceFeedback(text: string | undefined, sessionId: string
   return result.success && result.data.sessionId === sessionId ? result.data : undefined
 }
 
+/** @param text - successful local workspace command result. @param sessionId - exact original Session. @returns the independent workspace grant state, with no identity or ticket fields. */
+export function publicWorkspaceFeedback(text: string | undefined, sessionId: string): z.infer<typeof workspaceState> | undefined {
+  if (text === undefined || new TextEncoder().encode(text).length > MAX_PUBLIC_RESULT_BYTES) return undefined
+  let value: unknown
+  try { value = JSON.parse(text) } catch (error) { if (error instanceof SyntaxError) return undefined; throw error }
+  const result = workspaceState.safeParse(value)
+  return result.success && result.data.sessionId === sessionId ? result.data : undefined
+}
+
 /** @param text - original successful command output. @param sessionId - event's original Session. @returns reviewed public JSON; unknown fields, oversized output and other Sessions are omitted. */
 export function publicFeedback(text: string | undefined, sessionId: string): string | undefined {
   if (text === undefined || new TextEncoder().encode(text).length > MAX_PUBLIC_RESULT_BYTES) return undefined
@@ -61,6 +73,8 @@ export function publicFeedback(text: string | undefined, sessionId: string): str
   if (text === 'Desktop grant revoked; relay public revocation remains separately owned.') return JSON.stringify({ sessionId, state: 'revoked' }, null, 2)
   let value: unknown
   try { value = JSON.parse(text) } catch (error) { if (error instanceof SyntaxError) return undefined; throw error }
+  const workspace = workspaceState.safeParse(value)
+  if (workspace.success) return workspace.data.sessionId === sessionId ? JSON.stringify(workspace.data, null, 2) : undefined
   const device = deviceState.safeParse(value)
   if (device.success) return device.data.sessionId === sessionId ? JSON.stringify(device.data, null, 2) : undefined
   const state = status.safeParse(value)

@@ -13,6 +13,7 @@ import { id } from './protocol.ts'
 import { verifyDeviceRoute, type DeviceRoute } from './device-route-protocol.ts'
 import type { ProductConnection } from './paired-product-transport.ts'
 import { deviceSessionActionSchema } from './device-session-directory.ts'
+import { workspaceRequestSchema } from './workspace-protocol.ts'
 
 const route = z.object({ desktopId: z.string().min(1).max(256), profileId: z.literal('desktop'), sessionId: z.string().min(1).max(256) }).strict()
 /** Existing native crypto/socket owner supplies all ports; only public registration and a routing deadline are input JSON. */
@@ -112,6 +113,8 @@ export class NativeDeviceCore implements ProductConnection {
     else if (method === 'select') this.selected(fields(value, ['method', 'route']).route)
     else if (method === 'request') this.selected(fields(value, ['method', 'route', 'argument']).route)
     else if (method === 'manage') deviceSessionActionSchema.parse(fields(value, ['method', 'action']).action)
+    else if (method === 'creation-options') fields(value, ['method'])
+    else if (method === 'workspace') workspaceRequestSchema.parse(fields(value, ['method', 'argument']).argument)
     else throw new Error('native device method denied')
     await endpoint.send(jsonPayload({ kind: 'request', id: text(idText), value }))
   }

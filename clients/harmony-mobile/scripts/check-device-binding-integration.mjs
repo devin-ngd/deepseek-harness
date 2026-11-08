@@ -6,8 +6,12 @@ import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 const client = resolve('.'), root = JSON.parse(await readFile('source.json', 'utf8')).dshRoot, require = createRequire(join(root, 'package.json')), ts = require('typescript')
 const legacy = process.argv.length === 3 && process.argv[2] === '--legacy'
-const focus = process.argv.length === 4 && process.argv[2] === '--case' && ['encrypted', 'deadline', 'journal', 'paired'].includes(process.argv[3]) ? process.argv[3] : undefined
-if (process.argv.length > 2 && !legacy && focus === undefined) throw new Error('Only --legacy or --case encrypted/deadline/journal/paired is supported; real devices and models are not accepted')
+const cases = new Map([
+  ['encrypted', 'new native facade performs actual encrypted'], ['deadline', 'room issuance respects absolute'],
+  ['journal', 'admission journal'], ['paired', 'paired startup reuses'], ['panel-recovery', 'phone connection panel resumes a saved pairing'],
+])
+const focus = process.argv.length === 4 && process.argv[2] === '--case' && cases.has(process.argv[3]) ? process.argv[3] : undefined
+if (process.argv.length > 2 && !legacy && focus === undefined) throw new Error('Only --legacy or --case ' + [...cases.keys()].join('/') + ' is supported; real devices and models are not accepted')
 await mkdir('.build', { recursive: true })
 const world = await mkdtemp(join(client, '.build/device-integration-')), helper = resolve('.build/device-integration-vitest.mjs')
 await writeFile(helper, ts.transpileModule(await readFile(join(root, 'vitest.shared.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }, fileName: join(root, 'vitest.shared.ts') }).outputText)
@@ -24,7 +28,7 @@ const run = async (args, cwd) => {
 }
 const preparation = await run(['scripts/product-native-substitute.mjs'], client)
 if (preparation.code !== 0) throw new Error('Synthetic SDK composition failed')
-const outcome = await run([join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--configLoader', 'native', '--config', join(world, 'config.mjs'), ...(focus === undefined ? [] : ['--testNamePattern', focus === 'paired' ? 'paired startup reuses' : focus === 'encrypted' ? 'new native facade performs actual encrypted' : focus === 'journal' ? 'admission journal' : 'room issuance respects absolute']), '--reporter=default', '--reporter=json', '--outputFile=' + join(world, 'report.json')], root)
+const outcome = await run([join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--configLoader', 'native', '--config', join(world, 'config.mjs'), ...(focus === undefined ? [] : ['--testNamePattern', cases.get(focus)]), '--reporter=default', '--reporter=json', '--outputFile=' + join(world, 'report.json')], root)
 await writeFile(join(world, 'test.log'), outcome.log)
 const tests = JSON.parse(await readFile(join(world, 'report.json'), 'utf8')), evidence = 'evidence/device-integration-' + (legacy ? 'legacy-' : '') + Date.now() + '.json'
 const record = { at: new Date().toISOString(), code: outcome.code, passed: tests.numPassedTests, failed: tests.numFailedTests, focusedCase: focus, world, report: join(world, 'report.json'), sdkSubstituted: true, loopbackOnly: true, realIdentityAccess: false, realModels: 0, remoteRelay: false, installed: false, deviceAccepted: false }

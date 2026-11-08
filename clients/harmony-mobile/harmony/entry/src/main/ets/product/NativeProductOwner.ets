@@ -13,6 +13,7 @@ import { NativeCryptoPrimitives } from '../native/NativeCryptoPrimitives'
 import { NativeFailure } from '../native/NativeFailure'
 import { NativeDeviceProductOwner } from './NativeDeviceProductOwner'
 import { NativeProductRichPort } from './NativeProductRichOwner'
+import { NativeWorkspaceProduct } from './NativeWorkspaceProduct'
 /** Deployment inputs must be supplied locally; device API 0 keeps the source app inactive. */
 export interface NativeDeviceRecoveryPolicy { bindingId: string; epoch: number; desktopCredentialId: string; credentialId: string; identityAlias: string; retiredRoutes: string[] }
 export interface NativeProductConfiguration { deviceRecovery?: NativeDeviceRecoveryPolicy; deviceBindingMode?: boolean; deviceAutoConnect?: boolean; deviceReconnectMs?: number; deviceRoutingTtlMs?: number; deviceCatalogRefreshMs?: number; enabled: boolean; approvedHost: string; identityAlias: string; deviceApiVerified: number; maxCryptoBytes: number; maxTotalSendBytes: number; publicTrustMaxBytes: number; corePolicyJson: string; relay: NativeRelayBudgets }
@@ -41,7 +42,7 @@ class Connection implements ProductConnection {
   close(): Promise<void> { return this.owner.closeNative(this.authority) }
 }
 /** ArkUI alone selects pair/connect/session/task/revoke. Native lifecycle closes the shared product plus all late connections. */
-export class NativeProductOwner implements NativeProductRichPort {
+export class NativeProductOwner implements NativeProductRichPort, NativeWorkspaceProduct {
   private device: NativeDeviceProductOwner | undefined = undefined
   private authority: object = new ProductAuthority()
   private config: NativeProductConfiguration
@@ -207,6 +208,14 @@ export class NativeProductOwner implements NativeProductRichPort {
   select(session: string): Promise<void> { if (this.device !== undefined) return this.device.select(session); return this.core().select(this.authority, session) }
   /** @param raw - list-management intent JSON. @returns created or changed Session id; legacy scopes have no list management. */
   manage(raw: string): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device list management required')); return this.device.manage(raw) }
+  creationOptions(): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device creation choices required')); return this.device.creationOptions() }
+  refreshSessions(): Promise<void> { if (this.device === undefined) return Promise.reject(new Error('device directory required')); return this.device.refreshSessions() }
+  workspaceGeneration(): number { if (this.device === undefined) throw new Error('device workspace required'); return this.device.workspaceGeneration() }
+  workspaceContext(): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device workspace required')); return this.device.workspaceContext() }
+  workspacePrepare(requestId: string, generation: number): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device workspace required')); return this.device.workspacePrepare(requestId, generation) }
+  workspaceRequest(requestId: string, raw: string, generation: number): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device workspace required')); return this.device.workspaceRequest(requestId, raw, generation) }
+  workspaceResource(requestId: string, url: string, generation: number, maxBytes: number, maxChunkBytes: number): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('device workspace required')); return this.device.workspaceResource(requestId, url, generation, maxBytes, maxChunkBytes) }
+  cancelWorkspaceRequest(requestId: string): void { this.device?.cancelWorkspaceRequest(requestId) }
   submit(request: string, text: string): Promise<string> { if (this.device !== undefined) return this.device.submit(request, text); return this.core().submit(this.authority, request, text) }
   receipt(request: string): Promise<string> { if (this.device !== undefined) return this.device.receipt(request); return this.core().receipt(this.authority, request) }
   cancel(): Promise<void> { if (this.device !== undefined) return this.device.cancel(); return this.core().cancel(this.authority) }

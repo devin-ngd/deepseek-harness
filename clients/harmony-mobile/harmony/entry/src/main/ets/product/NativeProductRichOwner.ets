@@ -46,6 +46,12 @@ export class NativeProductRichOwner {
   private flush(): void { if (this.closed || !this.ready || this.port === undefined || this.sentMount === this.mount) return; this.sentMount = this.mount; this.port.postMessageEvent(this.mount === '' ? '{"kind":"rich.clear"}' : '{"kind":"rich.mount","mount":' + this.mount + '}') }
   allow(url: string, main: boolean): boolean { return !this.closed && (main ? url === DOCUMENT || !this.ready && url === 'about:blank' || this.exactData(url) : url === 'about:blank' || url === 'about:srcdoc') }
   navigation(url: string): void { if (!this.allow(url, true)) void this.close() }
-  async foreground(): Promise<void> { await this.closing; if (!this.closed) return; this.closed = false; this.closing = undefined; this.attached() }
+  /** A replacement Web starts its document through onControllerAttached. */
+  async foreground(): Promise<void> {
+    await this.closing
+    if (!this.closed) return
+    this.closed = false; this.closing = undefined
+    if (this.controller.getAttachState() === webview.ControllerAttachState.ATTACHED) this.attached()
+  }
   close(): Promise<void> { if (this.closing !== undefined) return this.closing; this.closed = true; this.ready = false; this.generation++; const port = this.port; this.port = undefined; this.mount = ''; this.sentMount = undefined; this.html = ''; try { port?.close() } catch (error) { void error; this.failed = true }; this.closing = (async () => { const results = await Promise.allSettled(this.work); this.work.clear(); if (this.failed || results.some(result => result.status === 'rejected')) throw new Error('native rich cleanup failed') })(); return this.closing }
 }

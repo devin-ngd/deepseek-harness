@@ -1,0 +1,16 @@
+{
+  "workspace": [
+    { "kind": "success", "state": "not-bound" },
+    { "kind": "success", "state": "offered" },
+    { "kind": "success", "state": "bound" },
+    { "kind": "success", "state": "workspace-disabled" },
+    { "kind": "error", "text": "Workspace access was not approved." },
+    { "kind": "success", "state": "workspace-disabled" },
+    { "kind": "success", "state": "workspace-enabled" },
+    { "kind": "success", "state": "workspace-disabled" }
+  ],
+  "nativeOnly": [
+    { "kind": "success", "state": "not-bound" },
+    { "kind": "error", "text": "Standard workspace is not enabled in this deployment." }
+  ]
+}

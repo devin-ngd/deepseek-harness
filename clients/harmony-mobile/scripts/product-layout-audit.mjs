@@ -13,7 +13,7 @@ export async function productLayoutParser() {
 }
 
 // ForEach stays a call so its item callbacks parse as UI builders, matching the official parser configuration.
-const productPageComponents = ['Stack', 'Scroll', 'Column', 'Row', 'Flex', 'Text', 'TextInput', 'TextArea', 'Checkbox', 'Button', 'List', 'ListItem', 'SymbolGlyph', 'LoadingProgress', 'Circle', 'ProductRichSurface', 'TaskState', 'MessageView']
+const productPageComponents = ['Stack', 'Scroll', 'Column', 'Row', 'Flex', 'Text', 'TextInput', 'TextArea', 'Checkbox', 'Button', 'List', 'ListItem', 'SymbolGlyph', 'LoadingProgress', 'Circle', 'ProductRichSurface', 'WorkspaceSurface', 'WorkspaceRichSurface', 'TaskState', 'MessageView']
 /** ETS parser options for the page: its components plus the official `@Extend`, `@Styles` and build-method settings the parser requires for those declarations. */
 export const productParseOptions = { ets: {
   components: productPageComponents,
@@ -99,7 +99,15 @@ export function auditProductLayout(ts, source) {
   assert.equal(viewport.name, 'Stack', 'History and its overlay controls must share one viewport')
   assert.deepEqual(viewport.attributes.get('layoutWeight'), ['1'], 'History must use only the remaining viewport height')
   assert.equal(viewport.attributes.has('height'), false, 'History must leave room for conversation controls')
-  const scroll = component(ts, viewport.node.body.statements[0].expression, file)
+  const workspace = viewport.node.body.statements[0]
+  assert.ok(ts.isIfStatement(workspace) && workspace.expression.getText(file) === "this.page === 'workspace'", 'The workspace must replace native scrolling in the remaining viewport')
+  const views = workspace.thenStatement.statements[0].expression
+  assert.ok(ts.isCallExpression(views) && views.expression.getText(file) === 'ForEach', 'Workspace retry must create a new Web component')
+  assert.equal(views.arguments[0].getText(file), 'this.workspaceMounted ? [this.workspaceViewGeneration] : []', 'The workspace must unmount its Web before waiting for controller detachment')
+  assert.equal(component(ts, views.arguments[1].body.statements[0].expression, file).name, 'WorkspaceSurface', 'The workspace needs its separate trusted Web surface')
+  assert.equal(views.arguments[2].getText(file), '(generation: number) => generation.toString()', 'Web component identity must follow its native owner generation')
+  assert.ok(workspace.elseStatement && ts.isBlock(workspace.elseStatement), 'Native history must remain in the other page branch')
+  const scroll = component(ts, workspace.elseStatement.statements[0].expression, file)
   assert.equal(scroll.name, 'Scroll', 'Page content must retain one history viewport')
   assert.deepEqual(scroll.attributes.get('scrollable'), ['ScrollDirection.Vertical'])
   assert.deepEqual(scroll.attributes.get('height'), ["'100%'"], 'History must fill exactly its remaining viewport')
@@ -127,7 +135,11 @@ export function auditProductLayout(ts, source) {
     const name = node.expression.text, modifiers = attributes(ts, node, file), parents = ancestors(ts, node)
     if (name === 'Scroll') scrollCount++
     assert.ok(!['List', 'ListItem'].includes(name), 'The transcript must use the page scroll rather than another native viewport')
-    if (name === 'Column' && node !== root.node) assert.equal(modifiers.has('height'), false, 'Native section height must follow content')
+    if (name === 'Column' && modifiers.get('id')?.[0] === "'product-workspace-rich'") {
+      assert.ok(within(node, workspace.thenStatement), 'Rich guest must remain inside the workspace viewport')
+      assert.deepEqual(modifiers.get('height'), ["'100%'"], 'Rich guest must fill the workspace viewport')
+      assert.deepEqual(modifiers.get('width'), ["'100%'"], 'Rich guest must fill the workspace viewport')
+    } else if (name === 'Column' && node !== root.node) assert.equal(modifiers.has('height'), false, 'Native section height must follow content')
     if (name === 'Button' && iconOnly(ts, node, file)) {
       assert.ok(modifiers.has('accessibilityText'), 'Icon-only buttons need an accessible name')
       assert.ok(modifiers.has('width') && modifiers.has('height'), 'Icon-only buttons need a fixed touch target')

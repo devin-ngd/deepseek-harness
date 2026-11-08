@@ -20,9 +20,11 @@ HUKS 返回值保持 `publicNativeBytes/signNativeBytes`，未猜测为 SPKI DER
 
 两端每次连接必须使用新的 transient ECDH key 和 CSPRNG nonce。先交换仅含 role、临时公钥与 nonce 的 hello，使用固定顺序的 transcript 加上临时 room 派生 binding。HKDF-SHA256 为两个方向分离 AES256-GCM key 与 nonce prefix；加密 finished proof 验证事先确认的身份 pin，不接受 frame 自带公钥变成信任。只有双方 finished 后才返回 host-only transport object，再由 phase34 的 key/epoch/expiry/scope proof 创建独立 Peer。visible binding id 不能代替这个对象，也不称作 TLS exporter。
 
+通道 ID 使用握手摘要的 Base64URL 编码，首字符为 `-` 或 `_` 时加 `b-` 前缀以满足 ID 语法。字母或数字开头的通道 ID 沿用原字节，密钥派生仍使用原始摘要。兼容这两种首字符需要两端使用修复版。
+
 消息使用同一 shared counter state，header 的 protocol/binding/role/sequence/kind 全部作 AAD。tag、role、room/transcript、顺序、重放、长度和预算错误均拒绝；无明文 fallback。异步原语完成后再次检查关闭状态，晚到结果不能恢复连接；关闭清理已拥有的派生 buffer。不能保证 garbage-collected key object 的物理内存擦除。固定 invocation 上限是 `2^32-1`，部署预算显式配置且不得超过它。
 
-12 个 crypto/owner 用例验证了真实库算法、rich HTML/Unicode 密文往返、错误 pin、跨 room、tamper、方向、重放/顺序、并发 counter、close race 和 phase34 撤销；7 个 SDK 替身用例验证原生 gate、alias 保留、unknown outcome、签名 abort、HKDF/GCM API 参数和跨 backend 共享状态。替身不算 native execution，未重跑全仓。证据分别为 [crypto](../evidence/phase35-vitest.json)、[scope](../evidence/phase35-crypto-scope.json)、[substitute](../evidence/phase35-native-substitute.tap) 与 [browser bundle](../evidence/phase35-browser-bundle.json)。自定义 framing/握手仍须独立安全审查，算法通过不等于生产安全认证。
+15 个 crypto/owner 用例覆盖真实库算法、通道 ID 的三个固定首字符、rich HTML/Unicode 密文往返、错误 pin、跨 room、tamper、方向、重放/顺序、并发 counter、close race 和 phase34 撤销。7 个 SDK 替身用例覆盖原生 gate、alias 保留、unknown outcome、签名 abort、HKDF/GCM API 参数和跨 backend 共享状态。生产握手仍需独立安全审查。证据见 [crypto](../evidence/phase35-vitest.json)、[scope](../evidence/phase35-crypto-scope.json)、[substitute](../evidence/phase35-native-substitute.tap) 与 [browser bundle](../evidence/phase35-browser-bundle.json)。
 
 ## 香港 relay 的可见数据与职责
 

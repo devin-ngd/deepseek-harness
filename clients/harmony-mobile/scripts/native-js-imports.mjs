@@ -10,11 +10,12 @@ export function auditNativeCoreImports(source, label) {
     if (ts.isExportDeclaration(statement) && statement.moduleSpecifier) throw new Error('Compiled native core must bundle re-exports: ' + label)
     if (!ts.isImportDeclaration(statement)) continue
     const module = statement.moduleSpecifier.text, clause = statement.importClause
-    if (module !== '@ohos:util' || !clause?.name || clause.namedBindings) throw new Error('Compiled native core requires default @ohos:util; inspect JavaScript SDK import: ' + label)
+    if (!['@ohos:util', '@ohos:url'].includes(module) || !clause?.name || clause.namedBindings) throw new Error('Compiled native core requires default @ohos:util and optional default @ohos:url; inspect JavaScript SDK import: ' + label)
     imports.push({ module, binding: 'default' })
   }
-  if (imports.length !== 1) throw new Error('Compiled native core must import native util exactly once: ' + label)
-  return { file: label, ...imports[0] }
+  const util = imports.filter(value => value.module === '@ohos:util'), url = imports.filter(value => value.module === '@ohos:url')
+  if (util.length !== 1 || url.length > 1) throw new Error('Compiled native core must import native util exactly once and native url at most once: ' + label)
+  return { file: label, ...util[0], ...(url.length === 0 ? {} : { additionalImports: url }) }
 }
 /** @param {string} native Isolated unsigned project root. @param {string[]} expected Core filenames required by the selected application. @returns {Promise<object>} Verified compiler-recorded JavaScript imports. */
 export async function verifyNativeJsImports(native, expected) {

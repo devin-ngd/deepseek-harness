@@ -1,5 +1,6 @@
 /** Desktop Session directory rows and list-management actions carried by the device carrier `metadata` and `manage` methods; no host path is carried. */
 import { z } from 'zod'
+import { creationModelSelectionSchema } from './session-creation.ts'
 
 const identifier = z.string().min(1).max(256)
 /** One visible desktop Session. Desktops before directory state send only the first four fields; readers default the rest to an idle, unpinned, unarchived, non-blank row with unknown activity time. */
@@ -17,7 +18,8 @@ export type DeviceProjectRow = Readonly<z.output<typeof deviceProjectRowSchema>>
 export interface DeviceSessionDirectory { readonly sessions: readonly DeviceSessionRow[]; readonly projects: readonly DeviceProjectRow[] | null }
 /** Phone list-management intent: create a blank Session (in a project or the desktop default directory), or change one visible Session's archive or pin state. No model step starts. */
 export const deviceSessionActionSchema = z.union([
-  z.object({ action: z.literal('create'), projectId: identifier.nullable() }).strict(),
+  z.object({ action: z.literal('create'), projectId: identifier.nullable(),
+    agentPreset: identifier.optional(), model: creationModelSelectionSchema.optional() }).strict(),
   z.object({ action: z.enum(['archive', 'unarchive', 'pin', 'unpin']), sessionId: identifier }).strict(),
 ])
 /** Parsed list-management intent. */

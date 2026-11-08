@@ -7,6 +7,7 @@ import Gateway from '@deepseek-ai/dsh-api-gateway'
 import Authorization from '@deepseek-ai/dsh-authorization'
 import UserQuestions from '@deepseek-ai/dsh-user-questions'
 import * as DeviceCommand from '../desktop-plugin/src/device-binding-command.ts'
+import { ControlModel } from '../desktop-plugin/client/control-model.ts'
 import { WindowsCurrentUserProtection } from '../desktop-plugin/src/windows-protection.ts'
 import { FixedIdentityProtection, fixedProtectedIdentity } from './fixed-identity-protection.ts'
 import WebSocket from 'ws'
@@ -14,8 +15,10 @@ import { installFourResponses } from './replay-host.ts'
 import { submitProductForm } from './product-browser.ts'
 import { NativeProductOwner, resetProductSdk, state, sdk, network, context } from '../tests/helpers/product-native-harness.mjs'
 import { NativeDeviceProductFacade } from '../src/native-device-product.ts'
+import { NativeDeviceCore } from '../src/native-device-bridge.ts'
 import { parseProductPolicy } from '../src/native-product-facade.ts'
 import { DeviceBindingDesktopRelay } from '../desktop-plugin/src/device-binding-relay.ts'
+import { deviceSnapshotMaxBytes } from '../desktop-plugin/src/session-window.ts'
 import { createStandaloneRelay } from '../standalone-relay/src/host.ts'
 import { nodeRelaySocket } from './relay-upgrade.ts'
 import { ImportedP256Agreement } from './p256-channel.ts'
@@ -26,7 +29,7 @@ import { loadProfileServices } from './profile-services.ts'
 import { desktopKey, phoneKey, fixtureSource } from './phase39-fixture.ts'
 import { nodeE2EPrimitives, p256CredentialId } from './p256-channel.ts'
 import { id } from '../src/protocol.ts'
-import { MOBILE_LINK_PROTOCOL } from '../src/link-protocol.ts'
+import { fields, MOBILE_LINK_PROTOCOL, parseCommand, text } from '../src/link-protocol.ts'
 import { PROFILE_RPC_CODEC } from '../src/profile-rpc-codec.ts'
 import { deviceBindingReplyBytes, deviceRelayPairId } from '../src/device-binding-protocol.ts'
 import { DeviceBindingOwner } from '../desktop-plugin/src/device-binding.ts'
@@ -298,8 +301,12 @@ it('revocation preserves the previous public generation, invalidates the origina
   } finally { await f.close() }
 })
 
-it('new native facade performs actual encrypted local carrier proofs, dynamic selection and canonical snapshots without any model', async () => {
-  const f = await fixture('binding-encrypted-native'); const sockets: WebSocket[] = []
+it.each([
+  { name: 'expanded relay budget', maxFrameBytes: 8388608, maxPlaintextBytes: 5242880, expectedMessages: 50 },
+  { name: 'field relay budget', maxFrameBytes: 2097152, maxPlaintextBytes: 1048576, expectedMessages: 12 },
+  { name: 'encrypted frame budget', maxFrameBytes: 1048576, maxPlaintextBytes: 5242880, expectedMessages: 12 },
+])('new native facade performs actual encrypted local carrier proofs and canonical snapshots with $name', async ({ maxFrameBytes, maxPlaintextBytes, expectedMessages }) => {
+  const f = await fixture('binding-encrypted-native-' + maxFrameBytes + '-' + maxPlaintextBytes); const sockets: WebSocket[] = []
   const audit: string[] = [], failures: unknown[] = []
   let app: NativeDeviceProductFacade | undefined, stopDesktop: (() => Promise<void>) | undefined, relay: ReturnType<typeof createStandaloneRelay>, desktopRoutes: DeviceRouteOwner | undefined
   try {
@@ -307,7 +314,7 @@ it('new native facade performs actual encrypted local carrier proofs, dynamic se
     await f.ctx.sessionController.create({ sessionId: first, cwd: f.world }); await f.ctx.sessionController.create({ sessionId: second, cwd: f.world })
     const largeHistory = f.ctx.sessions.get(second)!
     for (let step = 1; step <= 50; step++) largeHistory.append('assistant/message', { turn: 1, step, stream: [], message: createAssistantMessage({ content: [{ type: 'text', text: 'large-history-' + step + ' ' + 'x'.repeat(62000) }], source: { provider: 'fixed', model: 'fixed' } }) }, { surfaceOp: 'append' })
-    const base = JSON.parse(await readFile(new URL('../product.config.json', import.meta.url), 'utf8')), policy = { ...base.core, enabled: true, commandPrefix: 'encrypted-native', transport: { ...base.core.transport, timeoutMs: 10000 } }, budgets = { ...base.relay, maxProofs: 64, maxQueuedBytes: 16777216, maxChallengeTtlMs: 10000, maxRoomTtlMs: 60000, handshakeMs: 10000, e2e: { maxFrameBytes: 8388608, maxPlaintextBytes: 5242880, maxFrames: 4096 } }, expiresAt = Date.now() + 120000
+    const base = JSON.parse(await readFile(new URL('../product.config.json', import.meta.url), 'utf8')), policy = { ...base.core, enabled: true, commandPrefix: 'encrypted-native', transport: { ...base.core.transport, timeoutMs: 10000 } }, phoneBudgets = { ...base.relay, maxProofs: 64, maxChallengeTtlMs: 10000, maxRoomTtlMs: 60000, handshakeMs: 10000 }, budgets = { ...phoneBudgets, e2e: { maxFrameBytes, maxPlaintextBytes, maxFrames: 4096 } }, expiresAt = Date.now() + 120000
     const scheduler = { after: (ms: number, callback: () => void) => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } }
     let record: string | null = null, storageRead = false, acquisitions = 0, agreement = 10
     const storage = { read: async () => { if (storageRead) throw new Error('fixture exclusive native file cannot be reread'); storageRead = true; return record }, write: async (raw: string) => { record = raw }, close: async () => {} }, views: Array<{ selected: string; readOnly: boolean; sessions: Array<{ sessionId: string }>; connection: string; richJson: string; task: string; messages: unknown[]; error: string }> = []
@@ -320,7 +327,10 @@ it('new native facade performs actual encrypted local carrier proofs, dynamic se
     const ports = (role: 'desktop' | 'phone', pair: string) => ({ control: nodeRelaySocket(ws('/harmony/relay/control/v1', 'harmony-relay-control-v1', { 'X-DSH-Relay-Pair': pair, 'X-DSH-Relay-Role': role }), 64, false), signer: role === 'desktop' ? desktopKey : phoneKey, primitives: nodeE2EPrimitives, remotePublicSpki: (role === 'desktop' ? phoneKey : desktopKey).publicSpki, scheduler, clock: Date.now,
       controlDiagnostic: (stage: ControlDiagnostic) => { audit.push(role + '-control-' + stage) }, diagnostic: (stage: E2EDiagnostic) => { audit.push(role + '-e2e-' + stage) },
       agreement: async () => { const n = ++agreement; return { key: new ImportedP256Agreement(fixtureKey(n).pkcs8), nonce: Buffer.alloc(32, n) } }, data: async (lease: { receipt: { token: string; room: string } }) => nodeRelaySocket(ws('/harmony/relay/v1', 'dsh-relay-v1', { Authorization: 'Bearer ' + lease.receipt.token, 'X-DSH-Relay-Room': lease.receipt.room, 'X-DSH-Relay-Role': role }), 64) })
-    app = new NativeDeviceProductFacade(f.native, JSON.stringify(policy), f.policy.identityAlias, f.policy.audience, expiresAt, budgets, storage, { signer: phoneKey, primitives: nodeE2EPrimitives }, scheduler, Date.now, async raw => { acquisitions++; const value = JSON.parse(raw), network = ports('phone', value.offer.routeId); return { ports: network, open: async () => {}, authenticated: () => {}, close: async () => { network.control.terminate() } } }, raw => views.push(JSON.parse(raw)), 50, routeMemory())
+    const routes = routeMemory()
+    const foregroundSelection = { binding: null, sessionId: '' }
+    const openFacade = () => new NativeDeviceProductFacade(f.native, JSON.stringify(policy), f.policy.identityAlias, f.policy.audience, expiresAt, phoneBudgets, storage, { signer: phoneKey, primitives: nodeE2EPrimitives }, scheduler, Date.now, async raw => { acquisitions++; const value = JSON.parse(raw), network = ports('phone', value.offer.routeId); return { ports: network, open: async () => {}, authenticated: () => {}, close: async () => { network.control.terminate() } } }, raw => views.push(JSON.parse(raw)), 50, routes, false, foregroundSelection)
+    app = openFacade()
     await app.boot(); expect(acquisitions).toBe(0)
     const offer = await f.owner.offer(f.authority, { publicSpki: phoneKey.publicSpki, credentialId: p256CredentialId(phoneKey.publicSpki) })
     expect(JSON.parse(await app.previewEnrollment(JSON.stringify(offer))).deviceBinding).toBe(true)
@@ -331,7 +341,7 @@ it('new native facade performs actual encrypted local carrier proofs, dynamic se
     const relayConfig = (routeId: string, expiry: number) => ({ ...hostConfig, nativeOrigin: 'networkkit-v1', publicHost: f.policy.audience, pairTimeoutMs: 10000, maxRoomTtlMs: 60000, maxFrameBytes: 8388608, maxBufferedBytes: 16777216, maxFrames: 4096, idleTimeoutMs: 60000, broker: { ...hostConfig.broker, pairs: [{ pairId: routeId, desktopPublicSpki: binding.desktopPublicSpki, phonePublicSpki: binding.phonePublicSpki, epoch: 1, expiresAt: expiry, revoked: false }], challengeTtlMs: 10000, roomTtlMs: 60000, maxChallengesPerConnection: 64, maxRoomIssuesPerWindow: 32, maxOwnerRoomIssues: 64 } })
     relay = createStandaloneRelay(relayConfig(route.offer.routeId, route.offer.expiresAt), {}, Date.now, () => {}, fixtureSource())
     if (relay === undefined) throw new Error('local fixture missing'); await relay.start()
-    const provider = new DeviceBindingProfileProvider(f.ctx, Date.now), options = { enabled: true, desktopId: f.policy.desktopId, profileId: 'desktop', journalMode: 'create' as const }; await f.ctx.plugin(Desktop, options)
+    const provider = new DeviceBindingProfileProvider(f.ctx, Date.now), options = { enabled: true, desktopId: f.policy.desktopId, profileId: 'desktop', journalMode: 'create' as const, snapshotMaxBytes: deviceSnapshotMaxBytes(budgets.e2e, maxFrameBytes) }; await f.ctx.plugin(Desktop, options)
     const spec = Desktop.resolveOptions(options, Date.now)
     let lastMounted: DeviceBindingDesktopRelay | undefined
     const mount = (next: typeof route) => (lastMounted = new DeviceBindingDesktopRelay(f.owner, provider, { desktopId: binding.desktopId, route: next, isRouteCurrent: async () => JSON.stringify(await desktopRoutes!.current(f.authority)) === JSON.stringify(next), trust: { pairId: id<'harmony-relay-pair'>(next.offer.routeId), epoch: next.offer.routeEpoch, role: 'desktop', audience: binding.audience, credentialId: id<'harmony-device-credential'>(binding.desktopCredentialId), expiresAt: next.offer.expiresAt }, policy: budgets, limits: spec.limits, openPorts: () => ports('desktop', next.offer.routeId) })).mount(f.ctx)
@@ -342,8 +352,14 @@ it('new native facade performs actual encrypted local carrier proofs, dynamic se
     await vi.waitFor(() => expect(views.at(-1)?.selected).toBe(first))
     await vi.waitFor(() => expect(views.at(-1)?.readOnly).toBe(false))
     await app.select(second)
-    await vi.waitFor(() => { const view = views.at(-1); expect(view?.selected).toBe(second); expect(view?.messages).toHaveLength(50); expect(view?.error).toBe('') })
+    await vi.waitFor(() => { const view = views.at(-1); expect(view?.selected).toBe(second); expect(view?.messages).toHaveLength(expectedMessages); expect(view?.error).toBe('') }).catch(error => { throw new Error('History follow audit: ' + audit.slice(-20).join(' > '), { cause: error }) })
     await app.select(first); await vi.waitFor(() => expect(views.at(-1)?.readOnly).toBe(false))
+    if (expectedMessages < 50) {
+      expect(acquisitions).toBe(1)
+      expect(audit.filter(entry => entry.endsWith('-peer-verified'))).toHaveLength(2)
+      expect(audit.some(entry => entry.includes('-closed'))).toBe(false)
+      return
+    }
     for (let step = 51; step <= 100; step++) largeHistory.append('assistant/message', { turn: 1, step, stream: [], message: createAssistantMessage({ content: [{ type: 'text', text: 'large-history-' + step + ' ' + 'x'.repeat(125000) }], source: { provider: 'fixed', model: 'fixed' } }) }, { surfaceOp: 'append' })
     await app.select(second)
     await vi.waitFor(() => { const view = views.at(-1); expect(view?.selected).toBe(second); expect(view?.messages).toHaveLength(25); expect(view?.error).toBe(''); expect(view?.readOnly).toBe(false) })
@@ -361,13 +377,20 @@ it('new native facade performs actual encrypted local carrier proofs, dynamic se
     expect(await app.richRequest(browser.packet)).toBe(browser.receipt)
     await f.ctx.agents.get(first)!.whenIdle()
     expect(f.ctx.llm.getOfflineReplayCounts().replay[0]?.calls).toBe(3)
-    await app.select(future); await vi.waitFor(() => expect(views.at(-1)?.selected).toBe(future)); expect(acquisitions).toBe(1)
+    const restoredText = 'Synthetic briefing before foreground restoration.'
+    const restoredMessage = createAssistantMessage({ content: [{ type: 'text', text: restoredText }], source: { provider: 'fixed', model: 'fixed' } })
+    f.ctx.sessions.get(future)!.append('assistant/message', { turn: 1, step: 1, stream: [], message: restoredMessage }, { surfaceOp: 'append' })
+    await app.select(future); await vi.waitFor(() => expect(views.at(-1)?.messages).toMatchObject([{ text: restoredText }])); expect(acquisitions).toBe(1)
     await expect(app.richRequest(browser.packet)).rejects.toThrow()
     await app.stopRoute(); await stopDesktop(); expect(lastMounted?.terminalState).toBe('closed'); stopDesktop = undefined; await desktopRoutes.retire(f.authority); await relay.close()
+    await app.close(); storageRead = false
+    app = openFacade(); await app.boot(); expect(acquisitions).toBe(1)
     const nextOffer = await desktopRoutes.offer(f.authority, 60000), nextRoute = await desktopRoutes.confirm(f.authority, JSON.parse(await app.signRoute(JSON.stringify(nextOffer), true)))
     expect(nextRoute.offer.routeId).not.toBe(route.offer.routeId); expect(nextRoute.offer.binding).toEqual(binding)
     relay = createStandaloneRelay(relayConfig(nextRoute.offer.routeId, nextRoute.offer.expiresAt), {}, Date.now, () => {}, fixtureSource()); if (relay === undefined) throw new Error('second route relay missing'); await relay.start(); stopDesktop = await mount(nextRoute)
-    await app.connect(true).catch(error => { throw new Error('isolated second-window proof audit: ' + audit.slice(-32).join(' > '), { cause: error }) }); await app.select(future); await vi.waitFor(() => expect(views.at(-1)?.selected).toBe(future)); expect(acquisitions).toBe(2)
+    await app.connect(true).catch(error => { throw new Error('isolated second-window proof audit: ' + audit.slice(-32).join(' > '), { cause: error }) })
+    await vi.waitFor(() => { expect(views.at(-1)?.selected).toBe(future); expect(views.at(-1)?.messages).toMatchObject([{ text: restoredText }]) })
+    expect(acquisitions).toBe(2)
     expect(await f.storage.read()).toBe(JSON.stringify(binding)); expect(f.ctx.llm.getOfflineReplayCounts().replay[0]?.calls).toBe(3)
     await app.select(first)
     await vi.waitFor(() => { expect(views.at(-1)?.selected).toBe(first); expect(views.at(-1)?.readOnly).toBe(false) })
@@ -447,6 +470,64 @@ it('normal device command preserves original identities and old grants, cancels 
     expect(f.ctx.sessions.get(session)!.snapshotEvents().filter(event => event.type === 'turn/start')).toHaveLength(0); f.ctx.llm.assertZeroRealCalls()
     await plugin.dispose(); expect(f.ctx.commands.list(f.ctx.agents.get(session)!).some(row => row.name === 'harmony-device')).toBe(false)
   } finally { unprotect.mockRestore(); await f.close() }
+})
+
+it('the phone connection panel resumes a saved pairing after a lost connect result and local stop', async () => {
+  const f = await fixture('paired-panel-recovery'), protection = new FixedIdentityProtection(), alias = 'paired-panel-desktop'
+  const unprotect = vi.spyOn(WindowsCurrentUserProtection.prototype, 'unprotect').mockImplementation((bytes, binding) => protection.unprotect(bytes, binding))
+  const unmount = vi.fn(async () => {})
+  const mount = vi.spyOn(DeviceBindingDesktopRelay.prototype, 'mount').mockResolvedValue(unmount)
+  try {
+    await f.ctx.plugin(Authorization); await f.ctx.plugin(UserQuestions)
+    const identityKey = credentialKey('harmony-desktop-identity', alias)
+    await f.ctx.credentials.modifyRecord(identityKey, async () => fixedProtectedIdentity(alias, desktopKey, protection))
+    const originalIdentity = await f.ctx.credentials.readRecord(identityKey)
+    const session = id<'SessionId'>('paired-panel-session')
+    await f.ctx.sessionController.create({ sessionId: session, cwd: f.world })
+    const agent = f.ctx.agents.get(session)!
+    const defaults = JSON.parse(await readFile(new URL('../desktop-plugin/device.enabled.example.json', import.meta.url), 'utf8'))
+    const plugin = f.ctx.plugin(DeviceCommand, { ...defaults, enabled: true, connectionMode: 'paired', desktopId: f.policy.desktopId, deviceId: f.policy.deviceId, identityAlias: alias, phoneIdentityAlias: f.policy.identityAlias, audience: f.policy.audience, wss: { ...defaults.wss, host: f.policy.audience } })
+    try {
+      await plugin
+      let loseConnectResult = true
+      const panel = new ControlModel({
+        sessionId: session, isCurrent: () => true,
+        execute: async line => {
+          const reply = (await f.ctx.commands.execute(agent, line, [], f.abort.signal))?.result
+          if (line === '/harmony-device connect' && reply?.kind === 'success' && loseConnectResult) {
+            loseConnectResult = false
+            throw new Error('fixture lost the connect result')
+          }
+          return reply
+        },
+      })
+      expect(await panel.run('stop')).toBe(true)
+      expect(await panel.run('status')).toBe(true)
+      expect(panel.source.getSnapshot().publicState).toBe('not-bound')
+      expect(panel.source.getSnapshot().allowed).not.toContain('connect')
+      await f.bind()
+      const originalBinding = await f.storage.read()
+      expect(await panel.run('status')).toBe(true)
+      expect(panel.source.getSnapshot().allowed).toContain('connect')
+      expect(await panel.run('connect')).toBe(false)
+      expect(mount).toHaveBeenCalledTimes(1)
+      expect(panel.source.getSnapshot()).toMatchObject({ uncertain: true, firstFailure: 'unknown' })
+      expect(await panel.run('status')).toBe(true)
+      expect(await panel.run('connect')).toBe(false)
+      expect(await panel.run('stop')).toBe(true)
+      expect(unmount).toHaveBeenCalledTimes(1)
+      expect(await panel.run('status')).toBe(true)
+      expect(await panel.run('route-status')).toBe(true)
+      expect(panel.source.getSnapshot()).toMatchObject({ publicState: 'route-required', uncertain: false })
+      expect(panel.source.getSnapshot().allowed).toContain('connect')
+      expect(await panel.run('connect')).toBe(true)
+      expect(mount).toHaveBeenCalledTimes(2)
+      expect(await f.storage.read()).toBe(originalBinding)
+      expect(await f.ctx.credentials.readRecord(identityKey)).toEqual(originalIdentity)
+      expect(f.ctx.sessions.get(session)!.snapshotEvents().filter(event => event.type === 'turn/start')).toHaveLength(0)
+      f.ctx.llm.assertZeroRealCalls()
+    } finally { await plugin.dispose() }
+  } finally { mount.mockRestore(); unprotect.mockRestore(); await f.close() }
 })
 
 it('actual ArkTS device delegate preserves original HUKS identity, separate public receipt and cold resume without connecting', async () => {
@@ -702,6 +783,7 @@ it('admission journal lifecycle retries initialization only after a clean failed
 it('paired startup reuses saved devices after retired windows and reconnects without another route exchange', async () => {
   const f = await fixture('paired-startup'), sockets: WebSocket[] = [], audit: string[] = []
   let app: NativeDeviceProductFacade | undefined, relay: RelayApplication | undefined, stop: (() => Promise<void>) | undefined, routes: DeviceRouteOwner | undefined
+  const follow = vi.spyOn(NativeDeviceCore.prototype, 'follow')
   try {
     const binding = await f.bind(), pairId = deviceRelayPairId(binding), published = await publicRouteFixture(f, binding)
     routes = routesFor(f, 'retired-personal-window')
@@ -730,11 +812,19 @@ it('paired startup reuses saved devices after retired windows and reconnects wit
     const mount = () => { activeRelay = new DeviceBindingDesktopRelay(f.owner, provider, { paired: binding, desktopId: binding.desktopId, isRouteCurrent: async () => true, trust: { pairId, epoch: binding.epoch, role: 'desktop', audience: binding.audience, credentialId: id<'harmony-device-credential'>(binding.desktopCredentialId), expiresAt: Date.now() + 120000 }, policy: budgets, limits, openPorts: () => ports('desktop') }); return activeRelay.mount(f.ctx) }
     stop = await mount(); await app.connect(true).catch(error => { throw new Error('paired wire: ' + audit.slice(-32).join(' > '), { cause: error }) })
     expect(views.at(-1)?.sessions.some(row => row.sessionId === target)).toBe(true)
-      for (const selected of [target, other, target]) {
-        await app.select(selected)
-        await expect.poll(() => views.at(-1)?.readOnly).toBe(false)
-        expect(views.at(-1)?.selected).toBe(selected); expect(views.at(-1)?.error).toBe('')
-      }
+    const readIds: string[] = []
+    for (const selected of [target, target, other, target]) {
+      await app.select(selected)
+      await expect.poll(() => views.at(-1)?.readOnly).toBe(false)
+      expect(views.at(-1)?.selected).toBe(selected); expect(views.at(-1)?.error).toBe('')
+      await expect.poll(() => follow.mock.calls.length).toBeGreaterThan(readIds.length)
+      const [, raw] = follow.mock.calls.at(-1)!
+      const value = fields(JSON.parse(raw), ['route', 'argument', 'resume'])
+      const command = parseCommand(text(fields(value.argument, ['version', 'packet']).packet), limits)
+      expect(command.payload).toMatchObject({ sessionId: selected })
+      readIds.push(command.commandId)
+    }
+    expect(new Set(readIds).size).toBe(readIds.length)
     const dataSocket = sockets.find(socket => socket.url.endsWith('/harmony/relay/v1'))
     if (dataSocket === undefined) throw new Error('paired data socket missing')
     dataSocket.terminate()
@@ -745,5 +835,5 @@ it('paired startup reuses saved devices after retired windows and reconnects wit
     expect(views.at(-1)?.selected).toBe(target)
     expect(await readFile(published.configuration.deviceRoutes.path)).toEqual(before)
     expect(await f.storage.read()).toBe(JSON.stringify(binding))
-  } finally { await app?.close(); await stop?.(); for (const socket of sockets) socket.terminate(); await relay?.close(); await routes?.close(); await f.close() }
+  } finally { follow.mockRestore(); await app?.close(); await stop?.(); for (const socket of sockets) socket.terminate(); await relay?.close(); await routes?.close(); await f.close() }
 })

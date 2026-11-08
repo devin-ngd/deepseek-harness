@@ -9,12 +9,12 @@
     "id": "'product-group-new-' + group.key",
     "resource": null,
     "enabled": "(!this.busy)",
-    "onClick": "(() => this.run(() => this.createSession(group.projectId)))"
+    "onClick": "(() => { void this.openCreation(group.projectId ?? ''); })"
   },
   {
     "id": "'product-new-in-' + row.projectId",
     "resource": null,
-    "enabled": "(!this.busy)",
+    "enabled": "(!this.busy && !this.creationLoading && !this.creationFailed)",
     "onClick": "(() => this.run(() => this.createSession(row.projectId)))"
   },
   {
@@ -114,6 +114,12 @@
     "onClick": null
   },
   {
+    "id": "product-chat-workspace",
+    "resource": null,
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.openWorkspace()))"
+  },
+  {
     "id": "product-confirm-pair",
     "resource": "app.string.product_confirm_pair",
     "enabled": "(this.networkApproved && this.compared && this.preview.desktopFingerprint.length > 0 && !this.busy)",
@@ -124,6 +130,12 @@
     "resource": null,
     "enabled": "(this.connectable() && !this.busy)",
     "onClick": "(() => this.run(() => this.connectShownHost(this.connectionHost)))"
+  },
+  {
+    "id": "product-creation-refresh",
+    "resource": "app.string.creation_refresh",
+    "enabled": "(this.view.connection === 'connected' && !this.busy)",
+    "onClick": "(() => this.run(() => this.product.refreshSessions()))"
   },
   {
     "id": "product-device-back",
@@ -207,12 +219,12 @@
     "id": "product-new-session",
     "resource": null,
     "enabled": "(!this.busy)",
-    "onClick": "(() => { this.newSheet = true; })"
+    "onClick": "(() => { void this.openCreation(); })"
   },
   {
     "id": "product-new-unassigned",
     "resource": null,
-    "enabled": "(!this.busy)",
+    "enabled": "(!this.busy && !this.creationLoading && !this.creationFailed)",
     "onClick": "(() => this.run(() => this.createSession(null)))"
   },
   {
@@ -268,5 +280,41 @@
     "resource": "app.string.session_unarchive",
     "enabled": "(!this.busy)",
     "onClick": "(() => this.run(() => this.manageSession('unarchive', this.view.selected)))"
+  },
+  {
+    "id": "product-workspace-back",
+    "resource": null,
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.workspaceBack()))"
+  },
+  {
+    "id": "product-workspace-open",
+    "resource": null,
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.openWorkspace()))"
+  },
+  {
+    "id": "product-workspace-plugins",
+    "resource": "app.string.workspace_plugins",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.openWorkspace(this.workspacePlugin.trim())))"
+  },
+  {
+    "id": "product-workspace-retry",
+    "resource": "app.string.workspace_retry",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.openWorkspace(this.workspace.pluginTarget())))"
+  },
+  {
+    "id": "product-workspace-return",
+    "resource": "app.string.mvp_back",
+    "enabled": "(!this.busy)",
+    "onClick": "(() => this.run(() => this.leaveWorkspace()))"
+  },
+  {
+    "id": "product-workspace-rich-discard",
+    "resource": "app.string.workspace_rich_discard",
+    "enabled": null,
+    "onClick": "(() => this.discardWorkspaceRich())"
   }
 ]

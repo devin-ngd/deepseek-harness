@@ -1,5 +1,7 @@
 /** Device-bound native navigation state; message/rich rendering remains an independently supplied Session owner. */
 import { z } from 'zod'
+import type { SessionCreationOptions } from './session-creation.ts'
+import type { WorkspaceRequest } from './workspace-protocol.ts'
 import { DeviceConnectionFailure, deviceConnectionFailure, type DeviceConnectionDiagnostic, type DeviceConnectionStage } from './device-connection-diagnostic.ts'
 import type { DeviceTransportBinding } from '../integration/device-auth.ts'
 import type { DeviceBindingClient } from './device-binding-client.ts'
@@ -21,6 +23,9 @@ export interface DeviceProductSessionConnection {
   readonly binding: DeviceTransportBinding
   readonly route?: DeviceRouteContext
   catalog(ticket: DeviceConnectionTicket): Promise<DeviceSessionDirectory>
+  creationOptions?(ticket: DeviceConnectionTicket): Promise<SessionCreationOptions>
+  /** Independently granted standard workspace; old device registrations alone cannot authorize it. */
+  workspace?(request: WorkspaceRequest, ticket: DeviceConnectionTicket, signal?: AbortSignal): Promise<unknown>
   /** Optional list management; absent adapters, and desktops whose directory has no projects, reject management. @returns affected Session id. */
   manage?(action: DeviceSessionAction, ticket: DeviceConnectionTicket): Promise<string>
   select(route: DeviceSessionRoute, ticket: DeviceConnectionTicket, publish: (value: string) => void, lifetime: AbortSignal): Promise<DeviceSessionSelection>
@@ -102,6 +107,33 @@ export class DeviceBoundMobileProduct {
     const directory = await connection.catalog(ticket), rows = z.array(deviceSessionRowSchema).parse(directory.sessions), projects = directory.projects === null ? null : z.array(deviceProjectRowSchema).parse(directory.projects)
     this.current(connection, ticket); if (new Set(rows.map(row => row.sessionId)).size !== rows.length) throw new Error('device mobile duplicate catalogue row')
     this.state = { ...this.state, sessions: rows, projects: projects ?? [], manageable: projects !== null && connection.manage !== undefined }; this.emit()
+  }
+  /** @param authority - native new-task intent. @returns fresh choices from this connection without changing selection or starting a model. */
+  async creationOptions(authority: object): Promise<SessionCreationOptions> {
+    this.local(authority)
+    const connection = this.connection, ticket = this.ticket
+    if (connection === undefined || ticket === undefined || connection.creationOptions === undefined) throw new Error('device creation choices unavailable')
+    this.current(connection, ticket)
+    const choices = await connection.creationOptions(ticket)
+    this.current(connection, ticket)
+    return choices
+  }
+  /** @param authority - trusted native workspace owner. @param request - standard workspace message. @param generation - captured native connection generation. @param signal - this request's wait. @returns acknowledged result only while the original device generation remains current. */
+  async workspace(authority: object, request: WorkspaceRequest, generation: number, signal?: AbortSignal): Promise<unknown> {
+    this.local(authority)
+    const connection = this.connection, ticket = this.ticket
+    if (connection === undefined || ticket === undefined || connection.workspace === undefined || generation !== this.generation) throw new Error('device workspace unavailable')
+    this.current(connection, ticket)
+    const result = await connection.workspace(request, ticket, signal)
+    this.current(connection, ticket)
+    return result
+  }
+  /** @param authority - native workspace owner. @returns the current local connection generation, never a remote authorization token. */
+  workspaceGeneration(authority: object): number {
+    this.local(authority)
+    if (this.connection === undefined || this.ticket === undefined || this.connection.workspace === undefined) throw new Error('device workspace unavailable')
+    this.current(this.connection, this.ticket)
+    return this.generation
   }
   /** @param authority - native list-management intent. @param action - create, archive, unarchive, pin or unpin. @returns affected Session id after desktop acknowledgement and a catalogue refresh; the current selection is unchanged and nothing is retried. */
   async manage(authority: object, action: DeviceSessionAction): Promise<string> {

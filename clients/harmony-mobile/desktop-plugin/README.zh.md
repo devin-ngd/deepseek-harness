@@ -8,9 +8,21 @@
 
 [English](README.md) | 中文
 
-手机历史默认预算为 4 MiB、512 条记录和 50 条消息。`snapshotMaxBytes`、`snapshotMaxRecords` 与 `snapshotMaxMessages` 可配置这些限制；首帧超限时，将原生会话分页的消息窗口减半后重新读取。单条记录保持完整，`hasMore` 保留更早历史的原生标记，最小窗口仍超限则报告 `history-too-large`。双端明文、加密帧和中继容量需要同步更新，见[历史容量与验证](../docs/history-capacity-rc2.33.md)。本候选尚未安装。
+当前标准插件工作见[工作区实现](../docs/workspace-prototype.md)。原生新建任务选项使用桌面 preset／模型目录，明确选择的模型只写入新 Session。设备入口的可选 `workspace` 配置增加 `workspace-status`、`workspace-allow` 与 `workspace-stop`，标准 API 权限须限时单独确认。完成设备注册后，工作区访问仍需单独开启。未授权或授权已失效时，打开工作区会在调用标准 API 前收到明确拒绝。查询和停止只操作当前内存中的授权，无需打开桌面身份。允许操作经确认后才可打开身份。启用 `workspace` 时，命令与工作区所有者声明 `clientModules` 依赖。仅原生操作可在没有 Web 模块服务时运行。资源、双向流和标准插件图更新使用现有加密设备协议。桌面将准备好的结果交给加密发送器之前，会检查当前工作区授权。设备验票期间已取消或所属连接已失效的工作区请求不会进入执行。撤销工作区不取消桌面已接受的任务。`workspace.wire.maxBodyBytes` 在读取资源前预留容量，须覆盖 `channel.maxResponseBytes`，且不能超过 `wire.maxBufferedBytes`。已验证的环境与待验收项见[审查证据](../docs/workspace-review.md)。
+
+同一工作区的并发权限检查可以共用尚未开始的目录读取。读取期间到达的检查会等下一次读取。Host 在每次读取前后校验原授权和连接。
+
+桌面 WSS 将不超过 8 MiB 的数据消息拆成至多 64 KiB 的帧。更大的消息使用更长的帧，以满足中继每条消息最多 128 帧的限制。中继重组消息后转发相同的加密字节。消息大小和发送队列的字节预算仍按整条消息计算。
+
+手机历史默认预算为 4 MiB、512 条记录和 50 条消息。设备绑定还会按桌面配置的明文、加密帧和套接字上限缩小快照预算，并预留传输字段所需空间。`snapshotMaxBytes`、`snapshotMaxRecords` 与 `snapshotMaxMessages` 可配置 profile 的限制。首帧超限时，将原生会话分页的消息窗口减半后重新读取。单条记录保持完整，`hasMore` 保留更早历史的原生标记，最小窗口仍超限则报告 `history-too-large`。见[历史容量与验证](../docs/history-capacity-rc2.33.md)。
 
 rc2.30 的 `/device` 组件默认使用 `connectionMode: paired`，自动等待已配对手机，掉线后重试。`connectionMode: window` 保留显式临时窗口流程。双端和中继的一次更新见[已配对自动连接](../docs/paired-connection-rc2.30.md)，原双端及常驻中继已更新，手机自动连接及真实会话列表已核验。下列版本记录为历史。
+
+本地停止成功后，先点击「配对状态」，再在面板确认原配对可用时点击「连接」。已配对模式下，Host 查到未撤销的配对且当前没有本地传输时，返回 `savedConnectionReady: true`。临时窗口模式仍须先准备可用路由。工作区操作结果不确定时，点击「停止工作区授权」，Host 确认授权已关闭后面板解锁。连接操作结果不确定时，须点击「停止本地连接」。两种停止操作均先取消未决工作区授权，再返回完成结果。手机已连接时，工作区授权取配置时长、加密房间截止时间和设备票据截止时间三者中最早的一项。Host 拒绝已换代连接上的确认。 「手机连接」面板显示上次工作区授权回执的截止时间，到期后提示重新查询授权状态。恢复连接后的标准工作区须单独授权。
+
+诊断工作区超时时，在桌面设备配置的 `workspace` 下设置 `traceRequests: true`。从 Host 标准输出采集 `DSH_WORKSPACE_TRACE` 行，可获取 UTC 时间、加密连接阶段和工作区 RPC 阶段。RPC 记录包含本次中继挂载内的序号与毫秒耗时。操作名取自固定列表，日志省略请求 ID、URL、正文和凭据。`received` 表示路由检查和请求解析完成。`socket-submitted` 表示本地套接字的发送调用已返回。用手机的 `DSH_WORKSPACE_RPC` 日志核对同一时段的超时。省略该设置或设为 `false` 时关闭诊断。
+
+对 `session/page`，`Workspace page` 行沿用同一本地序号，记录固定结果分类、HTTP 状态和响应字节数。识别到分页结果时，还会记录条目数及是否有更早历史。Host 检查返回范围是否到达请求的分页边界，日志省略事件序号值与 Gateway 原始错误。`Workspace page-chunk` 用该本地序号关联每个已备好或已提交给本地套接字的分块，并记录字节偏移、长度及是否为末块。响应在组装前被拒时，沿用普通 RPC 失败记录。送达和渲染需结合手机证据确认。
 
 最后核实的桌面运行版本为 rc2.12。rc2.16 控制面板是离线候选，构建与验证方式见[控制面板参考](../docs/control-panel-rc2.16.md)。安装和实机测试仍为独立操作。[交接](../docs/HANDOFF-2026-10-28.md)保留原配对和已关闭窗口的证据。
 

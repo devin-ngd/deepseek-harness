@@ -1,5 +1,8 @@
 /** Native JS import compatibility: SDK text codecs and local connection cancellation only. No ambient global mutation, network, key or guest binding. */
 import util from '@ohos.util'
+import nativeUrl from '@ohos.url'
+/** @param {string} input Absolute or relative protocol URL. @param {string} [base] Explicit resolution base. @returns {object} SDK URL without requiring a browser global. */
+export function URL(input, base) { return nativeUrl.URL.parseURL(input, base) }
 /** Protocol UTF-8 encoder preserves an empty byte array where the native API returns undefined. */
 export class TextEncoder {
   /** @param {string} [text] Text to encode, empty by default. @returns {Uint8Array} Protocol UTF-8 bytes. */

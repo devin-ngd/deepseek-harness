@@ -6,18 +6,22 @@ var __export = (target, all) => {
 
 // src/native-protocol-shims.mjs
 import util from "@ohos.util";
+import nativeUrl from "@ohos.url";
+function URL(input, base) {
+  return nativeUrl.URL.parseURL(input, base);
+}
 var TextEncoder = class {
   /** @param {string} [text] Text to encode, empty by default. @returns {Uint8Array} Protocol UTF-8 bytes. */
-  encode(text4 = "") {
-    return text4.length === 0 ? new Uint8Array() : new util.TextEncoder("utf-8").encodeInto(text4);
+  encode(text6 = "") {
+    return text6.length === 0 ? new Uint8Array() : new util.TextEncoder("utf-8").encodeInto(text6);
   }
 };
 var TextDecoder = class {
   constructor(encoding = "utf-8", options = {}) {
     this.decoder = util.TextDecoder.create(encoding, options);
   }
-  decode(bytes) {
-    return this.decoder.decodeToString(bytes);
+  decode(bytes2) {
+    return this.decoder.decodeToString(bytes2);
   }
 };
 var Signal = class {
@@ -1317,16 +1321,16 @@ function cleanEnum(obj) {
 }
 function base64ToUint8Array(base643) {
   const binaryString = atob(base643);
-  const bytes = new Uint8Array(binaryString.length);
+  const bytes2 = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+    bytes2[i] = binaryString.charCodeAt(i);
   }
-  return bytes;
+  return bytes2;
 }
-function uint8ArrayToBase64(bytes) {
+function uint8ArrayToBase64(bytes2) {
   let binaryString = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binaryString += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes2.length; i++) {
+    binaryString += String.fromCharCode(bytes2[i]);
   }
   return btoa(binaryString);
 }
@@ -1335,22 +1339,22 @@ function base64urlToUint8Array(base64url3) {
   const padding = "=".repeat((4 - base643.length % 4) % 4);
   return base64ToUint8Array(base643 + padding);
 }
-function uint8ArrayToBase64url(bytes) {
-  return uint8ArrayToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+function uint8ArrayToBase64url(bytes2) {
+  return uint8ArrayToBase64(bytes2).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 function hexToUint8Array(hex3) {
   const cleanHex = hex3.replace(/^0x/, "");
   if (cleanHex.length % 2 !== 0) {
     throw new Error("Invalid hex string length");
   }
-  const bytes = new Uint8Array(cleanHex.length / 2);
+  const bytes2 = new Uint8Array(cleanHex.length / 2);
   for (let i = 0; i < cleanHex.length; i += 2) {
-    bytes[i / 2] = Number.parseInt(cleanHex.slice(i, i + 2), 16);
+    bytes2[i / 2] = Number.parseInt(cleanHex.slice(i, i + 2), 16);
   }
-  return bytes;
+  return bytes2;
 }
-function uint8ArrayToHex(bytes) {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+function uint8ArrayToHex(bytes2) {
+  return Array.from(bytes2).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 var Class = class {
   constructor(..._args) {
@@ -7700,8 +7704,8 @@ function ko_default() {
 }
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/lt.js
-var capitalizeFirstCharacter = (text4) => {
-  return text4.charAt(0).toUpperCase() + text4.slice(1);
+var capitalizeFirstCharacter = (text6) => {
+  return text6.charAt(0).toUpperCase() + text6.slice(1);
 };
 function getUnitTypeFromNumber(number4) {
   const abs = Math.abs(number4);
@@ -14610,9 +14614,9 @@ function canonical(value) {
   if (value !== null && typeof value === "object") {
     return "{" + Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => JSON.stringify(key) + ":" + canonical(item)).join(",") + "}";
   }
-  const encoded = JSON.stringify(value);
-  if (encoded === void 0) throw new MobileError("invalid-request");
-  return encoded;
+  const encoded2 = JSON.stringify(value);
+  if (encoded2 === void 0) throw new MobileError("invalid-request");
+  return encoded2;
 }
 
 // ../../packages/experimental/rich-inline/src/shared/validate.ts
@@ -14670,9 +14674,9 @@ function typedRichValuesValid(values2) {
   };
   return Object.values(values2).every(check2);
 }
-function richMarkerIds(text4) {
+function richMarkerIds(text6) {
   const ids = [];
-  for (const match of text4.matchAll(/```rich-inline\s*\n([^`]+)\n```/g)) {
+  for (const match of text6.matchAll(/```rich-inline\s*\n([^`]+)\n```/g)) {
     let parsed;
     if (match[1] === void 0) continue;
     try {
@@ -14714,9 +14718,9 @@ var PartialArguments = class _PartialArguments {
    * @param text - the complete argument JSON text.
    * @returns a sealed view.
    */
-  static fromText(text4) {
+  static fromText(text6) {
     const view = new _PartialArguments();
-    view.append(text4);
+    view.append(text6);
     view.sealed = true;
     return view;
   }
@@ -14781,15 +14785,15 @@ var PartialArguments = class _PartialArguments {
    * @param text - the final argument text, which replaces missing or conflicting deltas.
    * @returns this view sealed with its caches retained when every character matches; otherwise a new sealed view.
    */
-  settle(text4) {
-    if (this.object !== void 0 || text4.length !== this.#size) return _PartialArguments.fromText(text4);
+  settle(text6) {
+    if (this.object !== void 0 || text6.length !== this.#size) return _PartialArguments.fromText(text6);
     let offset = 0;
     for (const chunk of this.chunks) {
-      if (!text4.startsWith(chunk, offset)) return _PartialArguments.fromText(text4);
+      if (!text6.startsWith(chunk, offset)) return _PartialArguments.fromText(text6);
       offset += chunk.length;
     }
-    this.chunks = text4.length === 0 ? [] : [text4];
-    this.#ends = text4.length === 0 ? [] : [text4.length];
+    this.chunks = text6.length === 0 ? [] : [text6];
+    this.#ends = text6.length === 0 ? [] : [text6.length];
     this.sealed = true;
     return this;
   }
@@ -14961,12 +14965,12 @@ var PartialArguments = class _PartialArguments {
     const entry = this.#entries.get(key);
     if (entry?.kind !== "string") return void 0;
     if (entry.text === void 0 && entry.end >= 0 && entry.needsDecoding && entry.invalidAt === void 0) {
-      let text4;
+      let text6;
       try {
-        text4 = JSON.parse(`"${this.slice(entry.start, entry.end)}"`);
+        text6 = JSON.parse(`"${this.slice(entry.start, entry.end)}"`);
       } catch (_error) {
       }
-      if (text4 !== void 0) entry.text = { at: entry.end, length: text4.length, text: text4 };
+      if (text6 !== void 0) entry.text = { at: entry.end, length: text6.length, text: text6 };
     }
     const read = entry.text ??= { at: entry.start, length: 0, text: "" };
     this.readString(entry, read, Number.POSITIVE_INFINITY, true);
@@ -15529,14 +15533,14 @@ var WireCursor = class _WireCursor {
       return true;
     }
     if (this.current.instance === null || this.current.instance !== item.instance) throw new TransportError("reset-required");
-    const fingerprint2 = canonical(item), old = this.remembered.get(item.relayCursor);
+    const fingerprint3 = canonical(item), old = this.remembered.get(item.relayCursor);
     if (old !== void 0) {
-      if (old !== fingerprint2) throw new TransportError("cursor-conflict");
+      if (old !== fingerprint3) throw new TransportError("cursor-conflict");
       return false;
     }
     if (item.relayCursor <= this.baseline) return false;
     if (item.relayCursor !== this.current.relayCursor + 1) throw new TransportError("cursor-gap");
-    this.remembered.set(item.relayCursor, fingerprint2);
+    this.remembered.set(item.relayCursor, fingerprint3);
     if (this.remembered.size > this.maxRemembered) this.remembered.delete(this.remembered.keys().next().value);
     this.current = { instance: item.instance, relayCursor: item.relayCursor };
     return true;
@@ -15611,9 +15615,9 @@ var P256SecureChannel = class {
   }
   bytes(value, limit) {
     if (value.length > Math.ceil(limit * 4 / 3) || !/^[A-Za-z0-9_-]+$/.test(value)) throw new E2EError("invalid");
-    const bytes = this.primitives.decode(value);
-    if (bytes.length > limit || this.primitives.encode(bytes) !== value) throw new E2EError("invalid");
-    return bytes;
+    const bytes2 = this.primitives.decode(value);
+    if (bytes2.length > limit || this.primitives.encode(bytes2) !== value) throw new E2EError("invalid");
+    return bytes2;
   }
   /** @returns ephemeral hello without long-term identity or Session data. */
   hello() {
@@ -15640,12 +15644,14 @@ var P256SecureChannel = class {
       send = await this.primitives.hkdf(secret, digest2, transcriptBytes([E2E_PROTOCOL, "traffic-key", this.role]), 36);
       receive = await this.primitives.hkdf(secret, digest2, transcriptBytes([E2E_PROTOCOL, "traffic-key", opposite(this.role)]), 36);
       const remoteCredentialId = await this.primitives.credentialId(this.remoteIdentity);
+      const encoded2 = this.primitives.encode(digest2);
+      const bindingId = id(encoded2.startsWith("-") || encoded2.startsWith("_") ? "b-" + encoded2 : encoded2);
       this.available();
       this.sendKey = send.slice(0, 32);
       this.sendPrefix = send.slice(32);
       this.receiveKey = receive.slice(0, 32);
       this.receivePrefix = receive.slice(32);
-      this.bindingValue = { id: id(this.primitives.encode(digest2)), remoteCredentialId, signal: this.controller.signal };
+      this.bindingValue = { id: bindingId, remoteCredentialId, signal: this.controller.signal };
     } catch (error51) {
       this.close();
       if (error51 instanceof E2EError) throw error51;
@@ -16307,16 +16313,16 @@ var PairedProductTransport = class {
   receive(raw) {
     if (this.closed || !this.authorized) return;
     try {
-      const bytes = new TextEncoder().encode(raw).length;
-      if (bytes > this.policy.maxPacketBytes) throw new Error("capacity");
+      const bytes2 = new TextEncoder().encode(raw).length;
+      if (bytes2 > this.policy.maxPacketBytes) throw new Error("capacity");
       const candidate = JSON.parse(raw);
       if (candidate === null || typeof candidate !== "object" || !("kind" in candidate)) throw new Error("kind");
       const packet = fields(candidate, candidate.kind === "result" || candidate.kind === "frame" ? ["kind", "id", "value"] : candidate.kind === "error" ? ["kind", "id", "code"] : ["kind", "id"]);
       if (typeof packet.id !== "string") throw new Error("id");
       const wait = this.pending.get(packet.id);
       if (wait === void 0) return;
-      if (packet.kind === "result" || packet.kind === "frame") wait.receive(jsonPayload(packet.value), packet.kind === "result", bytes);
-      else if (packet.kind === "end") wait.receive(null, true, bytes);
+      if (packet.kind === "result" || packet.kind === "frame") wait.receive(jsonPayload(packet.value), packet.kind === "result", bytes2);
+      else if (packet.kind === "end") wait.receive(null, true, bytes2);
       else if (packet.kind === "error") wait.fail(new TransportError(packet.code === "history-too-large" ? "history-too-large" : "unknown-outcome"));
       else throw new Error("kind");
     } catch (error51) {
@@ -16436,17 +16442,17 @@ var PairedProductTransport = class {
       complete = true;
       wake();
     };
-    this.pending.set(id2, { receive: (value, end, bytes) => {
+    this.pending.set(id2, { receive: (value, end, bytes2) => {
       if (complete) return;
       if (end) complete = true;
       else {
-        if (queue.length >= this.policy.maxQueuedFrames || queuedBytes + bytes > this.policy.maxPacketBytes) {
+        if (queue.length >= this.policy.maxQueuedFrames || queuedBytes + bytes2 > this.policy.maxPacketBytes) {
           fail(new TransportError("queue-full"));
           return;
         }
         ;
-        queue.push({ value: parseWireItem(value), bytes });
-        queuedBytes += bytes;
+        queue.push({ value: parseWireItem(value), bytes: bytes2 });
+        queuedBytes += bytes2;
       }
       ;
       wake();
@@ -17053,8 +17059,8 @@ function authoredContent(source) {
 function authoredBlockId(messageId, key) {
   return `inline-${messageId}-${key}`;
 }
-function authoredFences(text4) {
-  return [...text4.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
+function authoredFences(text6) {
+  return [...text6.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
 }
 
 // ../../packages/experimental/rich-inline/src/shared/theme.ts
@@ -17641,8 +17647,8 @@ function authoredContent2(source) {
 function authoredBlockId2(messageId, key) {
   return `inline-${messageId}-${key}`;
 }
-function authoredFences2(text4) {
-  return [...text4.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
+function authoredFences2(text6) {
+  return [...text6.matchAll(/^```rich-html\r?\n([\s\S]*?)\r?\n```[ \t]*(?=\r?\n|$)/gmu)].map((match) => ({ source: match[1] ?? "", start: match.index, end: match.index + match[0].length }));
 }
 
 // .build/projection-inputs-ae074f0ded4b36cd615a781a186fc28c9ab138ecaa75de574958b78dc8ffb116/shared/source-projection.ts
@@ -17696,8 +17702,8 @@ function createRichSourceProjection(hash2) {
         if (message.role !== "assistant" || part?.type !== "text" || originalPart?.type !== "text" || part.text.slice(target.start, target.end) !== originalPart.text.slice(target.start, target.end)) {
           throw new Error("rich-inline/source-offload: another projection changed the selected occurrence");
         }
-        const text4 = `${part.text.slice(0, target.start)}[Rich artifact ${target.blockId}; render revision 1; data revision 1; sourceRef ${target.sourceRef}. Read source or values with rich_inline_read.]${part.text.slice(target.end)}`;
-        changed.set(target.seq, { ...message, content: message.content.map((item, position) => position === target.partIndex ? { type: "text", text: text4 } : item) });
+        const text6 = `${part.text.slice(0, target.start)}[Rich artifact ${target.blockId}; render revision 1; data revision 1; sourceRef ${target.sourceRef}. Read source or values with rich_inline_read.]${part.text.slice(target.end)}`;
+        changed.set(target.seq, { ...message, content: message.content.map((item, position) => position === target.partIndex ? { type: "text", text: text6 } : item) });
       }
       return changed;
     }
@@ -17828,11 +17834,11 @@ function abytes(value, length, title = "") {
     return value;
   if (length !== void 0)
     anumber(length, "length");
-  const bytes = isBytes(value);
+  const bytes2 = isBytes(value);
   const ofLen = length !== void 0 ? ` of length ${length}` : "";
-  const got = bytes ? `length=${value.length}` : `type=${typeof value}`;
+  const got = bytes2 ? `length=${value.length}` : `type=${typeof value}`;
   const message = atitle(title) + "expected Uint8Array" + ofLen + ", got " + got;
-  if (!bytes)
+  if (!bytes2)
     throw new TypeError(message);
   throw new RangeError(message);
 }
@@ -17877,13 +17883,13 @@ var hasHexBuiltin = /* @__PURE__ */ (() => (
   typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function"
 ))();
 var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
-function bytesToHex(bytes) {
-  abytes(bytes);
+function bytesToHex(bytes2) {
+  abytes(bytes2);
   if (hasHexBuiltin)
-    return bytes.toHex();
+    return bytes2.toHex();
   let hex3 = "";
-  for (let i = 0; i < bytes.length; i++) {
-    hex3 += hexes[bytes[i]];
+  for (let i = 0; i < bytes2.length; i++) {
+    hex3 += hexes[bytes2[i]];
   }
   return hex3;
 }
@@ -18588,10 +18594,10 @@ var PhoneCore = class {
     throw new TransportError("native-method-required");
   }
   /** @param requestId - stable native intent identity. @param text - user task. @returns one accepted receipt or visible uncertainty; repeated IDs never redispatch. */
-  submit(requestId, text4) {
+  submit(requestId, text6) {
     if (this.model.view.readOnly) return Promise.reject(new TransportError("read-only"));
-    const payload = { sessionId: this.model.owner.sessionId, requestId: id(requestId), text: text4 }, fingerprint2 = canonical(payload), old = this.tasks.get(requestId);
-    if (old !== void 0) return old.fingerprint === fingerprint2 ? old.result : Promise.reject(new TransportError("id-conflict"));
+    const payload = { sessionId: this.model.owner.sessionId, requestId: id(requestId), text: text6 }, fingerprint3 = canonical(payload), old = this.tasks.get(requestId);
+    if (old !== void 0) return old.fingerprint === fingerprint3 ? old.result : Promise.reject(new TransportError("id-conflict"));
     if (this.tasks.size >= this.config.maxIntents) return Promise.reject(new TransportError("queue-full"));
     const cut = this.model.view.cursor;
     const result = this.provider.request(this.command("task.submit", payload)).then((value) => {
@@ -18603,7 +18609,7 @@ var PhoneCore = class {
       this.model.admissionState("outcome_unknown", error51 instanceof TransportError ? error51.code : "transport-lost", cut);
       throw error51;
     });
-    this.tasks.set(requestId, { fingerprint: fingerprint2, cut, result });
+    this.tasks.set(requestId, { fingerprint: fingerprint3, cut, result });
     return result;
   }
   admission(value, requestId) {
@@ -18651,15 +18657,15 @@ var PhoneCore = class {
 };
 
 // src/semantic-phone.ts
-var richProjections = [createRichSourceProjection((text4) => bytesToHex(sha256(new TextEncoder().encode(text4)))), createRichToolSourceProjection((text4) => bytesToHex(sha256(new TextEncoder().encode(text4))))];
+var richProjections = [createRichSourceProjection((text6) => bytesToHex(sha256(new TextEncoder().encode(text6)))), createRichToolSourceProjection((text6) => bytesToHex(sha256(new TextEncoder().encode(text6))))];
 var richProjectionTypes = new Set(richProjections.map((projection) => projection.type));
 var emptyLive = { revision: -1, attemptId: null, nextIndex: 0, chunks: [], committedSeq: null };
 function richDispatch(data, content, messages) {
-  const source = object2(data.source), text4 = content.length === 1 && content[0]?.kind === "text" ? content[0].text : null;
-  if (typeof source.rpcId !== "string" || !source.rpcId.startsWith("rich-") || text4 === null || !text4.startsWith("Interactive input ")) return false;
+  const source = object2(data.source), text6 = content.length === 1 && content[0]?.kind === "text" ? content[0].text : null;
+  if (typeof source.rpcId !== "string" || !source.rpcId.startsWith("rich-") || text6 === null || !text6.startsWith("Interactive input ")) return false;
   let input;
   try {
-    input = object2(jsonPayload(JSON.parse(text4.slice("Interactive input ".length))));
+    input = object2(jsonPayload(JSON.parse(text6.slice("Interactive input ".length))));
   } catch (error51) {
     if (error51 instanceof SyntaxError || error51 instanceof TransportError) return false;
     throw error51;
@@ -19194,10 +19200,10 @@ var MobileProduct = class {
     return this.core;
   }
   /** @param authority - native user intent. @param requestId - stable intent identity. @param text - composer text. @returns original canonical receipt; uncertainty is displayed without automatic re-dispatch. */
-  async submit(authority, requestId, text4) {
+  async submit(authority, requestId, text6) {
     this.allowed(authority);
     try {
-      return await this.requireCore().submit(requestId, text4);
+      return await this.requireCore().submit(requestId, text6);
     } finally {
       this.emit();
     }
@@ -19361,6 +19367,56 @@ function addTrustScope(raw, document2, maxBytes) {
   const result = JSON.stringify({ schema: "harmony-product-scopes/1", scopes: existing === void 0 ? [...scopes, selected] : scopes });
   if (new TextEncoder().encode(result).length > maxBytes) throw new Error("scope catalogue capacity");
   return result;
+}
+
+// src/workspace-rich-protocol.ts
+var text3 = external_exports.string().min(1).max(256);
+var copy = external_exports.object({
+  text: external_exports.string().max(1024),
+  image: external_exports.string().max(1024),
+  copied: external_exports.string().max(1024),
+  failed: external_exports.string().max(1024),
+  menu: external_exports.object({ plain: external_exports.string().max(1024), markdown: external_exports.string().max(1024), copyLink: external_exports.string().max(1024), openLink: external_exports.string().max(1024), more: external_exports.string().max(1024), selectAll: external_exports.string().max(1024), openFailed: external_exports.string().max(1024) }).strict().optional()
+}).strict();
+var workspaceRichPolicySchema = external_exports.object({
+  maxGuests: external_exports.number().int().positive(),
+  maxQueuedPackets: external_exports.number().int().positive(),
+  maxQueuedBytes: external_exports.number().int().positive(),
+  documentBytes: external_exports.number().int().positive(),
+  sdkBytes: external_exports.number().int().positive(),
+  guestPacketBytes: external_exports.number().int().positive(),
+  hostPacketBytes: external_exports.number().int().positive(),
+  closeTimeoutMs: external_exports.number().int().positive()
+}).strict();
+var workspaceRichContentSchema = external_exports.object({ mountId: text3, mountNonce: text3, html: external_exports.string(), css: external_exports.string(), js: external_exports.string(), sdk: external_exports.string().optional(), copy: copy.optional() }).strict();
+var workspaceRichRequestSchema = external_exports.discriminatedUnion("operation", [
+  external_exports.object({ operation: external_exports.literal("acquire"), request: workspaceRichContentSchema }).strict(),
+  external_exports.object({ operation: external_exports.literal("open"), lease: text3 }).strict(),
+  external_exports.object({ operation: external_exports.literal("send"), lease: text3, packet: external_exports.record(external_exports.string(), external_exports.json()) }).strict(),
+  external_exports.object({ operation: external_exports.literal("release"), lease: text3 }).strict(),
+  external_exports.object({ operation: external_exports.literal("ack"), lease: text3, id: external_exports.string().regex(/^[0-9]{1,16}$/) }).strict()
+]);
+var workspaceRichOwnerPacketSchema = external_exports.record(external_exports.string(), external_exports.json());
+var workspaceRichReservationSchema = external_exports.object({ lease: text3, partition: text3, src: external_exports.string().max(8192) }).strict();
+var workspaceRichDocumentInitSchema = external_exports.object({ protocol: external_exports.literal("harmony-workspace-rich/1"), lease: text3, limits: workspaceRichPolicySchema, request: workspaceRichContentSchema }).strict();
+function workspaceRichRequest(raw, policyJson) {
+  const policy = workspaceRichPolicySchema.parse(JSON.parse(policyJson)), request = workspaceRichRequestSchema.parse(JSON.parse(raw)), size = (value) => new TextEncoder().encode(value).byteLength;
+  if (request.operation === "acquire") {
+    const value = request.request;
+    if (size(value.sdk ?? "") > policy.sdkBytes || [value.html, value.css, value.js, value.sdk ?? ""].reduce((sum, item) => sum + size(item), 0) > policy.documentBytes) throw new Error("native rich document capacity");
+  } else if (request.operation === "send" && size(JSON.stringify(request.packet)) > policy.hostPacketBytes) throw new Error("native rich packet capacity");
+  return JSON.stringify(request);
+}
+function workspaceRichPacket(raw, maxBytes) {
+  if (new TextEncoder().encode(raw).byteLength > maxBytes) throw new Error("native rich packet capacity");
+  const packet = external_exports.record(external_exports.string(), external_exports.json()).parse(JSON.parse(raw));
+  if (typeof packet.type !== "string" || packet.type.startsWith("native.")) throw new Error("native rich guest message denied");
+  return JSON.stringify(packet);
+}
+function workspaceRichGuestMessage(raw, maxBytes) {
+  if (new TextEncoder().encode(raw).byteLength > maxBytes * 2 + 256) throw new Error("native rich envelope capacity");
+  const envelope = external_exports.object({ kind: external_exports.literal("rich.packet"), id: external_exports.string().regex(/^[0-9]{1,16}$/), packet: external_exports.string() }).strict().parse(JSON.parse(raw));
+  return JSON.stringify({ id: envelope.id, packet: workspaceRichPacket(envelope.packet, maxBytes) });
 }
 
 // src/device-startup-diagnostic.ts
@@ -19637,6 +19693,24 @@ var DeviceBindingClient = class {
   }
 };
 
+// src/session-creation.ts
+var text4 = external_exports.string().min(1).max(256);
+var creationModelSelectionSchema = external_exports.object({
+  provider: text4,
+  model: text4,
+  reasoningEffort: text4.optional()
+}).strict();
+var sessionCreationOptionsSchema = external_exports.object({
+  presets: external_exports.array(external_exports.object({ id: text4, name: text4, isDefault: external_exports.boolean() }).strict()).max(256),
+  models: external_exports.array(external_exports.object({
+    provider: text4,
+    model: text4,
+    label: external_exports.string().min(1).max(1024),
+    efforts: external_exports.array(text4).max(32)
+  }).strict()).max(2048),
+  defaultModel: creationModelSelectionSchema
+}).strict();
+
 // src/device-session-directory.ts
 var identifier5 = external_exports.string().min(1).max(256);
 var deviceSessionRowSchema = external_exports.object({
@@ -19652,7 +19726,12 @@ var deviceSessionRowSchema = external_exports.object({
 }).strict();
 var deviceProjectRowSchema = external_exports.object({ projectId: identifier5, title: external_exports.string() }).strict();
 var deviceSessionActionSchema = external_exports.union([
-  external_exports.object({ action: external_exports.literal("create"), projectId: identifier5.nullable() }).strict(),
+  external_exports.object({
+    action: external_exports.literal("create"),
+    projectId: identifier5.nullable(),
+    agentPreset: identifier5.optional(),
+    model: creationModelSelectionSchema.optional()
+  }).strict(),
   external_exports.object({ action: external_exports.enum(["archive", "unarchive", "pin", "unpin"]), sessionId: identifier5 }).strict()
 ]);
 var deviceSessionManagedSchema = external_exports.object({ sessionId: identifier5 }).strict();
@@ -19824,6 +19903,33 @@ var DeviceBoundMobileProduct = class {
     if (new Set(rows.map((row) => row.sessionId)).size !== rows.length) throw new Error("device mobile duplicate catalogue row");
     this.state = { ...this.state, sessions: rows, projects: projects ?? [], manageable: projects !== null && connection.manage !== void 0 };
     this.emit();
+  }
+  /** @param authority - native new-task intent. @returns fresh choices from this connection without changing selection or starting a model. */
+  async creationOptions(authority) {
+    this.local(authority);
+    const connection = this.connection, ticket = this.ticket;
+    if (connection === void 0 || ticket === void 0 || connection.creationOptions === void 0) throw new Error("device creation choices unavailable");
+    this.current(connection, ticket);
+    const choices = await connection.creationOptions(ticket);
+    this.current(connection, ticket);
+    return choices;
+  }
+  /** @param authority - trusted native workspace owner. @param request - standard workspace message. @param generation - captured native connection generation. @param signal - this request's wait. @returns acknowledged result only while the original device generation remains current. */
+  async workspace(authority, request, generation, signal) {
+    this.local(authority);
+    const connection = this.connection, ticket = this.ticket;
+    if (connection === void 0 || ticket === void 0 || connection.workspace === void 0 || generation !== this.generation) throw new Error("device workspace unavailable");
+    this.current(connection, ticket);
+    const result = await connection.workspace(request, ticket, signal);
+    this.current(connection, ticket);
+    return result;
+  }
+  /** @param authority - native workspace owner. @returns the current local connection generation, never a remote authorization token. */
+  workspaceGeneration(authority) {
+    this.local(authority);
+    if (this.connection === void 0 || this.ticket === void 0 || this.connection.workspace === void 0) throw new Error("device workspace unavailable");
+    this.current(this.connection, this.ticket);
+    return this.generation;
   }
   /** @param authority - native list-management intent. @param action - create, archive, unarchive, pin or unpin. @returns affected Session id after desktop acknowledgement and a catalogue refresh; the current selection is unchanged and nothing is retried. */
   async manage(authority, action) {
@@ -20002,8 +20108,8 @@ var DevicePhoneSession = class {
     await this.inner.select(this.authority, this.route.sessionId);
   }
   /** @param requestId - original native intent id. @param text - user-authored task. @returns the existing canonical receipt; no synthetic response or retry is introduced. */
-  submit(requestId, text4) {
-    return this.inner.submit(this.authority, requestId, text4);
+  submit(requestId, text6) {
+    return this.inner.submit(this.authority, requestId, text6);
   }
   /** @param requestId - original intent id. @returns read-only canonical reconciliation. */
   receipt(requestId) {
@@ -20027,20 +20133,22 @@ var DevicePhoneSession = class {
 
 // src/device-product-rpc.ts
 var DeviceProductRpc = class {
-  /** @param network - verified native device carrier. @param scheduler - explicit native request timers. @param timeoutMs - finite wait budget. @param maxPending - local concurrent request cap. @param prefix - fresh native application/view identity, never an authorization field. */
-  constructor(network, scheduler, timeoutMs, maxPending, prefix) {
+  /** @param network - verified native device carrier. @param scheduler - explicit native request timers. @param timeoutMs - finite wait budget. @param maxPending - reserved narrow native request capacity. @param prefix - fresh native application/view identity, never an authorization field. @param maxWorkspacePending - separately reserved workspace capacity; omission disables workspace requests. */
+  constructor(network, scheduler, timeoutMs, maxPending, prefix, maxWorkspacePending = 0) {
     this.network = network;
     this.scheduler = scheduler;
     this.timeoutMs = timeoutMs;
     this.maxPending = maxPending;
     this.prefix = prefix;
-    if (![timeoutMs, maxPending].every((value) => Number.isSafeInteger(value) && value > 0) || !/^[A-Za-z0-9_.:-]{1,128}$/.test(prefix)) throw new Error("device RPC configuration denied");
+    this.maxWorkspacePending = maxWorkspacePending;
+    if (![timeoutMs, maxPending].every((value) => Number.isSafeInteger(value) && value > 0) || !Number.isSafeInteger(maxWorkspacePending) || maxWorkspacePending < 0 || !/^[A-Za-z0-9_.:-]{1,128}$/.test(prefix)) throw new Error("device RPC configuration denied");
   }
   network;
   scheduler;
   timeoutMs;
   maxPending;
   prefix;
+  maxWorkspacePending;
   pending = /* @__PURE__ */ new Map();
   views = /* @__PURE__ */ new Map();
   counter = 0;
@@ -20056,8 +20164,10 @@ var DeviceProductRpc = class {
       if (kind !== "result" && kind !== "error") throw new Error("device RPC unary response denied");
       this.pending.delete(packet.id);
       pending.stop();
-      if (kind === "error") pending.reject(new TransportError("unknown-outcome"));
-      else pending.resolve(packet.value);
+      if (kind === "error") {
+        const code = pending.workspace && packet.code === "workspace-grant-required" ? packet.code : "unknown-outcome";
+        pending.reject(new TransportError(code));
+      } else pending.resolve(packet.value);
       return;
     }
     for (const [prefix, receive] of this.views) if (packet.id.startsWith(prefix)) {
@@ -20065,20 +20175,41 @@ var DeviceProductRpc = class {
       return;
     }
   }
-  /** @param value - fixed metadata/select/manage request only, constructed by native code. @returns acknowledged public result; timeout never retries the operation. */
-  call(value) {
-    if (this.closed || this.pending.size >= this.maxPending) return Promise.reject(new TransportError("queue-full"));
+  /** @param value - fixed device or workspace request constructed by native code. @returns acknowledged public result. A missing workspace grant rejects before workspace dispatch. Timeout never retries the operation. */
+  call(value, signal) {
+    const workspace = value.method === "workspace", limit = workspace ? this.maxWorkspacePending : this.maxPending;
+    if (this.closed || [...this.pending.values()].filter((wait) => wait.workspace === workspace).length >= limit) return Promise.reject(new TransportError("queue-full"));
+    if (signal?.aborted) return Promise.reject(new TransportError("cancelled"));
     const id2 = this.prefix + "-rpc-" + ++this.counter;
     return new Promise((resolve, reject) => {
-      const stop = this.scheduler.after(this.timeoutMs, () => {
+      const abort = () => {
+        const wait = this.pending.get(id2);
+        if (wait === void 0) return;
         this.pending.delete(id2);
+        wait.stop();
+        reject(new TransportError("cancelled"));
+        void this.network.stop(id2).catch((error51) => {
+          void error51;
+        });
+      };
+      const streaming = value.method === "workspace" && ["stream-next", "stream-write", "stream-end"].includes(value.argument.operation);
+      const cancelTimer = streaming ? () => {
+      } : this.scheduler.after(this.timeoutMs, () => {
+        this.pending.delete(id2);
+        signal?.removeEventListener("abort", abort);
         reject(new TransportError("timeout"));
         void this.network.stop(id2).catch((error51) => {
           void error51;
         });
       });
-      this.pending.set(id2, { resolve, reject, stop });
-      void this.network.request(id2, JSON.stringify(value)).catch((error51) => {
+      const stop = () => {
+        cancelTimer();
+        signal?.removeEventListener("abort", abort);
+      };
+      this.pending.set(id2, { workspace, resolve, reject, stop });
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      else void this.network.request(id2, JSON.stringify(value)).catch((error51) => {
         const pending = this.pending.get(id2);
         if (pending === void 0) return;
         this.pending.delete(id2);
@@ -20167,7 +20298,7 @@ function record2(candidate, keys2) {
   if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate) || Object.keys(candidate).length !== keys2.length || !keys2.every((key) => Object.hasOwn(candidate, key))) throw new Error("invalid relay control");
   return candidate;
 }
-function text3(value) {
+function text5(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 256) throw new Error("invalid relay control");
   return value;
 }
@@ -20177,15 +20308,15 @@ function natural3(value, min = 1) {
 }
 function common(value) {
   if (value.protocol !== RELAY_CONTROL_PROTOCOL || value.role !== "phone" && value.role !== "desktop") throw new Error("invalid relay control");
-  return { protocol: RELAY_CONTROL_PROTOCOL, pairId: id(text3(value.pairId)), round: id(text3(value.round)), role: value.role, epoch: natural3(value.epoch) };
+  return { protocol: RELAY_CONTROL_PROTOCOL, pairId: id(text5(value.pairId)), round: id(text5(value.round)), role: value.role, epoch: natural3(value.epoch) };
 }
 function relayChallenge(candidate) {
-  const value = record2(candidate, ["protocol", "kind", "pairId", "round", "role", "epoch", "credentialId", "audience", "challengeId", "nonce", "expiresAt"]), base = common(value), credentialId = text3(value.credentialId), nonce = text3(value.nonce);
+  const value = record2(candidate, ["protocol", "kind", "pairId", "round", "role", "epoch", "credentialId", "audience", "challengeId", "nonce", "expiresAt"]), base = common(value), credentialId = text5(value.credentialId), nonce = text5(value.nonce);
   if (value.kind !== "challenge" || !/^p256-sha256-[a-f0-9]{64}$/.test(credentialId) || !/^[A-Za-z0-9_-]{43}$/.test(nonce)) throw new Error("invalid relay control");
-  return { ...base, kind: "challenge", credentialId: id(credentialId), audience: text3(value.audience), challengeId: id(text3(value.challengeId)), nonce, expiresAt: natural3(value.expiresAt) };
+  return { ...base, kind: "challenge", credentialId: id(credentialId), audience: text5(value.audience), challengeId: id(text5(value.challengeId)), nonce, expiresAt: natural3(value.expiresAt) };
 }
 function relayReceipt(candidate) {
-  const value = record2(candidate, ["protocol", "kind", "pairId", "round", "role", "epoch", "room", "token", "expiresAt"]), base = common(value), room = text3(value.room), token = text3(value.token);
+  const value = record2(candidate, ["protocol", "kind", "pairId", "round", "role", "epoch", "room", "token", "expiresAt"]), base = common(value), room = text5(value.room), token = text5(value.token);
   if (value.kind !== "room" || !/^[A-Za-z0-9_-]{16,128}$/.test(room) || !/^[a-f0-9]{64}$/.test(token)) throw new Error("invalid relay control");
   return { ...base, kind: "room", room: id(room), token, expiresAt: natural3(value.expiresAt) };
 }
@@ -20212,28 +20343,28 @@ var RelayControlClient = class {
     try {
       let pending = 0;
       this.stops.push(socket.onEnd(() => this.close()));
-      this.stops.push(socket.onFrame((bytes, binary) => {
+      this.stops.push(socket.onFrame((bytes2, binary) => {
         if (this.closed) return;
         this.observe("frame-received");
-        if (binary || bytes.byteLength === 0 || pending + bytes.byteLength > maxQueuedBytes) {
+        if (binary || bytes2.byteLength === 0 || pending + bytes2.byteLength > maxQueuedBytes) {
           this.observe("failure-wire:refused");
           this.close();
           return;
         }
         ;
-        const copy = Uint8Array.from(bytes);
-        pending += copy.byteLength;
+        const copy2 = Uint8Array.from(bytes2);
+        pending += copy2.byteLength;
         this.tail = this.tail.then(async () => {
           this.phase = "decode";
-          const candidate = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(copy));
+          const candidate = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(copy2));
           this.observe("frame-decoded");
           await this.receive(candidate);
         }).catch((error51) => {
           this.observe(`failure-${this.phase}:${error51 instanceof SyntaxError ? "format" : "refused"}`);
           this.close();
         }).finally(() => {
-          pending -= copy.byteLength;
-          copy.fill(0);
+          pending -= copy2.byteLength;
+          copy2.fill(0);
         });
       }));
       this.stops.push(scheduler.after(Math.max(0, trust.expiresAt - clock()), () => {
@@ -20388,20 +20519,20 @@ var EncryptedRelayConnection = class {
       this.observe("handshake-deadline");
       this.close();
     });
-    this.stops.push(socket.onEnd(() => this.close()), socket.onFrame((bytes, binary) => {
+    this.stops.push(socket.onEnd(() => this.close()), socket.onFrame((bytes2, binary) => {
       if (this.phase === "closed") return;
-      if (bytes.byteLength === 0 || this.pending + bytes.byteLength > maxQueuedBytes) {
+      if (bytes2.byteLength === 0 || this.pending + bytes2.byteLength > maxQueuedBytes) {
         this.observe("frame-budget-rejected");
         this.close();
         return;
       }
-      this.pending += bytes.byteLength;
-      const copy = Uint8Array.from(bytes);
+      this.pending += bytes2.byteLength;
+      const copy2 = Uint8Array.from(bytes2);
       this.tail = this.tail.then(async () => {
         if (this.phase === "closed") return;
-        const text4 = new TextDecoder("utf-8", { fatal: true }).decode(copy);
+        const text6 = new TextDecoder("utf-8", { fatal: true }).decode(copy2);
         if (!binary) {
-          if (this.phase !== "ready" || text4 !== '{"relay":"ready","v":1}') throw new E2EError("invalid");
+          if (this.phase !== "ready" || text6 !== '{"relay":"ready","v":1}') throw new E2EError("invalid");
           this.observe("relay-ready");
           this.phase = "hello";
           this.transmit(this.crypto.hello());
@@ -20410,7 +20541,7 @@ var EncryptedRelayConnection = class {
         switch (this.phase) {
           case "hello":
             this.observe("peer-hello");
-            await this.crypto.receiveHello(JSON.parse(text4));
+            await this.crypto.receiveHello(JSON.parse(text6));
             if (this.closed()) return;
             this.observe("keys-derived");
             this.phase = "finished";
@@ -20418,7 +20549,7 @@ var EncryptedRelayConnection = class {
             this.observe("finished-sent");
             break;
           case "finished":
-            await this.crypto.acceptFinished(text4);
+            await this.crypto.acceptFinished(text6);
             if (this.closed()) return;
             this.phase = "data";
             this.stopDeadline();
@@ -20426,7 +20557,7 @@ var EncryptedRelayConnection = class {
             this.connected(this.crypto.binding());
             break;
           case "data": {
-            const value = await this.crypto.open(text4);
+            const value = await this.crypto.open(text6);
             if (!this.closed()) await this.delivery(value);
             break;
           }
@@ -20440,8 +20571,8 @@ var EncryptedRelayConnection = class {
         if (phase !== "closed") this.observe(`failure-${phase}:${error51 instanceof E2EError ? error51.code : error51 instanceof SyntaxError ? "format" : "unexpected"}`);
         this.close();
       }).finally(() => {
-        this.pending -= copy.byteLength;
-        copy.fill(0);
+        this.pending -= copy2.byteLength;
+        copy2.fill(0);
       });
     }));
     this.stops.push(bindConnectionLifetime(lifetime, () => this.close()));
@@ -20472,8 +20603,8 @@ var EncryptedRelayConnection = class {
   }
   transmit(value) {
     if (this.closed()) return;
-    const bytes = new TextEncoder().encode(JSON.stringify(value));
-    this.socket.send(bytes);
+    const bytes2 = new TextEncoder().encode(JSON.stringify(value));
+    this.socket.send(bytes2);
   }
   /** @param value - canonical authenticated application payload, containing original command identities. @returns after bounded send; receipt remains owned by desktop journal. No retry is attempted. */
   async send(value) {
@@ -20524,7 +20655,7 @@ var PairedRelayFailure = class extends Error {
   cleanupFailed;
 };
 var PairedRelayEndpoint = class {
-  /** @param trust - locally confirmed routing identity. @param policy - explicit bounds. @param ports - native/Node owner ports. @param received - authenticated plaintext delivery. @param ready - exact new binding and encrypted connection. @param notice - content-free closure/failure sink; no pending request success is implied. @param lifetime - pairing/device policy lifetime. @param diagnostic - optional fixed handshake facts; omission emits nothing. @param controlDiagnostic - optional fixed control facts; omission emits nothing and no payload reaches this sink. */
+  /** @param trust - locally confirmed routing identity. @param policy - explicit bounds. @param ports - native/Node owner ports. @param received - authenticated plaintext delivery. @param ready - exact new binding, encrypted connection and signed room deadline. @param notice - content-free closure/failure sink; no pending request success is implied. @param lifetime - pairing/device policy lifetime. @param diagnostic - optional fixed handshake facts; omission emits nothing. @param controlDiagnostic - optional fixed control facts; omission emits nothing and no payload reaches this sink. */
   constructor(trust, policy, ports, received, ready, notice, lifetime, diagnostic, controlDiagnostic) {
     this.notice = notice;
     validatePairedRelayPolicy(policy);
@@ -20550,7 +20681,7 @@ var PairedRelayEndpoint = class {
           crypto = new P256SecureChannel(trust.role, lease.receipt.room, material.key, material.nonce, ports.remotePublicSpki, policy.e2e, ports.primitives);
           const connection = new EncryptedRelayConnection(socket, crypto, ports.signer, policy.maxQueuedBytes, received, (binding) => {
             if (this.closed || lease.signal.aborted || generation !== this.generation) return;
-            ready(binding, connection);
+            ready(binding, connection, lease.receipt.expiresAt);
           }, ports.scheduler, policy.handshakeMs, lease.signal, diagnostic ?? ports.diagnostic);
           this.current = connection;
           this.dataConnections.add(connection);
@@ -20647,6 +20778,48 @@ async function verifyDeviceRoute(candidate, primitives, expected, now) {
   if (!await primitives.verify(offer.binding.phonePublicSpki, deviceRouteReplyBytes(offer), primitives.decode(value.signature))) throw new Error("device route phone signature denied");
   return value;
 }
+
+// src/workspace-protocol.ts
+var WORKSPACE_PLUGIN_EVENTS_PATH = "/plugins/events";
+var handle = external_exports.string().min(1).max(256).transform((value) => id(value));
+var bytes = external_exports.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+var headers = external_exports.array(external_exports.tuple([external_exports.string().max(256), external_exports.string().max(8192)])).max(128);
+var encoded = external_exports.string().max(1398104).regex(/^[A-Za-z0-9_-]*$/);
+var workspaceBodySchema = external_exports.object({ id: handle, bytes }).strict();
+var workspaceRequestSchema = external_exports.discriminatedUnion("operation", [
+  external_exports.object({ operation: external_exports.literal("bootstrap") }).strict(),
+  external_exports.object({ operation: external_exports.literal("manifest") }).strict(),
+  external_exports.object({ operation: external_exports.literal("close") }).strict(),
+  external_exports.object({ operation: external_exports.literal("fetch"), url: external_exports.string().max(8192), method: external_exports.enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]), headers, body: encoded.optional() }).strict(),
+  external_exports.object({ operation: external_exports.literal("read"), id: handle, offset: bytes }).strict(),
+  external_exports.object({ operation: external_exports.literal("release"), id: handle }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-open"), endpoint: external_exports.string().min(1).max(512), payload: external_exports.unknown() }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-next"), id: handle }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-write"), id: handle, value: external_exports.unknown() }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-end"), id: handle }).strict(),
+  external_exports.object({ operation: external_exports.literal("stream-close"), id: handle }).strict()
+]);
+var workspaceResponseSchema = external_exports.object({ status: external_exports.number().int().min(200).max(599), headers, body: workspaceBodySchema }).strict();
+var workspaceChunkSchema = external_exports.object({ offset: bytes, body: encoded, done: external_exports.boolean() }).strict();
+var workspaceNextSchema = external_exports.discriminatedUnion("done", [
+  external_exports.object({ done: external_exports.literal(true), failure: external_exports.object({ code: external_exports.string(), message: external_exports.string(), details: external_exports.unknown().optional() }).strict().optional() }).strict(),
+  external_exports.object({ done: external_exports.literal(false), body: workspaceBodySchema }).strict()
+]);
+var workspaceStreamSchema = external_exports.object({ id: handle }).strict();
+var resourcePath = external_exports.string().min(1).max(8192).refine((value) => {
+  if (!value.startsWith("/") || value.startsWith("//") || /[#\\\u0000-\u0020]/.test(value)) return false;
+  const url2 = new URL(value, "https://workspace.dsh.invalid");
+  return url2.pathname + url2.search === value && !url2.pathname.startsWith("/api/") && url2.pathname !== WORKSPACE_PLUGIN_EVENTS_PATH;
+});
+var workspaceShellManifestSchema = external_exports.object({
+  revision: external_exports.string().regex(/^[a-f0-9]{64}$/),
+  resources: external_exports.array(external_exports.object({
+    path: resourcePath,
+    sha256: external_exports.string().regex(/^[a-f0-9]{64}$/),
+    bytes,
+    mediaType: external_exports.string().min(1).max(256)
+  }).strict()).max(2e4).refine((rows) => new Set(rows.map((row) => row.path)).size === rows.length)
+}).strict();
 
 // src/native-device-bridge.ts
 var route = external_exports.object({ desktopId: external_exports.string().min(1).max(256), profileId: external_exports.literal("desktop"), sessionId: external_exports.string().min(1).max(256) }).strict();
@@ -20853,6 +21026,8 @@ var NativeDeviceCore = class {
     } else if (method === "select") this.selected(fields(value, ["method", "route"]).route);
     else if (method === "request") this.selected(fields(value, ["method", "route", "argument"]).route);
     else if (method === "manage") deviceSessionActionSchema.parse(fields(value, ["method", "action"]).action);
+    else if (method === "creation-options") fields(value, ["method"]);
+    else if (method === "workspace") workspaceRequestSchema.parse(fields(value, ["method", "argument"]).argument);
     else throw new Error("native device method denied");
     await endpoint.send(jsonPayload({ kind: "request", id: text(idText), value }));
   }
@@ -20888,6 +21063,81 @@ var NativeDeviceCore = class {
     return this.closing;
   }
 };
+
+// src/workspace-diagnostic.ts
+function workspaceDiagnosticOperation(request) {
+  if (request === void 0) return "invalid-request";
+  if (request.operation !== "fetch") return request.operation;
+  const path = /^https:\/\/[^/?#]+(\/[^?#]*)/.exec(request.url)?.[1];
+  switch (path) {
+    case "/api/richInline/appearance":
+      return "rich-appearance";
+    case "/api/dynamicCordisRunner/inventory":
+      return "cordis-inventory";
+    case "/api/dynamicCordisRunner/syncInspectManifest":
+      return "inspect-manifest";
+    default:
+      return "fetch";
+  }
+}
+function workspaceDiagnosticFailure(error51) {
+  if (error51 instanceof E2EError) return error51.code === "capacity" ? "encrypted-capacity" : "encrypted-failure";
+  if (error51 instanceof TransportError) {
+    switch (error51.code) {
+      case "cancelled":
+      case "closed":
+      case "invalid-packet":
+      case "queue-full":
+      case "scope-denied":
+      case "timeout":
+      case "unknown-outcome":
+      case "workspace-grant-required":
+        return error51.code;
+    }
+  }
+  return "unclassified";
+}
+
+// src/workspace-bytes.ts
+async function readWorkspaceBytes(candidate, ports, limits) {
+  const body2 = workspaceBodySchema.parse(candidate);
+  let complete = false;
+  try {
+    if (body2.bytes > limits.maxBytes) throw new Error("workspace response too large");
+    const bytes2 = new Uint8Array(body2.bytes);
+    let offset = 0;
+    while (true) {
+      const chunk = workspaceChunkSchema.parse(await ports.request({ operation: "read", id: body2.id, offset }));
+      const piece = ports.decode(chunk.body);
+      if (chunk.offset !== offset || piece.byteLength > limits.maxChunkBytes || piece.byteLength > body2.bytes - offset || !chunk.done && piece.byteLength === 0) throw new Error("workspace transfer invalid");
+      bytes2.set(piece, offset);
+      offset += piece.byteLength;
+      if (chunk.done) {
+        if (offset !== body2.bytes) throw new Error("workspace transfer incomplete");
+        complete = true;
+        return bytes2;
+      }
+    }
+  } finally {
+    if (!complete) await ports.release({ operation: "release", id: body2.id });
+  }
+}
+
+// src/workspace-origin.ts
+var fingerprint2 = external_exports.string().regex(/^p256-sha256-[a-f0-9]{64}$/);
+function deviceWorkspaceOrigin(desktopCredentialId) {
+  const digest2 = fingerprint2.parse(desktopCredentialId).slice("p256-sha256-".length);
+  return "https://d-" + digest2.slice(0, 32) + "." + digest2.slice(32) + ".desktop.workspace.dsh.invalid";
+}
+
+// src/workspace-prepare.ts
+async function prepareWorkspace(ports, limits) {
+  const bootstrap = workspaceBodySchema.parse(await ports.request({ operation: "bootstrap" }));
+  await ports.release({ operation: "release", id: bootstrap.id });
+  const descriptor2 = await ports.request({ operation: "manifest" });
+  const bytes2 = await readWorkspaceBytes(descriptor2, ports, limits);
+  return workspaceShellManifestSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes2)));
+}
 
 // src/device-route-owner.ts
 var ledger = external_exports.object({ schema: external_exports.literal("harmony-device-route-ledger/1"), offers: external_exports.array(deviceRouteOfferSchema).max(64), routes: external_exports.array(deviceRouteSchema).max(64), retired: external_exports.array(external_exports.string()).max(64) }).strict();
@@ -21100,8 +21350,8 @@ var ProductRouteStorage = class {
 
 // src/native-device-product.ts
 var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
-  /** @param authority - exact native UI owner. @param policyJson - existing default-disabled product/domain limits. @param identityAlias - original selected HUKS alias. @param host - approved existing relay host. @param routingExpiresAt - independent public relay directory deadline. @param relay - existing control/E2E capacities. @param publicStorage - separate app-private device public file. @param crypto - original native signer and maintained backend. @param scheduler - native timers. @param clock - trusted native clock. @param acquire - original native WSS acquisition, called only on connect. @param publish - sanitized original page DTO sink. */
-  constructor(authority, policyJson, identityAlias, host, routingExpiresAt, relay, publicStorage, crypto, scheduler, clock, acquire, publish, catalogRefreshMs, routeStorage, pairedConnection = false) {
+  /** @param authority - exact native UI owner. @param policyJson - existing default-disabled product/domain limits. @param identityAlias - original selected HUKS alias. @param host - approved existing relay host. @param routingExpiresAt - independent public relay directory deadline. @param relay - existing control/E2E capacities. @param publicStorage - separate app-private device public file. @param crypto - original native signer and maintained backend. @param scheduler - native timers. @param clock - trusted native clock. @param acquire - original native WSS acquisition, called only on connect. @param publish - sanitized original page DTO sink. @param foregroundSelection - in-memory selection shared with the next facade of the same native page. */
+  constructor(authority, policyJson, identityAlias, host, routingExpiresAt, relay, publicStorage, crypto, scheduler, clock, acquire, publish, catalogRefreshMs, routeStorage, pairedConnection = false, foregroundSelection = { binding: null, sessionId: "" }) {
     this.authority = authority;
     this.identityAlias = identityAlias;
     this.host = host;
@@ -21115,7 +21365,9 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
     this.publish = publish;
     this.catalogRefreshMs = catalogRefreshMs;
     this.pairedConnection = pairedConnection;
+    this.foregroundSelection = foregroundSelection;
     this.policy = parseProductPolicy(policyJson);
+    if (this.policy.workspace !== void 0 && (this.policy.workspace.maxPending + this.policy.transport.maxPending > relay.maxProofs || this.policy.workspace.maxPacketBytes > relay.e2e.maxPlaintextBytes)) throw new Error("native workspace exceeds device carrier capacity");
     this.routingLeaseMs = routingExpiresAt - clock();
     if (pairedConnection && (!Number.isSafeInteger(this.routingLeaseMs) || this.routingLeaseMs <= relay.maxRoomTtlMs || this.routingLeaseMs > 2147483647)) throw new Error("invalid paired connection lease");
     if (!Number.isSafeInteger(catalogRefreshMs) || catalogRefreshMs <= 0 || catalogRefreshMs > 2147483647) throw new Error("native device catalogue interval denied");
@@ -21156,12 +21408,13 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   publish;
   catalogRefreshMs;
   pairedConnection;
+  foregroundSelection;
   policy;
   storage;
   client;
   device;
   selected;
-  resumeSessionId = "";
+  workspaceRequests = /* @__PURE__ */ new Map();
   closed = false;
   connectionApproved = false;
   revoked = false;
@@ -21330,7 +21583,7 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
       core = new NativeDeviceCore(JSON.stringify(registration), expiresAt, this.relay, acquisition.ports, (state) => {
         if (state === "identity-authenticated") acquired.authenticated();
       }, (packet) => rpc?.receive(packet), route2 ?? void 0);
-      rpc = new DeviceProductRpc(core, this.scheduler, this.policy.transport.timeoutMs, this.policy.transport.maxPending, this.policy.commandPrefix);
+      rpc = new DeviceProductRpc(core, this.scheduler, this.policy.transport.timeoutMs, this.policy.transport.maxPending, this.policy.commandPrefix, this.policy.workspace?.maxPending ?? 0);
       lifetime.addEventListener("abort", abort, { once: true });
       stage = "identity-read";
       await core.initialize();
@@ -21343,23 +21596,37 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
       lifetime.throwIfAborted();
       this.local(this.authority);
       const network = core, calls = rpc;
-      return { authentication: "native", ...context === void 0 ? {} : { route: context }, binding: network.binding, failure: (fallback) => network.connectionFailure(fallback, "active-channel"), readyTicket: async () => JSON.parse(network.ticketJson()), catalog: async () => deviceSessionDirectory(await calls.call({ method: "metadata", argument: null }), registration.desktopId), manage: async (action) => deviceSessionManagedSchema.parse(await calls.call({ method: "manage", action })).sessionId, select: async (route3, ticket, publish, lifetime2) => {
-        const result = fields(await calls.call({ method: "select", route: route3 }), ["selected"]);
-        if (JSON.stringify(result.selected) !== JSON.stringify(route3)) throw new Error("native device selection acknowledgement denied");
-        const session = new DevicePhoneSession(route3, registration, ticket, network.binding, proof, this.authority, this.policy, calls, this.scheduler, this.clock, (view) => publish(this.sessionView(view)), context);
-        try {
-          await session.start();
-          if (lifetime2.aborted) throw new Error("native device selection retired");
-          this.selected = session;
-          return { richRequest: (raw) => session.richRequest(raw), close: async () => {
-            if (this.selected === session) this.selected = void 0;
+      let selectionGeneration = 0;
+      return {
+        authentication: "native",
+        ...context === void 0 ? {} : { route: context },
+        binding: network.binding,
+        failure: (fallback) => network.connectionFailure(fallback, "active-channel"),
+        readyTicket: async () => JSON.parse(network.ticketJson()),
+        catalog: async () => deviceSessionDirectory(await calls.call({ method: "metadata", argument: null }), registration.desktopId),
+        creationOptions: async () => sessionCreationOptionsSchema.parse(await calls.call({ method: "creation-options" })),
+        workspace: (argument, _ticket, signal) => calls.call({ method: "workspace", argument }, signal),
+        manage: async (action) => deviceSessionManagedSchema.parse(await calls.call({ method: "manage", action })).sessionId,
+        select: async (route3, ticket, publish, lifetime2) => {
+          const result = fields(await calls.call({ method: "select", route: route3 }), ["selected"]);
+          if (JSON.stringify(result.selected) !== JSON.stringify(route3)) throw new Error("native device selection acknowledgement denied");
+          const sessionPolicy = { ...this.policy, commandPrefix: "device-" + network.binding.id + ":" + ++selectionGeneration };
+          const session = new DevicePhoneSession(route3, registration, ticket, network.binding, proof, this.authority, sessionPolicy, calls, this.scheduler, this.clock, (view) => publish(this.sessionView(view)), context);
+          try {
+            await session.start();
+            if (lifetime2.aborted) throw new Error("native device selection retired");
+            this.selected = session;
+            return { richRequest: (raw) => session.richRequest(raw), close: async () => {
+              if (this.selected === session) this.selected = void 0;
+              await session.close();
+            } };
+          } catch (error51) {
             await session.close();
-          } };
-        } catch (error51) {
-          await session.close();
-          throw error51;
-        }
-      }, close };
+            throw error51;
+          }
+        },
+        close
+      };
     } catch (error51) {
       const failure = core?.connectionFailure(error51, stage) ?? deviceConnectionFailure(error51, stage);
       if (cleanupFailed) failure.cleanupFailed();
@@ -21457,14 +21724,14 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
     this.local(this.authority);
     if (networkApproved !== true) throw new Error("native device host consent required");
     if (this.revoked || this.device === void 0) throw new Error("native device not bound");
-    const resume = this.resumeSessionId;
+    const { binding, sessionId } = this.foregroundSelection;
     this.connectionApproved = true;
     await this.device.connect(this.authority);
     this.catalogError = "";
     this.scheduleCatalog();
-    if (resume !== "" && resume === this.resumeSessionId) {
-      if (this.device.view.sessions.some((row) => row.sessionId === resume)) await this.device.select(this.authority, resume);
-      else this.resumeSessionId = "";
+    if (binding !== null && binding === this.cached && binding === this.foregroundSelection.binding && sessionId !== "" && sessionId === this.foregroundSelection.sessionId) {
+      if (this.device.view.sessions.some((row) => row.sessionId === sessionId)) await this.device.select(this.authority, sessionId);
+      else this.foregroundSelection.sessionId = "";
     }
   }
   scheduleCatalog() {
@@ -21496,15 +21763,103 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
   /** @param sessionId - current catalogue row, retained in memory for channel recovery. @returns after canonical old rich/subscription cleanup and selected Session start. */
   async select(sessionId) {
     this.local(this.authority);
-    if (this.device === void 0) throw new Error("native device not bound");
-    this.resumeSessionId = sessionId;
-    await this.device.select(this.authority, sessionId);
+    const device = this.device, binding = this.cached;
+    if (device === void 0) throw new Error("native device not bound");
+    await device.select(this.authority, sessionId);
+    if (!this.closed && !this.revoked && binding !== null && binding === this.cached && device.view.selected?.sessionId === sessionId) {
+      this.foregroundSelection.binding = binding;
+      this.foregroundSelection.sessionId = sessionId;
+    }
   }
   /** @param raw - strict list-management intent JSON from the native page. @returns affected Session id after the desktop acknowledged it and the catalogue refreshed; selection is unchanged. */
   async manage(raw) {
     this.local(this.authority);
     if (this.device === void 0) throw new Error("native device not bound");
     return this.device.manage(this.authority, deviceSessionActionSchema.parse(JSON.parse(raw)));
+  }
+  /** @returns current desktop choices for the native new-task sheet. */
+  async creationOptions() {
+    this.local(this.authority);
+    if (this.device === void 0) throw new Error("native device not bound");
+    return JSON.stringify(await this.device.creationOptions(this.authority));
+  }
+  /** Refresh the original native catalogue after returning from the standard workspace; no task is started. */
+  async refreshSessions() {
+    this.local(this.authority);
+    if (this.device === void 0) throw new Error("native device not bound");
+    await this.device.refresh(this.authority);
+  }
+  async workspaceTask(requestId, generation, execute) {
+    this.local(this.authority);
+    if (this.device === void 0) throw new TransportError("scope-denied");
+    if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId) || this.workspaceRequests.has(requestId)) throw new TransportError("invalid-packet");
+    if (this.policy.workspace === void 0) throw new TransportError("scope-denied");
+    if (this.workspaceRequests.size >= this.policy.workspace.maxPending) throw new TransportError("queue-full");
+    if (this.device.workspaceGeneration(this.authority) !== generation) throw new TransportError("scope-denied");
+    const controller = new AbortController();
+    const operation = execute(this.device, controller.signal);
+    this.workspaceRequests.set(requestId, { controller, operation });
+    try {
+      return await operation;
+    } finally {
+      this.workspaceRequests.delete(requestId);
+    }
+  }
+  /** @returns the current native connection generation; old Web documents cannot operate a replacement connection. */
+  workspaceGeneration() {
+    this.local(this.authority);
+    if (this.device === void 0 || this.policy.workspace === void 0) throw new Error("native workspace unavailable");
+    return this.device.workspaceGeneration(this.authority);
+  }
+  /** @returns public origin and local generation for a trusted ArkWeb workspace, with persistent Web state partitioned by the original desktop identity. */
+  async workspaceContext() {
+    const generation = this.workspaceGeneration();
+    if (this.client === void 0) throw new Error("native device not bound");
+    const record3 = await this.client.load(this.authority);
+    if (this.workspaceGeneration() !== generation) throw new Error("native workspace connection changed");
+    return JSON.stringify({ origin: deviceWorkspaceOrigin(record3.desktopCredentialId), generation });
+  }
+  /** @param requestId - native startup request. @param generation - original connection. @returns a verified shell inventory after an explicit authorized bootstrap; reopening never retries a mutation. */
+  async workspacePrepare(requestId, generation) {
+    const policy = this.policy.workspace;
+    if (policy === void 0) throw new Error("native workspace unavailable");
+    return this.workspaceTask(requestId, generation, async (device, signal) => JSON.stringify(await prepareWorkspace({
+      request: (value) => device.workspace(this.authority, value, generation, signal),
+      release: (value) => device.workspace(this.authority, value, generation),
+      decode: (value) => this.crypto.primitives.decode(value)
+    }, { maxBytes: policy.maxResponseBytes, maxChunkBytes: policy.maxChunkBytes })));
+  }
+  /** @param requestId - native port's request identity. @param raw - strict message from the trusted workspace, never a rich guest. @param generation - captured native connection generation. @returns a JSON result under the separate desktop workspace grant. */
+  async workspaceRequest(requestId, raw, generation) {
+    let request;
+    try {
+      if (this.policy.workspace === void 0 || new TextEncoder().encode(raw).byteLength > this.policy.workspace.maxPacketBytes) throw new Error("native workspace packet too large");
+      const parsed = workspaceRequestSchema.parse(JSON.parse(raw));
+      request = parsed;
+      return await this.workspaceTask(requestId, generation, async (device, signal) => JSON.stringify(await device.workspace(this.authority, parsed, generation, signal)));
+    } catch (error51) {
+      const failure = request === void 0 ? "invalid-packet" : workspaceDiagnosticFailure(error51);
+      if (failure !== "cancelled") console.warn("DSH_WORKSPACE_RPC operation=" + workspaceDiagnosticOperation(request) + " failure=" + failure);
+      throw error51;
+    }
+  }
+  /** @param requestId - native resource owner. @param url - logical same-origin URL, validated again by Host. @param generation - original native connection generation. @param maxBytes - native assembly budget. @param maxChunkBytes - native chunk budget. @returns validated response metadata and platform-encoded binary bytes, without Web Fetch/URL dependencies in native JS. */
+  async workspaceResource(requestId, url2, generation, maxBytes, maxChunkBytes) {
+    if (![maxBytes, maxChunkBytes].every((value) => Number.isSafeInteger(value) && value > 0) || this.policy.workspace === void 0 || maxBytes > this.policy.workspace.maxResponseBytes || maxChunkBytes > this.policy.workspace.maxChunkBytes) throw new Error("native workspace resource limits denied");
+    const request = workspaceRequestSchema.parse({ operation: "fetch", url: url2, method: "GET", headers: [] });
+    return this.workspaceTask(requestId, generation, async (device, signal) => {
+      const response = workspaceResponseSchema.parse(await device.workspace(this.authority, request, generation, signal));
+      const bytes2 = await readWorkspaceBytes(response.body, {
+        request: (value) => device.workspace(this.authority, value, generation, signal),
+        release: (value) => device.workspace(this.authority, value, generation),
+        decode: (value) => this.crypto.primitives.decode(value)
+      }, { maxBytes, maxChunkBytes });
+      return JSON.stringify({ status: response.status, headers: response.headers, body: this.crypto.primitives.encode(bytes2) });
+    });
+  }
+  /** @param requestId - exact native port request to retire. Accepted desktop mutations remain uncertain and are never retried. */
+  cancelWorkspaceRequest(requestId) {
+    this.workspaceRequests.get(requestId)?.controller.abort();
   }
   /** Refresh dynamic catalogue without resuming an Agent. */
   async refresh() {
@@ -21518,8 +21873,8 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
     return this.selected;
   }
   /** @param requestId - original native user intent. @param text - user task. @returns canonical desktop receipt JSON. */
-  async submit(requestId, text4) {
-    return JSON.stringify(await this.session().submit(requestId, text4));
+  async submit(requestId, text6) {
+    return JSON.stringify(await this.session().submit(requestId, text6));
   }
   /** @param requestId - original intent. @returns read-only receipt JSON, never a resubmission. */
   async receipt(requestId) {
@@ -21546,6 +21901,8 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
     if (this.client === void 0) throw new Error("native device not bound");
     this.revoked = true;
     this.hasRoute = false;
+    this.foregroundSelection.binding = null;
+    this.foregroundSelection.sessionId = "";
     const results = await Promise.allSettled([this.client.revokeLocal(this.authority), this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]);
     if (results.some((result) => result.status === "rejected")) throw new Error("native device local revocation outcome unknown");
     this.empty("device-binding-locally-revoked");
@@ -21555,6 +21912,8 @@ var NativeDeviceProductFacade = class _NativeDeviceProductFacade {
     if (this.closed) return;
     this.closed = true;
     this.stopCatalog();
+    for (const request of this.workspaceRequests.values()) request.controller.abort();
+    await Promise.allSettled([...this.workspaceRequests.values()].map((request) => request.operation));
     const results = await Promise.allSettled([this.device?.close(), this.writeTail, this.publicRead, this.polling, this.routes?.close()]);
     this.client?.close();
     const stores = await Promise.allSettled([this.publicStorage.close(), this.routeStorage?.close()]);
@@ -21627,10 +21986,51 @@ var AutomaticConnection = class {
   }
 };
 
+// src/workspace-document-protocol.ts
+var correlation = external_exports.string().regex(/^[0-9]{1,16}$/);
+var workspaceLoadFailure = external_exports.enum(["renderer-boot", "navigation", "native-reply", "script-error", "promise-rejection"]);
+var workspacePortMessageSchema = external_exports.discriminatedUnion("kind", [
+  external_exports.object({ kind: external_exports.literal("workspace.request"), id: correlation, request: external_exports.string() }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.rich-request"), id: correlation, request: external_exports.string() }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.cancel"), id: correlation }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.selection"), sessionId: external_exports.string().min(1).max(256).nullable() }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.ready") }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.failed"), stage: workspaceLoadFailure.optional() }).strict()
+]);
+function workspacePortMessage(raw, maxBytes) {
+  if (new TextEncoder().encode(raw).byteLength > maxBytes) throw new Error("workspace port capacity");
+  return JSON.stringify(workspacePortMessageSchema.parse(JSON.parse(raw)));
+}
+var workspaceDocumentInitSchema = external_exports.object({
+  protocol: external_exports.literal("harmony-workspace/1"),
+  sessionId: external_exports.string().max(256),
+  plugin: external_exports.string().max(256).optional(),
+  limits: external_exports.object({
+    origin: external_exports.string(),
+    maxRequestBytes: external_exports.number().int().positive(),
+    maxResponseBytes: external_exports.number().int().positive(),
+    maxChunkBytes: external_exports.number().int().positive(),
+    maxPending: external_exports.number().int().positive(),
+    maxPacketBytes: external_exports.number().int().positive()
+  }).strict(),
+  rich: workspaceRichPolicySchema.optional()
+}).strict();
+var workspacePortReplySchema = external_exports.object({
+  kind: external_exports.literal("workspace.reply"),
+  id: correlation,
+  value: external_exports.string(),
+  error: external_exports.boolean()
+}).strict();
+var workspaceNativeMessageSchema = external_exports.union([
+  workspacePortReplySchema,
+  external_exports.object({ kind: external_exports.literal("workspace.rich-packet"), lease: external_exports.string().min(1).max(256), id: correlation.optional(), packet: external_exports.string() }).strict(),
+  external_exports.object({ kind: external_exports.literal("workspace.closed") }).strict()
+]);
+
 // src/native-product-facade.ts
 var positive = external_exports.number().int().positive().max(2147483647);
 var recovery = external_exports.object({ maxAttempts: positive, retryDelayMs: positive }).strict();
-var policySchema = external_exports.object({ enabled: external_exports.boolean(), trustMaxBytes: positive, transport: external_exports.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: external_exports.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: external_exports.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: external_exports.discriminatedUnion("mode", [external_exports.object({ mode: external_exports.literal("once") }).strict(), external_exports.object({ mode: external_exports.literal("bounded"), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict(), external_exports.object({ mode: external_exports.literal("continuous"), maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: external_exports.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/) }).strict();
+var policySchema = external_exports.object({ enabled: external_exports.boolean(), trustMaxBytes: positive, transport: external_exports.object({ maxPending: positive, maxQueuedFrames: positive, maxPacketBytes: positive, timeoutMs: positive, recovery }).strict(), domain: external_exports.object({ maxBytes: positive, maxEvents: positive, maxBlocks: positive, maxText: positive, maxRichBlocks: positive }).strict(), duplicateCap: positive, core: external_exports.object({ ttlMs: positive, maxMounts: positive, maxIntents: positive, follow: external_exports.discriminatedUnion("mode", [external_exports.object({ mode: external_exports.literal("once") }).strict(), external_exports.object({ mode: external_exports.literal("bounded"), maxSegments: positive, maxFailures: positive, retryDelayMs: positive }).strict(), external_exports.object({ mode: external_exports.literal("continuous"), maxFailures: positive, retryDelayMs: positive }).strict()]) }).strict(), commandPrefix: external_exports.string().min(1).max(96).regex(/^[A-Za-z0-9_.:-]+$/), workspace: external_exports.object({ closeTimeoutMs: positive, maxResourceRequests: positive, maxQueuedResources: positive, maxPending: positive, maxPacketBytes: positive, maxRequestBytes: positive, maxResponseBytes: positive, maxChunkBytes: positive.max(1048576), cache: external_exports.object({ maxEntries: positive, maxBytes: positive }).strict().optional(), rich: workspaceRichPolicySchema.optional() }).strict().refine((value) => value.maxResourceRequests < value.maxPending).optional() }).strict();
 function parseProductPolicy(raw) {
   return policySchema.parse(JSON.parse(raw));
 }
@@ -21710,8 +22110,8 @@ var NativeProductFacade = class {
     return this.product.select(authority, session);
   }
   /** @param authority - native composer intent. @param request - original id. @param text - user text. @returns canonical receipt JSON or visible uncertainty. */
-  async submit(authority, request, text4) {
-    return JSON.stringify(await this.product.submit(authority, request, text4));
+  async submit(authority, request, text6) {
+    return JSON.stringify(await this.product.submit(authority, request, text6));
   }
   /** @param authority - native reconciliation decision. @param request - original intent id. @returns read-only receipt JSON. */
   async receipt(authority, request) {
@@ -21744,5 +22144,10 @@ export {
   AutomaticConnection,
   NativeDeviceProductFacade,
   NativeProductFacade,
-  parseProductPolicy
+  parseProductPolicy,
+  workspaceDiagnosticFailure,
+  workspacePortMessage,
+  workspaceRichGuestMessage,
+  workspaceRichPacket,
+  workspaceRichRequest
 };

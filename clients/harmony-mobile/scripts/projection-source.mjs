@@ -49,6 +49,7 @@ export async function projectionPaths(project, root) {
   ].join('\n'))
   assert.equal(retainedRegistry, erasedRegistry, 'Retained registry must differ only by the two existing variance wrappers')
   paths['@deepseek-ai/dsh-typert-registry'] = [resolve(spec.checkout, spec.registryEntry)]
+  paths['@deepseek-ai/dsh-client-connection/client'] = [join(root, 'packages/client/connection/src/client/index.ts')]
   const digest = createRequire(join(root, 'packages/experimental/webworker-runtime/package.json'))
   const sha = digest.resolve('@noble/hashes/sha2.js'), utils = digest.resolve('@noble/hashes/utils.js')
   const installed = JSON.parse(await readFile(resolve(sha, '../package.json'), 'utf8'))

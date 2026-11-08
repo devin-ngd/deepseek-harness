@@ -2,23 +2,29 @@
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
-import { RelayRooms, type RelaySocket } from './relay-core.ts'
-import { RELAY_PATH, RELAY_SUBPROTOCOL } from './relay-protocol.ts'
+import { RelayRooms, type RelaySocket, type RelaySocketFailure } from './relay-core.ts'
+import { RELAY_MAX_MESSAGE_FRAGMENTS, RELAY_PATH, RELAY_SUBPROTOCOL } from './relay-protocol.ts'
 /** Host has already selected HTTPS or loopback behind an approved TLS proxy. */
 export interface RelayUpgradePolicy { readonly publicHost: string; readonly maxFrameBytes: number; readonly maxControlFrames: number; readonly nativeOrigin: RelayNativeOrigin }
 /** Browser origins remain denied unless a deployment explicitly selects the fixed NetworkKit phone handshake. */
 export type RelayNativeOrigin = 'deny' | 'networkkit-v1'
 /** @param ws - maintained server WebSocket. @param maxControlFrames - explicit ping/pong lifetime cap. @param applicationBinary - data uses opaque binary; control uses bounded JSON text. @returns common owned port; no metadata is logged. */
 export function nodeRelaySocket(ws: WebSocket, maxControlFrames: number, applicationBinary = true): RelaySocket {
-  ws.on('error', () => { ws.terminate() })
+  let endFailure: RelaySocketFailure | undefined
+  const fail = (reason: RelaySocketFailure) => { endFailure ??= reason; ws.terminate() }
+  ws.on('error', error => {
+    const code = 'code' in error ? error.code : undefined
+    fail(code === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH' || code === 'WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH' ? 'ws-message-limit'
+      : code === 'WS_ERR_TOO_MANY_BUFFERED_PARTS' ? 'ws-parts-limit' : 'socket-error')
+  })
   let controlFrames = 0
-  const control = () => { if (++controlFrames > maxControlFrames) ws.terminate() }
+  const control = () => { if (++controlFrames > maxControlFrames) fail('control-frame-limit') }
   ws.on('ping', control); ws.on('pong', control)
-  return { get bufferedAmount() { return ws.bufferedAmount }, onFrame(callback) {
+  return { get bufferedAmount() { return ws.bufferedAmount }, get endFailure() { return endFailure }, onFrame(callback) {
     const listener = (data: Buffer | ArrayBuffer | Buffer[], binary: boolean) => { const bytes = Array.isArray(data) ? Buffer.concat(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data; try { callback(bytes, binary) } catch (error) { void error; ws.terminate() } }
     ws.on('message', listener); return () => { ws.off('message', listener) }
   }, onEnd(callback) { const end = () => { try { callback() } catch (error) { void error; ws.terminate() } }; ws.on('close', end); ws.on('error', end); return () => { ws.off('close', end); ws.off('error', end) } },
-    ready: () => { ws.send('{"relay":"ready","v":1}') }, send: bytes => { ws.send(bytes, { binary: applicationBinary }, error => { if (error != null) ws.terminate() }) }, terminate: () => { ws.terminate() } }
+    ready: () => { ws.send('{"relay":"ready","v":1}') }, send: bytes => { ws.send(bytes, { binary: applicationBinary }, error => { if (error != null) fail('socket-send-failed') }) }, terminate: () => { ws.terminate() } }
 }
 /** @param req - untrusted HTTP metadata. @param key - selected lowercase header. @returns one bounded field; duplicate or absent fields reject. */
 export function relayHeader(req: IncomingMessage, key: string): string {
@@ -46,7 +52,7 @@ export class RelayUpgrade {
   constructor(private readonly rooms: RelayRooms, private readonly policy: RelayUpgradePolicy, failed: () => void) {
     if (!/^[a-z0-9.-]+$/.test(policy.publicHost) || policy.publicHost.endsWith('.invalid') || ![policy.maxFrameBytes, policy.maxControlFrames].every(value => Number.isSafeInteger(value) && value > 0) || policy.maxFrameBytes > 0x7fffffff) throw new Error('invalid relay policy')
     // ws 8.21.3 enforces these bounds; the installed @types/ws 8.18.1 declaration predates both options.
-    const options = { noServer: true, perMessageDeflate: false as const, maxPayload: policy.maxFrameBytes, clientTracking: true, maxFragments: 128, maxBufferedChunks: 128 }
+    const options = { noServer: true, perMessageDeflate: false as const, maxPayload: policy.maxFrameBytes, clientTracking: true, maxFragments: RELAY_MAX_MESSAGE_FRAGMENTS, maxBufferedChunks: 128 }
     this.wss = new WebSocketServer(options)
     this.wss.on('error', () => { this.closed = true; void this.close().catch(error => { void error; /* Host owns terminal cleanup failure. */ }); try { failed() } catch (error) { void error; /* The host notification cannot restore access or escape this dispatcher. */ } })
   }

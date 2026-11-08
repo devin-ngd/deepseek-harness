@@ -59,3 +59,9 @@ Physical operations follow the [recorded approval and deployment status](docs/no
 Native compilation, SDK substitutes, browser fixtures and physical-device behavior are distinct evidence levels. The complete task/stream/ArkWeb/action/deduplication/reconnect/cancel journey remains unqualified until the approved physical run passes it.
 
 The [local log self-check](docs/local-log-selfcheck-rc2.15.md) provides a fixed native logging probe; physical collection is qualified separately from compilation.
+
+Native shared JavaScript imports the SDK text codecs and URL parser explicitly. The [standard-plugin review](docs/workspace-review.md) records the separate emulator application, installed-runtime replay, native encrypted carrier and their remaining qualification limits.
+
+Foreground restoration waits for cleanup of the previous workspace and connection. The native page keeps its last successfully opened Session in memory and restores it if the same verified binding still admits the Session in the new directory. Access to the workspace on a replacement encrypted connection requires a fresh desktop grant.
+
+While connected, closing the workspace refreshes the native Session list. Returning to the same Session preserves its native history subscription.

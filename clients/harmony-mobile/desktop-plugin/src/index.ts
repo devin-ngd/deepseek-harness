@@ -7,7 +7,7 @@ import z from '@deepseek-ai/schemastery'
 import { randomUUID } from 'node:crypto'
 import { ProfilePeerAdmission } from './admission.ts'
 import { profileServicePorts, ProfileDesktopExecutor } from './ports.ts'
-import type { SessionWindowPolicy } from './session-window.ts'
+import { DEFAULT_SNAPSHOT_MAX_BYTES, type SessionWindowPolicy } from './session-window.ts'
 import { openProfileJournal } from './journal.ts'
 import { deviceCommandStep } from './device-command-step.ts'
 import { MobileBffCore, FollowJournal } from '../../integration/mobile-bff.ts'
@@ -53,7 +53,7 @@ export const Config = z.object({ enabled: z.boolean().default(false), relayEnabl
   journalMode: z.union(['create', 'reopen', 'create-or-reopen']).default('reopen'),
   maxPacketBytes: z.number().min(1).max(5242880).default(5242880), maxEnvelopeBytes: z.number().min(1).default(2097152), commandTtlMs: z.number().min(1).default(60000),
   maxCachedCommands: z.number().min(1).default(256), maxMountedBlocks: z.number().min(1).default(8), maxAdmissionRecords: z.number().min(1).default(1024),
-  snapshotMaxMessages: z.number().min(1).default(50), snapshotMaxRecords: z.number().min(1).default(512), snapshotMaxBytes: z.number().min(1).default(4194304),
+  snapshotMaxMessages: z.number().min(1).default(50), snapshotMaxRecords: z.number().min(1).default(512), snapshotMaxBytes: z.number().min(1).default(DEFAULT_SNAPSHOT_MAX_BYTES),
   followTtlMs: z.number().min(1).default(60000), maxFollowFrames: z.number().min(1).default(1024), maxFollowBytes: z.number().min(1).default(4194304), maxSessions: z.number().min(1).default(16), maxPeers: z.number().min(1).default(16) })
 /** @param request - parser/config input. @param clock - explicit host clock. @returns complete validated spec; enabled requests require both owner identities, and optional sessionId restricts the original grant. */
 export function resolveOptions(request: Options, clock: () => number): Spec {

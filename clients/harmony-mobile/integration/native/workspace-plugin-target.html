@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Plugin target fixture</title></head>
+<body><main id="root"><h1>Native plugin navigation</h1><p id="target">Waiting for native navigation</p><p id="session"></p><button id="fail">Fail this view</button></main><script>
+addEventListener('harmony:workspace:navigate', event => {
+  document.getElementById('target').textContent = 'PLUGIN_TARGET:' + (event.detail.plugin === undefined ? 'WORKSPACE' : event.detail.plugin === '' ? 'LIST' : event.detail.plugin);
+  document.getElementById('session').textContent = 'SESSION_TARGET:' + event.detail.sessionId;
+});
+document.getElementById('fail').onclick = () => { throw new Error('controlled workspace failure'); };
+dispatchEvent(new Event('harmony:workspace:navigation-ready'));
+</script></body>
+</html>

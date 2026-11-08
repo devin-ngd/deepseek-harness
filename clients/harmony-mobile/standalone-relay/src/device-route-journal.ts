@@ -10,6 +10,7 @@ import { routeVerifier } from './route-verifier.ts'
 import { id } from '../../src/protocol.ts'
 import { publicTrustWrites, type PublicTrustPolicy, type PublicTrustWrites } from './public-trust.ts'
 import type { RelayPairTrust } from './broker-policy.ts'
+import { RecoverableLock } from './recoverable-lock.ts'
 const eventSchema = z.discriminatedUnion('kind', [z.object({ kind: z.literal('register'), acceptedAt: z.number().int().nonnegative(), route: deviceRouteSchema }).strict(), z.object({ kind: z.literal('revoke-route'), routeId: z.string().min(1).max(128), epoch: z.literal(2) }).strict(), z.object({ kind: z.literal('revoke-device'), binding: deviceBindingSchema }).strict()])
 type Event = z.infer<typeof eventSchema>
 const frameSchema = z.object({ schema: z.literal('harmony-device-route-journal/1'), sequence: z.number().int().positive(), previous: z.string().regex(/^[a-f0-9]{64}$/), anchor: z.string().regex(/^[a-f0-9]{64}$/), event: eventSchema.nullable() }).strict()
@@ -25,7 +26,7 @@ export class DeviceRouteJournal {
   private failed = false
   private tail: Promise<void> = Promise.resolve()
   private closing: Promise<void> | undefined
-  private constructor(private readonly policy: PublicTrustPolicy, private readonly anchor: string, private readonly pins: readonly RelayPairTrust[], private readonly maxActive: number, private readonly clock: () => number, private readonly file: FileHandle, private readonly marker: FileHandle, private readonly lock: FileHandle, private readonly io: PublicTrustWrites) {}
+  private constructor(private readonly policy: PublicTrustPolicy, private readonly anchor: string, private readonly pins: readonly RelayPairTrust[], private readonly maxActive: number, private readonly clock: () => number, private readonly file: FileHandle, private readonly marker: FileHandle, private readonly lock: RecoverableLock, private readonly io: PublicTrustWrites) {}
   private static async check(policy: PublicTrustPolicy): Promise<void> {
     if (!isAbsolute(policy.path) || resolve(policy.path) !== policy.path || ![policy.maxBytes, policy.maxRecords].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error('route journal policy denied')
     for (let value = dirname(policy.path); ; value = dirname(value)) { const info = await lstat(value); if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('route journal directory denied'); if (dirname(value) === value) break }
@@ -45,7 +46,7 @@ export class DeviceRouteJournal {
   /** Reconstruct every signed registration and terminal tombstone before any server listener exists. */
   static async reopen(policy: PublicTrustPolicy, anchor: string, pins: readonly RelayPairTrust[], maxActive: number, clock: () => number, io: PublicTrustWrites = publicTrustWrites): Promise<DeviceRouteJournal> {
     await this.check(policy); if (!Number.isSafeInteger(maxActive) || maxActive <= 0 || pins.length === 0) throw new Error('route journal pins denied')
-    const lock = await open(policy.path + '.lock', constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600); let file: FileHandle | undefined, marker: FileHandle | undefined
+    const lock = await RecoverableLock.acquire(policy.path, io.directorySync); let file: FileHandle | undefined, marker: FileHandle | undefined
     try {
       await io.directorySync(dirname(policy.path))
       for (const path of [policy.path, policy.path + '.head']) { const info = await lstat(path); if (!info.isFile() || info.isSymbolicLink()) throw new Error('route journal file denied') }
@@ -88,7 +89,7 @@ export class DeviceRouteJournal {
       if (this.bytes + bytes.length > this.policy.maxBytes) throw new Error('route journal capacity')
       // Admission changes precede IO. Any uncertain write terminally denies this owner.
       await this.apply(event, true)
-      try { await this.io.append(this.file, bytes); await this.io.sync(this.file); const digest = hash(bytes); await this.io.append(this.marker, Buffer.from(JSON.stringify({ sequence: frame.sequence, digest }) + '\n')); await this.io.sync(this.marker); this.sequence = frame.sequence; this.head = digest; this.bytes += bytes.length }
+      try { await this.lock.beginWrite(); await this.io.append(this.file, bytes); await this.io.sync(this.file); const digest = hash(bytes); await this.io.append(this.marker, Buffer.from(JSON.stringify({ sequence: frame.sequence, digest }) + '\n')); await this.io.sync(this.marker); await this.lock.finishWrite(); this.sequence = frame.sequence; this.head = digest; this.bytes += bytes.length }
       catch (error) { this.failed = true; throw new Error('route journal write outcome unknown', { cause: error }) }
     }); this.tail = operation.then(() => {}, () => {}); return operation
   }

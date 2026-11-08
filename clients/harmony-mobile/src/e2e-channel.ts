@@ -85,7 +85,10 @@ export class P256SecureChannel {
       send = await this.primitives.hkdf(secret, digest, transcriptBytes([E2E_PROTOCOL, 'traffic-key', this.role]), 36)
       receive = await this.primitives.hkdf(secret, digest, transcriptBytes([E2E_PROTOCOL, 'traffic-key', opposite(this.role)]), 36)
       const remoteCredentialId = await this.primitives.credentialId(this.remoteIdentity)
-      this.available(); this.sendKey = send.slice(0, 32); this.sendPrefix = send.slice(32); this.receiveKey = receive.slice(0, 32); this.receivePrefix = receive.slice(32); this.bindingValue = { id: id<'harmony-device-channel'>(this.primitives.encode(digest)), remoteCredentialId, signal: this.controller.signal }
+      const encoded = this.primitives.encode(digest)
+      // Preserve existing IDs and escape the two Base64URL characters disallowed at the start of an ID.
+      const bindingId = id<'harmony-device-channel'>(encoded.startsWith('-') || encoded.startsWith('_') ? 'b-' + encoded : encoded)
+      this.available(); this.sendKey = send.slice(0, 32); this.sendPrefix = send.slice(32); this.receiveKey = receive.slice(0, 32); this.receivePrefix = receive.slice(32); this.bindingValue = { id: bindingId, remoteCredentialId, signal: this.controller.signal }
     } catch (error) { this.close(); if (error instanceof E2EError) throw error; throw new E2EError('key-invalid') }
     finally { secret?.fill(0); send?.fill(0); receive?.fill(0); this.agreement.close() }
   }

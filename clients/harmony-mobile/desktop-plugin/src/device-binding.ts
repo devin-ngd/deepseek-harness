@@ -1,5 +1,6 @@
 /** Persistent desktop device registration and finite channel receipts; construction performs no IO or activation. */
 import { z } from 'zod'
+import { sessionCreationOptionsSchema, type SessionCreationOptions } from '../../src/session-creation.ts'
 import type { CleanupScheduler } from '../../integration/connection-lifetime.ts'
 import type { P256IdentitySigner } from '../../src/e2e-channel.ts'
 import type { DeviceTransportBinding } from '../../integration/device-auth.ts'
@@ -17,6 +18,8 @@ export interface DeviceBindingSessionPorts {
   list(signal: AbortSignal): Promise<readonly DeviceSessionRow[]>
   /** Optional desktop projects; absence publishes an empty project list. */
   projects?(signal: AbortSignal): Promise<readonly DeviceProjectRow[]>
+  /** Optional current preset/model choices; an absent port retains desktop-default creation. */
+  creationOptions?(signal: AbortSignal): Promise<SessionCreationOptions>
   /** Optional list management; absence rejects every phone management intent. */
   manage?(action: DeviceSessionAction, signal: AbortSignal): Promise<{ readonly sessionId: string }>
   /** Optional direct operation adapter; absence requires the existing profile wire dispatcher through run(). */
@@ -133,6 +136,14 @@ export class DeviceBindingOwner {
     const { signal } = await this.admitted(transport, ticket), list = this.sessions.projects, rows = list === undefined ? [] : await list(signal); signal.throwIfAborted()
     if (rows.length > this.policy.maxCatalogRows || rows.some(row => row.title.length > this.policy.maxPublicBytes) || new Set(rows.map(row => row.projectId)).size !== rows.length) throw new Error('device project catalogue capacity denied')
     const parsed = z.array(deviceProjectRowSchema).parse(rows); await this.admitted(transport, ticket); return parsed
+  }
+  /** @param transport - original encrypted channel. @param ticket - current device receipt. @returns current creation choices after both admission checks, without starting a model. */
+  async creationOptions(transport: DeviceTransportBinding, ticket: unknown): Promise<SessionCreationOptions> {
+    const { signal } = await this.admitted(transport, ticket)
+    if (this.sessions.creationOptions === undefined) throw new Error('device creation choices unavailable')
+    const choices = sessionCreationOptionsSchema.parse(await this.sessions.creationOptions(signal))
+    await this.admitted(transport, ticket)
+    return choices
   }
   /**
    * Authorization is the registration's all-visible-sessions scope under a current ticket; these intents are separate from the signed mobile operations, so existing registrations need no new pairing.

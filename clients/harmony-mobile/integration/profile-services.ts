@@ -35,6 +35,7 @@ export async function loadProfileServices(world: string, configuration: string) 
       remoteAccess: (await import('@deepseek-ai/dsh-api-remote-access')).default,
       commands: (await import('@deepseek-ai/dsh-commands')).default,
       disabledCarrier: await import('./disabled-carrier.ts'),
+      sharedCarrier: await import('./shared-connection-fixture.ts'),
       attachments: (await import('@deepseek-ai/dsh-attachment-local')).default,
       uploads: (await import('@deepseek-ai/dsh-client-file-upload')).default,
       defaultModel: (await import('@deepseek-ai/dsh-agent-default-model')).default,

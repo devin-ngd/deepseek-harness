@@ -6,6 +6,10 @@ var __export = (target, all) => {
 
 // src/native-protocol-shims.mjs
 import util from "@ohos.util";
+import nativeUrl from "@ohos.url";
+function URL(input, base) {
+  return nativeUrl.URL.parseURL(input, base);
+}
 var TextEncoder = class {
   /** @param {string} [text] Text to encode, empty by default. @returns {Uint8Array} Protocol UTF-8 bytes. */
   encode(text3 = "") {
@@ -15658,12 +15662,14 @@ var P256SecureChannel = class {
       send = await this.primitives.hkdf(secret, digest, transcriptBytes([E2E_PROTOCOL, "traffic-key", this.role]), 36);
       receive = await this.primitives.hkdf(secret, digest, transcriptBytes([E2E_PROTOCOL, "traffic-key", opposite(this.role)]), 36);
       const remoteCredentialId = await this.primitives.credentialId(this.remoteIdentity);
+      const encoded = this.primitives.encode(digest);
+      const bindingId = id(encoded.startsWith("-") || encoded.startsWith("_") ? "b-" + encoded : encoded);
       this.available();
       this.sendKey = send.slice(0, 32);
       this.sendPrefix = send.slice(32);
       this.receiveKey = receive.slice(0, 32);
       this.receivePrefix = receive.slice(32);
-      this.bindingValue = { id: id(this.primitives.encode(digest)), remoteCredentialId, signal: this.controller.signal };
+      this.bindingValue = { id: bindingId, remoteCredentialId, signal: this.controller.signal };
     } catch (error51) {
       this.close();
       if (error51 instanceof E2EError) throw error51;
@@ -15978,7 +15984,7 @@ var PairedRelayFailure = class extends Error {
   cleanupFailed;
 };
 var PairedRelayEndpoint = class {
-  /** @param trust - locally confirmed routing identity. @param policy - explicit bounds. @param ports - native/Node owner ports. @param received - authenticated plaintext delivery. @param ready - exact new binding and encrypted connection. @param notice - content-free closure/failure sink; no pending request success is implied. @param lifetime - pairing/device policy lifetime. @param diagnostic - optional fixed handshake facts; omission emits nothing. @param controlDiagnostic - optional fixed control facts; omission emits nothing and no payload reaches this sink. */
+  /** @param trust - locally confirmed routing identity. @param policy - explicit bounds. @param ports - native/Node owner ports. @param received - authenticated plaintext delivery. @param ready - exact new binding, encrypted connection and signed room deadline. @param notice - content-free closure/failure sink; no pending request success is implied. @param lifetime - pairing/device policy lifetime. @param diagnostic - optional fixed handshake facts; omission emits nothing. @param controlDiagnostic - optional fixed control facts; omission emits nothing and no payload reaches this sink. */
   constructor(trust, policy, ports, received, ready, notice, lifetime, diagnostic, controlDiagnostic) {
     this.notice = notice;
     validatePairedRelayPolicy(policy);
@@ -16004,7 +16010,7 @@ var PairedRelayEndpoint = class {
           crypto = new P256SecureChannel(trust.role, lease.receipt.room, material.key, material.nonce, ports.remotePublicSpki, policy.e2e, ports.primitives);
           const connection = new EncryptedRelayConnection(socket, crypto, ports.signer, policy.maxQueuedBytes, received, (binding) => {
             if (this.closed || lease.signal.aborted || generation !== this.generation) return;
-            ready(binding, connection);
+            ready(binding, connection, lease.receipt.expiresAt);
           }, ports.scheduler, policy.handshakeMs, lease.signal, diagnostic ?? ports.diagnostic);
           this.current = connection;
           this.dataConnections.add(connection);

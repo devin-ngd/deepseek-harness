@@ -1,6 +1,6 @@
 /** Fixed public synthetic identities and memory ports. No ambient key store, model, user Session or external server is accessed. */
 import { createECDH, createPrivateKey, createPublicKey, sign } from 'node:crypto'
-import { RelayRooms, type RelaySocket } from './relay-core.ts'
+import { RelayRooms, type RelayRoomDiagnostic, type RelaySocket } from './relay-core.ts'
 import { nodeE2EPrimitives, p256CredentialId } from './p256-channel.ts'
 import { RoomBroker, type PublicPairRevocations } from '../standalone-relay/src/room-broker.ts'
 import { resolveBrokerPolicy, type BrokerPolicy } from '../standalone-relay/src/broker-policy.ts'
@@ -48,8 +48,8 @@ export class FixturePort implements RelaySocket {
 }
 /** @returns interconnected memory control ports. */
 export function ports() { const server = new FixturePort(), client = new FixturePort(); server.remote = client; client.remote = server; return { server, client } }
-/** @param policy - synthetic configuration. @param revocations - public-only fake persistence. @returns owned broker fixture. */
-export function brokerFixture(policy: unknown = rawBroker, revocations?: PublicPairRevocations) { const clock = new FixtureClock(), authority = {}, parsed = resolveBrokerPolicy(policy); if (!parsed.enabled) throw new Error('fixture disabled'); const { maxRooms, maxRoomTtlMs, pairTimeoutMs, maxFrameBytes, maxBufferedBytes, maxFrames, idleTimeoutMs } = hostConfig, rooms = new RelayRooms(authority, { maxRooms, maxRoomTtlMs, pairTimeoutMs, maxFrameBytes, maxBufferedBytes, maxFrames, idleTimeoutMs }, () => clock.now), broker = new RoomBroker(authority, rooms, parsed, audience, () => clock.now, fixtureSource(), revocations); return { clock, authority, rooms, broker, policy: parsed, close: () => { broker.close(); rooms.close() } } }
+/** @param policy - synthetic configuration. @param revocations - public-only fake persistence. @param diagnostic - optional room closure observer. @returns owned broker fixture. */
+export function brokerFixture(policy: unknown = rawBroker, revocations?: PublicPairRevocations, diagnostic?: (event: RelayRoomDiagnostic) => void) { const clock = new FixtureClock(), authority = {}, parsed = resolveBrokerPolicy(policy); if (!parsed.enabled) throw new Error('fixture disabled'); const { maxRooms, maxRoomTtlMs, pairTimeoutMs, maxFrameBytes, maxBufferedBytes, maxFrames, idleTimeoutMs } = hostConfig, rooms = new RelayRooms(authority, { maxRooms, maxRoomTtlMs, pairTimeoutMs, maxFrameBytes, maxBufferedBytes, maxFrames, idleTimeoutMs }, () => clock.now, diagnostic), broker = new RoomBroker(authority, rooms, parsed, audience, () => clock.now, fixtureSource(), revocations); return { clock, authority, rooms, broker, policy: parsed, close: () => { broker.close(); rooms.close() } } }
 /** @param role - paired role. @param clock - expiry owner. @returns locally approved public routing fields. */
 export function endpointTrust(role: E2ERole, clock: FixtureClock) { return { pairId, epoch: 1, role, audience, credentialId: p256CredentialId((role === 'desktop' ? desktopKey : phoneKey).publicSpki), expiresAt: clock.now + 9000 } }
 /** @param fixture - broker fixture. @param role - paired role. @returns controller and observed synthetic leases. */

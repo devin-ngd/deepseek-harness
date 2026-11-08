@@ -19,7 +19,7 @@ await writeFile(checkPath, JSON.stringify({
   compilerOptions: { noEmit: true, composite: false, incremental: false, declaration: false,
     declarationMap: false, sourceMap: false, strict: true, jsx: 'react-jsx',
     typeRoots: [join(root, 'node_modules', '@types')], paths: await projectionPaths(project, root), noUnusedLocals: true, noUnusedParameters: true },
-  include: [join(project, 'src', '**', '*.ts'), ...(includeIntegration ? [join(project, 'integration', '**', '*.ts'), join(project, 'network-tests', '**', '*.ts'), join(project, 'native-network-tests', '**', '*.ts'), join(project, 'desktop-plugin', 'src', '**', '*.ts')] : [])].map(path => path.replaceAll('\\', '/')),
+  include: [join(project, 'src', '**', '*.ts'), ...(includeIntegration ? [join(project, 'integration', '**', '*.ts'), join(project, 'integration', '**', '*.mts'), join(project, 'network-tests', '**', '*.ts'), join(project, 'native-network-tests', '**', '*.ts'), join(project, 'desktop-plugin', 'src', '**', '*.ts')] : [])].map(path => path.replaceAll('\\', '/')),
   references: ['cordis', 'cosmokit', 'schemastery', ...(includeIntegration ? ['loader', 'include', 'group'] : [])].map(name => ({ path: join(root, 'vendor', name) })),
 }, null, 2) + '\n')
 const raw = ts.readConfigFile(checkPath, ts.sys.readFile)

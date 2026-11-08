@@ -3,6 +3,7 @@ import { resolveRelayConfig } from './config.ts'
 import { StandaloneRelay, createStandaloneRelay, freshRelayIssueSource } from './host.ts'
 import { PublicTrustStore, type PublicTrustWrites } from './public-trust.ts'
 import { DeviceRouteJournal } from './device-route-journal.ts'
+import { RelayStartupFailure } from './startup-diagnostic.ts'
 import type { RelayPairId } from '../../src/relay-control-protocol.ts'
 import type { RelayIssueSource } from './room-broker.ts'
 /** All transport resources close before the public writer; failed/unknown commits remain visible and retain their lock. */
@@ -11,7 +12,7 @@ export class RelayApplication {
   /** @param relay - configured transport owner. @param store - optional validated public writer. */
   constructor(private readonly relay: StandaloneRelay, private readonly store?: { close(): Promise<void> }) {}
   /** @returns after loopback listener startup. */
-  async start(): Promise<void> { try { await this.relay.start() } catch (error) { void error; await this.close(); throw new Error('relay application startup failed') } }
+  async start(): Promise<void> { try { await this.relay.start() } catch (error) { await this.close(); throw new RelayStartupFailure('listener', error) } }
   /** @returns current local synthetic/service-check port. */
   port(): number { return this.relay.port() }
   /** @returns nothing; explicit lifecycle expiry. */
@@ -23,16 +24,17 @@ export class RelayApplication {
 }
 /** @param candidate - explicit static config. @param authority - local owner capability. @param clock - absolute expiry clock. @param source - ephemeral material source, deterministic in tests. @param io - synthetic interruption/directory-sync port for tests only. @returns inert reopened application or disabled result; missing/corrupt state fails before any socket exists. */
 export async function openRelayApplication(candidate: unknown = { enabled: false }, authority: object = {}, clock: () => number = Date.now, source?: RelayIssueSource, io?: PublicTrustWrites): Promise<RelayApplication | undefined> {
-  const config = resolveRelayConfig(candidate); if (!config.enabled) return undefined
+  let config: ReturnType<typeof resolveRelayConfig>; try { config = resolveRelayConfig(candidate) } catch (error) { throw new RelayStartupFailure('config', error) }; if (!config.enabled) return undefined
   if (config.publicTrust === undefined) { if (config.broker.enabled) throw new Error('enabled broker requires public trust reopen'); const owner = createStandaloneRelay(config, authority, clock, () => {}, source); return owner === undefined ? undefined : new RelayApplication(owner) }
-  if (!config.broker.enabled) throw new Error('public broker missing'); const store = await PublicTrustStore.reopen(config.publicTrust, config.broker, config.publicHost, io)
+  if (!config.broker.enabled) throw new Error('public broker missing'); let store: PublicTrustStore
+  try { store = await PublicTrustStore.reopen(config.publicTrust, config.broker, config.publicHost, io) } catch (error) { throw new RelayStartupFailure('public-trust', error) }
   let routes: DeviceRouteJournal | undefined
   try {
-    if (config.deviceRoutes !== undefined) routes = await DeviceRouteJournal.reopen(config.deviceRoutes, store.fingerprint(), store.pairs(), config.broker.maxPairs, clock, io)
+    if (config.deviceRoutes !== undefined) { try { routes = await DeviceRouteJournal.reopen(config.deviceRoutes, store.fingerprint(), store.pairs(), config.broker.maxPairs, clock, io) } catch (error) { throw new RelayStartupFailure('device-routes', error) } }
     const writer = routes ?? store, pairs = config.pairedDevices && routes !== undefined ? routes.pairedDevices() : writer.pairs(), storage = { close: async () => { const results = await Promise.allSettled([routes?.close(), store.close()]); if (results.some(item => item.status === 'rejected')) throw new Error('relay public storage cleanup failed') } }
     let application: RelayApplication | undefined
     const owner = new StandaloneRelay({ ...config, broker: { ...config.broker, pairs } }, authority, clock, () => { void application?.close().catch(error => { void error; /* CLI stop/start completion retains the content-free failure. */ }) }, source ?? freshRelayIssueSource(), writer)
     application = new RelayApplication(owner, storage); return application
   }
-  catch (error) { const cleanup = await Promise.allSettled([routes?.close(), store.close()]); if (cleanup.some(item => item.status === 'rejected')) throw new Error('relay application initialization cleanup failed', { cause: error }); throw new Error('relay application initialization failed', { cause: error }) }
+  catch (error) { const cleanup = await Promise.allSettled([routes?.close(), store.close()]); if (cleanup.some(item => item.status === 'rejected')) throw new RelayStartupFailure('initialization', error); if (error instanceof RelayStartupFailure) throw error; throw new RelayStartupFailure('initialization', error) }
 }

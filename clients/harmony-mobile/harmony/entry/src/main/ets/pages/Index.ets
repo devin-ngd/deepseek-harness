@@ -5,7 +5,10 @@ import { KeyboardAvoidMode, LengthMetrics, SymbolGlyphModifier } from '@kit.ArkU
 import { NativeProductOwner } from '../product/NativeProductOwner'
 import { NativeProductRichOwner } from '../product/NativeProductRichOwner'
 import { ProductRichSurface } from '../product/ProductRichSurface'
-import { ProductView, ProductProject, ProductSession, ProductMessage, ProductPairingPreview, ProductSavedScope } from '../product/ProductView'
+import { NativeWorkspaceOwner } from '../product/NativeWorkspaceOwner'
+import { WorkspaceSurface } from '../product/WorkspaceSurface'
+import { WorkspaceRichSurface } from '../product/WorkspaceRichSurface'
+import { ProductView, ProductProject, ProductSession, ProductMessage, ProductPairingPreview, ProductSavedScope, ProductCreationOptions, ProductCreationPreset, ProductCreationModel, ProductModelSelection } from '../product/ProductView'
 import { productConfiguration } from '../product/ProductConfiguration'
 import { NativeLifecycle } from '../native/NativeLifecycle'
 import { NativeDiagnostics } from '../native/NativeDiagnostics'
@@ -25,7 +28,8 @@ import { MessageView } from '../components/MessageView'
 
 /** Project section of the grouped list; `key` is '' for Sessions outside every project. */
 class SessionGroup { key: string = ''; projectId: string | null = null; title: string = ''; rows: ProductSession[] = []; latest: number = 0 }
-interface CreateIntent { action: string; projectId: string | null }
+interface CreateIntent { action: string; projectId: string | null; agentPreset?: string; model?: ProductModelSelection }
+interface CreationRecovery { projectId: string | null; knownSessions: Set<string> }
 interface SessionIntent { action: string; sessionId: string }
 
 @Entry
@@ -47,6 +51,25 @@ struct Index {
   @State private collapsed: string[] = []
   @State private created: string[] = []
   @State private newSheet: boolean = false
+  @State private creation: ProductCreationOptions = new ProductCreationOptions()
+  @State private creationLoading: boolean = false
+  @State private creationUnavailable: boolean = false
+  @State private creationFailed: boolean = false
+  @State private creationProjectId: string = ''
+  @State private creationPreset: number = -1
+  @State private creationModel: number = -1
+  @State private creationEffort: number = -1
+  @State private workspaceState: string = ''
+  @State private workspaceStartupFailure: string = ''
+  @State private workspaceViewGeneration: number = 0
+  @State private workspaceMounted: boolean = false
+  @State private workspaceRich: boolean = false
+  @State private workspaceRichCloseFailed: boolean = false
+  @State private workspacePlugin: string = ''
+  private richCloseGeneration: number = 0
+  private workspaceOpening: boolean = false
+  private creationGeneration: number = 0
+  private creationRecovery: CreationRecovery | undefined = undefined
   @State private revokePending: boolean = false
   @State private identityPending: boolean = false
   @State private identityPublic: string = ''
@@ -74,25 +97,44 @@ struct Index {
   private draftSessionId: string = ''
   private product: NativeProductOwner = new NativeProductOwner(productConfiguration)
   private rich: NativeProductRichOwner = new NativeProductRichOwner(this.product, productConfiguration.corePolicyJson)
+  private workspace: NativeWorkspaceOwner = new NativeWorkspaceOwner(this.product, productConfiguration.corePolicyJson)
   aboutToAppear(): void {
     this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE)
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.rich.initialize(context); NativeLifecycle.registerProduct(this.product, this.rich); this.busy = true
+    this.workspace.initialize(context, (state: string) => this.onWorkspaceState(state)); NativeLifecycle.registerWorkspace(this.workspace)
     this.networkApproved = false
     void this.product.initialize(context, (raw: string) => this.receiveView(JSON.parse(raw) as ProductView)).then(() => this.refreshConnectionControls()).catch((error: Error) => { void error; this.failed = true }).finally(() => { this.busy = false })
   }
-  aboutToDisappear(): void { this.networkApproved = false; this.routeApproved = false; this.connectionEnabled = false; this.connectionHost = ''; void this.rich.close(); void this.product.close() }
-  onBackPress(): boolean { if (this.page === 'sessions') return false; this.showPage('sessions'); return true }
+  aboutToDisappear(): void { this.networkApproved = false; this.routeApproved = false; this.connectionEnabled = false; this.connectionHost = ''; void this.workspace.close().finally(() => this.product.close()).catch((error: Error) => { void error; this.failed = true }); void this.rich.close() }
+  private onWorkspaceState(state: string): void {
+    if (state === 'unmount') {
+      this.workspaceMounted = false
+      if (this.workspaceState !== 'failed') this.workspaceState = 'closed'
+    } else if (state === 'rich-open') { this.workspaceRich = true; this.workspaceRichCloseFailed = false }
+    else if (state === 'rich-closed') this.workspaceRich = false
+    else this.workspaceState = state
+  }
+  onBackPress(): boolean { if (this.page === 'sessions') return false; if (this.page === 'workspace') this.run(() => this.workspaceBack()); else this.showPage('sessions'); return true }
   private refreshConnectionControls(): void {
     const enabled = this.product.connectionEnabled(), host = this.product.connectionHost()
     if (!enabled || host !== this.connectionHost) this.networkApproved = false
     this.connectionEnabled = enabled; this.connectionHost = host
   }
   private receiveView(next: ProductView): void {
+    if ((this.page === 'workspace' || this.workspaceOpening) && (next.connection !== 'connected' || next.connectionGeneration !== this.view.connectionGeneration)) {
+      this.workspaceOpening = false
+      this.richCloseGeneration++
+      const generation = this.workspaceViewGeneration
+      void this.workspace.close().catch((error: Error) => { void error; this.failed = true }).finally(() => {
+        if (this.page === 'workspace' && generation === this.workspaceViewGeneration) { this.workspaceRich = false; this.showPage('sessions') }
+      })
+    }
     if (next.connectionGeneration !== this.view.connectionGeneration) this.networkApproved = false
     if (next.selected.length > 0 && next.selected !== this.draftSessionId) { if (this.draftSessionId.length > 0) this.drafts.set(this.draftSessionId, this.draft); this.draft = this.drafts.get(next.selected) || ''; this.draftSessionId = next.selected; this.lastRequest = '' }
     if (next.error === '') this.dismissedError = ''
     if (next.connection !== 'connected') this.newSheet = false
+    if (next.pairing !== 'paired') { this.creationRecovery = undefined; this.creationFailed = false }
     this.view = next; this.refreshConnectionControls(); this.rich.setMount(this.view.richJson)
   }
   private async savePairing(): Promise<void> {
@@ -108,7 +150,7 @@ struct Index {
   }
   private connectable(): boolean { return this.connectionEnabled && this.connectionHost.length > 0 && this.view.pairing === 'paired' && (this.view.connection === 'disconnected' || this.view.connection === 'blocked' && this.view.error === 'connection-unavailable') }
   private connecting(): boolean { return this.view.connection === 'connecting' || this.view.connection === 'recovering' }
-  private run(operation: () => Promise<void>): void { if (this.busy) return; this.busy = true; this.failed = false; void operation().catch((error: Error) => { void error; this.failed = true }).finally(() => { this.busy = false }) }
+  private run(operation: () => Promise<void>): void { if (this.busy) return; this.busy = true; this.failed = false; this.workspaceStartupFailure = ''; void operation().catch((error: Error) => { void error; this.failed = true }).finally(() => { this.busy = false }) }
   private logSelfCheck(): void { this.logCheckState = this.logDiagnostics.localSelfCheck() ? 'requested' : 'failed' }
   private pairingLabel(): Resource { if (this.view.pairing === 'paired') return $r('app.string.product_paired'); if (this.view.pairing === 'revoked') return $r('app.string.product_revoked'); if (this.view.pairing === 'blocked') return $r('app.string.product_blocked'); return $r('app.string.product_unpaired') }
   private connectionLabel(): Resource { if (this.view.connection === 'connected') return $r('app.string.product_connected'); if (this.view.connection === 'connecting' || this.view.connection === 'recovering') return $r('app.string.product_connecting'); if (this.view.connection === 'blocked' || this.view.connection === 'closed') return $r('app.string.product_connection_stopped'); return $r('app.string.product_disconnected') }
@@ -117,8 +159,13 @@ struct Index {
   private taskActive(): boolean { return this.view.task === 'accepted' || this.view.task === 'running' || this.view.task === 'cancel_requested' || this.view.task === 'pending_confirmation' }
   private receiptVisible(): boolean { return this.lastRequest.length > 0 && (this.view.task === 'outcome_unknown' || this.failed) }
   private errorVisible(): boolean { return this.failed || this.view.error.length > 0 && this.view.error !== this.dismissedError }
-  private dismissError(): void { this.failed = false; this.dismissedError = this.view.error }
+  private dismissError(): void { this.failed = false; this.workspaceStartupFailure = ''; this.dismissedError = this.view.error }
   private errorMessage(): Resource {
+    if (this.failed && this.workspaceStartupFailure !== '') {
+      if (this.workspaceStartupFailure === 'workspace-grant-required') return $r('app.string.workspace_grant_required')
+      if (this.workspaceStartupFailure === 'timeout') return $r('app.string.workspace_start_timeout')
+      return $r('app.string.workspace_failed')
+    }
     switch (this.view.error) {
       case '': return $r('app.string.product_operation_failed')
       case 'connection-unavailable': return $r('app.string.error_connection_unavailable')
@@ -145,8 +192,11 @@ struct Index {
   /** The desktop titles an untitled Session with its id. */
   private sessionTitle(row: ProductSession): ResourceStr { return row.title.length === 0 || row.title === row.sessionId ? $r('app.string.session_untitled') : row.title }
   private running(row: ProductSession): boolean { return row.running === true || row.sessionId === this.view.selected && this.taskActive() }
-  /** Blank Sessions stay hidden unless selected or created from this page. */
-  private listed(row: ProductSession): boolean { return row.blank !== true || row.sessionId === this.view.selected || this.created.includes(row.sessionId) }
+  private listed(row: ProductSession): boolean {
+    const recovery = this.creationRecovery
+    return row.blank !== true || row.sessionId === this.view.selected || this.created.includes(row.sessionId)
+      || recovery !== undefined && recovery.projectId === row.projectId && !recovery.knownSessions.has(row.sessionId)
+  }
   private inFilter(row: ProductSession, filter: string): boolean { if (filter === 'archived') return row.archived === true; return row.archived !== true && (filter !== 'running' || this.running(row)) }
   private counted(filter: string): number { return this.view.sessions.filter((row: ProductSession) => this.listed(row) && this.inFilter(row, filter)).length }
   /** Filtered and searched rows, pinned first, then most recently active; equal rows keep the desktop order. */
@@ -210,11 +260,108 @@ struct Index {
   }
   /** Creates a blank desktop Session and opens it; no model step starts until the first message. */
   private async createSession(projectId: string | null): Promise<void> {
-    this.newSheet = false
     const intent: CreateIntent = { action: 'create', projectId: projectId }
-    const sessionId = await this.product.manage(JSON.stringify(intent))
+    if (this.creationPreset >= 0) intent.agentPreset = this.creation.presets[this.creationPreset].id
+    if (this.creationModel >= 0) {
+      const model = this.creation.models[this.creationModel]
+      const selection: ProductModelSelection = { provider: model.provider, model: model.model }
+      if (this.creationEffort >= 0) selection.reasoningEffort = model.efforts[this.creationEffort]
+      intent.model = selection
+    }
+    const recovery: CreationRecovery = { projectId: projectId, knownSessions: new Set(this.view.sessions.map((row: ProductSession) => row.sessionId)) }
+    let sessionId: string
+    try { sessionId = await this.product.manage(JSON.stringify(intent)) }
+    catch (error) {
+      if (this.view.pairing === 'paired') {
+        this.creationRecovery = recovery; this.creationFailed = true
+        this.listFilter = 'active'; this.query = ''; this.collapsed = this.collapsed.filter((key: string) => key !== (projectId ?? ''))
+      }
+      throw (error as Error)
+    }
+    this.newSheet = false
     this.created = this.created.concat([sessionId]); this.listFilter = 'active'; this.query = ''
     await this.openSession(sessionId)
+  }
+  /** Read choices for one sheet generation; an older desktop can still explicitly create with its defaults. */
+  private async openCreation(projectId: string = ''): Promise<void> {
+    const generation = ++this.creationGeneration
+    this.creation = new ProductCreationOptions(); this.creationPreset = -1; this.creationModel = -1; this.creationEffort = -1
+    this.creationRecovery = undefined
+    this.creationProjectId = projectId; this.creationUnavailable = false; this.creationFailed = false; this.creationLoading = true; this.newSheet = true
+    try {
+      const raw = await this.product.creationOptions()
+      if (this.newSheet && generation === this.creationGeneration) this.creation = JSON.parse(raw) as ProductCreationOptions
+    } catch (error) {
+      if (this.newSheet && generation === this.creationGeneration) this.creationUnavailable = true
+    } finally {
+      if (generation === this.creationGeneration) this.creationLoading = false
+    }
+  }
+  private presetOptions(): SelectOption[] {
+    const values: SelectOption[] = [{ value: $r('app.string.creation_desktop_default') }]
+    return values.concat(this.creation.presets.map((row: ProductCreationPreset): SelectOption => ({ value: row.name })))
+  }
+  private modelOptions(): SelectOption[] {
+    const values: SelectOption[] = [{ value: $r('app.string.creation_desktop_default') }]
+    return values.concat(this.creation.models.map((row: ProductCreationModel): SelectOption => ({ value: row.label })))
+  }
+  private effortOptions(): SelectOption[] {
+    const values: SelectOption[] = [{ value: $r('app.string.creation_model_default') }]
+    if (this.creationModel < 0) return values
+    return values.concat(this.creation.models[this.creationModel].efforts.map((value: string): SelectOption => ({ value: value })))
+  }
+  private async openWorkspace(plugin?: string): Promise<void> {
+    const selected = this.page === 'workspace' ? this.workspace.selectedSession() : this.view.selected
+    if (this.page === 'conversation' && selected.length === 0) return
+    const connection = this.view.connectionGeneration
+    await this.rich.close()
+    try {
+      if (this.view.connection !== 'connected' || this.view.connectionGeneration !== connection
+        || this.page === 'conversation' && this.view.selected !== selected) return
+      this.workspaceRich = false; this.richCloseGeneration++; this.workspaceOpening = true
+      await this.workspace.open(selected, plugin)
+      if (!this.workspaceOpening) return
+      this.workspaceViewGeneration = this.workspace.viewGeneration(); this.workspaceMounted = true; this.showPage('workspace')
+    } catch (error) {
+      const failure: Error = error instanceof Error ? error : new Error('native workspace startup failed')
+      if (this.workspaceOpening) {
+        this.workspaceStartupFailure = this.workspace.startupFailure(failure)
+        throw failure
+      }
+    }
+    finally {
+      this.workspaceOpening = false
+      if (this.page === 'conversation') {
+        this.rich.setMount(this.view.richJson)
+        await this.rich.foreground()
+      }
+    }
+  }
+  private async workspaceBack(): Promise<void> {
+    if (!this.workspaceRich) { await this.leaveWorkspace(); return }
+    const generation = ++this.richCloseGeneration
+    this.workspaceRichCloseFailed = false
+    try { await this.workspace.richClose() }
+    catch (error) { void error; if (generation === this.richCloseGeneration && this.page === 'workspace') { this.workspaceRichCloseFailed = true; if (!this.workspaceRich) this.workspaceState = 'failed' } }
+  }
+  private async discardWorkspaceRich(): Promise<void> {
+    this.richCloseGeneration++; this.workspaceRichCloseFailed = false
+    try { await this.workspace.richDiscard() } catch (error) { void error; this.workspaceState = 'failed'; this.workspaceRich = false }
+  }
+  private async leaveWorkspace(): Promise<void> {
+    const sessionId = this.workspace.selectedSession()
+    let failed = false
+    try { await this.workspace.close() } catch (error) { void error; failed = true }
+    if (this.view.connection === 'connected') {
+      try {
+        await this.product.refreshSessions()
+        if (sessionId.length > 0 && sessionId !== this.view.selected && this.view.sessions.some((row: ProductSession) => row.sessionId === sessionId)) {
+          await this.product.select(sessionId)
+        }
+      } catch (error) { void error; failed = true }
+    }
+    this.showPage(this.view.selected.length === 0 ? 'sessions' : 'conversation'); this.failed = failed
+    await this.rich.foreground()
   }
   /** Each page starts at its top; a conversation then follows the newest message until the user scrolls away. */
   private showPage(page: string): void { if (page !== this.page) this.scroller.scrollTo({ xOffset: 0, yOffset: 0 }); this.stickToBottom = page === 'conversation'; this.page = page }
@@ -269,7 +416,26 @@ struct Index {
       Text($r('app.string.new_session_hint')).detailText()
       Scroll() {
         Column({ space: 8 }) {
-          ForEach(this.projectChoices(), (row: ProductProject) => {
+          if (this.creationLoading) {
+            Text($r('app.string.creation_loading')).detailText()
+          } else if (this.creationUnavailable) {
+            Text($r('app.string.creation_unavailable')).bodyText()
+          } else {
+            Text($r('app.string.creation_type')).detailText()
+            Select(this.presetOptions()).id('product-create-preset').selected(this.creationPreset + 1).width('100%').height(44).enabled(!this.busy)
+              .accessibilityText($r('app.string.creation_type')).onSelect((index: number) => { this.creationPreset = index - 1 })
+            Text($r('app.string.creation_model')).detailText()
+            Select(this.modelOptions()).id('product-create-model').selected(this.creationModel + 1).width('100%').height(44).enabled(!this.busy)
+              .accessibilityText($r('app.string.creation_model')).onSelect((index: number) => { this.creationModel = index - 1; this.creationEffort = -1 })
+            if (this.creationModel >= 0 && this.creation.models[this.creationModel].efforts.length > 0) {
+              Text($r('app.string.creation_effort')).detailText()
+              Select(this.effortOptions()).id('product-create-effort').selected(this.creationEffort + 1).width('100%').height(44).enabled(!this.busy)
+                .accessibilityText($r('app.string.creation_effort')).onSelect((index: number) => { this.creationEffort = index - 1 })
+            }
+            Text($r('app.string.creation_session_only')).detailText()
+          }
+          if (this.creationFailed) { Text($r('app.string.creation_failed')).bodyText() }
+          ForEach(this.projectChoices().filter((row: ProductProject) => this.creationProjectId === '' || row.projectId === this.creationProjectId), (row: ProductProject) => {
             Button({ type: ButtonType.Normal, stateEffect: true }) {
               Row({ space: 12 }) {
                 SymbolGlyph($r('sys.symbol.folder')).fontSize(20).fontColor([$r('app.color.accent')])
@@ -278,7 +444,7 @@ struct Index {
                   Text($r('app.string.project_sessions', this.projectCount(row.projectId))).detailText()
                 }.layoutWeight(1).alignItems(HorizontalAlign.Start)
               }.width('100%').padding({ left: 14, right: 14, top: 12, bottom: 12 })
-            }.id('product-new-in-' + row.projectId).width('100%').borderRadius(14).backgroundColor($r('app.color.surface')).enabled(!this.busy).onClick(() => this.run(() => this.createSession(row.projectId)))
+            }.id('product-new-in-' + row.projectId).width('100%').borderRadius(14).backgroundColor($r('app.color.surface')).enabled(!this.busy && !this.creationLoading && !this.creationFailed).onClick(() => this.run(() => this.createSession(row.projectId)))
           }, (row: ProductProject) => row.projectId + '|' + row.title)
           Button({ type: ButtonType.Normal, stateEffect: true }) {
             Row({ space: 12 }) {
@@ -288,7 +454,7 @@ struct Index {
                 Text($r('app.string.new_session_no_project_hint')).detailText()
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
             }.width('100%').padding({ left: 14, right: 14, top: 12, bottom: 12 })
-          }.id('product-new-unassigned').width('100%').borderRadius(14).backgroundColor($r('app.color.surface')).enabled(!this.busy).onClick(() => this.run(() => this.createSession(null)))
+          }.id('product-new-unassigned').width('100%').borderRadius(14).backgroundColor($r('app.color.surface')).enabled(!this.busy && !this.creationLoading && !this.creationFailed).onClick(() => this.run(() => this.createSession(null)))
         }.width('100%')
       }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
     }.width('100%').height('100%').padding({ left: 16, right: 16, top: 4, bottom: 16 })
@@ -304,8 +470,12 @@ struct Index {
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
           if (this.manageable()) {
             Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.square_and_pencil')).fontSize(20).fontColor([$r('app.color.text_primary')]) }
-              .id('product-new-session').width(40).height(40).backgroundColor($r('app.color.surface')).accessibilityText($r('app.string.new_session')).enabled(!this.busy).onClick(() => { this.newSheet = true })
-              .bindSheet(this.newSheet, this.newSessionSheet(), { height: SheetSize.MEDIUM, dragBar: true, showClose: false, backgroundColor: $r('app.color.page_background'), onDisappear: () => { this.newSheet = false } })
+              .id('product-new-session').width(40).height(40).backgroundColor($r('app.color.surface')).accessibilityText($r('app.string.new_session')).enabled(!this.busy).onClick(() => { void this.openCreation() })
+              .bindSheet(this.newSheet, this.newSessionSheet(), { height: SheetSize.LARGE, dragBar: true, showClose: false, backgroundColor: $r('app.color.page_background'), onDisappear: () => { this.newSheet = false; this.creationGeneration++ } })
+          }
+          if (this.workspace.supported() && this.product.deviceBindingMode() && this.view.connection === 'connected') {
+            Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.square_grid_2x2')).fontSize(20).fontColor([$r('app.color.text_primary')]) }
+              .id('product-workspace-open').width(40).height(40).backgroundColor($r('app.color.surface')).accessibilityText($r('app.string.workspace_title')).enabled(!this.busy).onClick(() => this.run(() => this.openWorkspace()))
           }
           Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.gearshape')).fontSize(20).fontColor([$r('app.color.text_primary')]) }
             .id('product-nav-device').width(40).height(40).backgroundColor($r('app.color.surface')).accessibilityText($r('app.string.nav_settings')).onClick(() => { this.showPage('device') })
@@ -327,11 +497,25 @@ struct Index {
             Text(this.selectedTitle()).fontSize(17).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
             Row({ space: 6 }) { Row().width(6).height(6).borderRadius(3).backgroundColor(this.statusTone()); Text(this.statusLabel()).fontSize(12).fontColor($r('app.color.text_secondary')) }
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+          if (this.workspace.supported() && this.product.deviceBindingMode() && this.view.connection === 'connected' && this.view.selected.length > 0) {
+            Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.square_grid_2x2')).fontSize(20).fontColor([$r('app.color.text_primary')]) }
+              .id('product-chat-workspace').width(40).height(40).backgroundColor(Color.Transparent).accessibilityText($r('app.string.workspace_title')).enabled(!this.busy).onClick(() => this.run(() => this.openWorkspace()))
+          }
           if (this.manageable() && this.view.selected.length > 0) {
             Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.dot_grid_1x2')).fontSize(20).fontColor([$r('app.color.text_primary')]) }
               .id('product-chat-more').width(40).height(40).backgroundColor(Color.Transparent).accessibilityText($r('app.string.session_more')).enabled(!this.busy).bindMenu(this.selectedMenu())
           }
         }.width('100%').padding({ left: 4, right: 8, top: 6, bottom: 6 })
+      }
+      if (this.page === 'workspace') {
+        Row({ space: 6 }) {
+          Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(22).fontColor([$r('app.color.text_primary')]) }
+            .id('product-workspace-back').width(40).height(40).backgroundColor(Color.Transparent).accessibilityText($r('app.string.mvp_back')).enabled(!this.busy).onClick(() => this.run(() => this.workspaceBack()))
+          Column({ space: 2 }) {
+            Text(this.workspaceRich ? $r('app.string.workspace_rich_title') : $r('app.string.workspace_title')).fontSize(17).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary'))
+            if (!this.workspaceRich && this.draft.length > 0) { Text($r('app.string.workspace_draft_retained')).fontSize(12).fontColor($r('app.color.text_secondary')) }
+          }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+        }.width('100%').padding({ left: 4, right: 12, top: 6, bottom: 6 })
       }
       if (this.page === 'device') {
         Row({ space: 4 }) {
@@ -355,9 +539,41 @@ struct Index {
       }
     }.id('product-header').width('100%').border({ width: { bottom: 1 }, color: { bottom: $r('app.color.border') } })
     Stack({ alignContent: Alignment.BottomEnd }) {
+    if (this.page === 'workspace') {
+      ForEach(this.workspaceMounted ? [this.workspaceViewGeneration] : [], (generation: number) => {
+        WorkspaceSurface({ owner: this.workspace, generation }).visibility(this.workspaceRich ? Visibility.Hidden : Visibility.Visible)
+      }, (generation: number) => generation.toString())
+      if (this.workspaceRich) {
+        Column({ space: 12 }) {
+          if (this.busy) { Text($r('app.string.workspace_rich_saving')).bodyText() }
+          if (this.workspaceRichCloseFailed) {
+            Text($r('app.string.workspace_rich_save_failed')).bodyText()
+            Button($r('app.string.workspace_rich_discard')).id('product-workspace-rich-discard').dangerAction().onClick(() => this.discardWorkspaceRich())
+          }
+          WorkspaceRichSurface({ owner: this.workspace.richGuest() }).layoutWeight(1).width('100%')
+        }.id('product-workspace-rich').padding(12).width('100%').height('100%').backgroundColor($r('app.color.page_background'))
+      }
+      if (this.workspaceState === 'loading') { LoadingProgress().width(36).height(36).color($r('app.color.accent')).align(Alignment.Center) }
+      if (this.workspaceState === 'failed' || this.workspaceState === 'closed') {
+        Column({ space: 16 }) {
+          Text(this.workspaceState === 'closed' ? $r('app.string.workspace_closed') : $r('app.string.workspace_failed')).bodyText()
+          Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) } }) {
+            Button($r('app.string.workspace_retry')).id('product-workspace-retry').primaryAction().enabled(!this.busy).onClick(() => this.run(() => this.openWorkspace(this.workspace.pluginTarget())))
+            Button($r('app.string.mvp_back')).id('product-workspace-return').secondaryAction().enabled(!this.busy).onClick(() => this.run(() => this.leaveWorkspace()))
+          }.width('100%')
+        }.padding(24).width('100%').backgroundColor($r('app.color.page_background')).align(Alignment.Center)
+      }
+    } else {
     Scroll(this.scroller) {
     Column({ space: 12 }) {
       if (this.page === 'sessions') {
+        if (this.creationFailed && !this.newSheet) {
+          Column({ space: 8 }) {
+            Text($r('app.string.creation_failed')).bodyText()
+            Button($r('app.string.creation_refresh')).id('product-creation-refresh').secondaryAction().width('100%')
+              .enabled(this.view.connection === 'connected' && !this.busy).onClick(() => this.run(() => this.product.refreshSessions()))
+          }.card()
+        }
         if (this.view.connection !== 'connected') {
           Column({ space: 12 }) {
             Row({ space: 12 }) {
@@ -408,7 +624,7 @@ struct Index {
                 }.id('product-group-' + group.key).width('100%').borderRadius(10).backgroundColor(Color.Transparent).onClick(() => this.toggleGroup(group.key))
                 if (group.projectId !== null && this.manageable()) {
                   Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.plus')).fontSize(18).fontColor([$r('app.color.text_secondary')]) }
-                    .id('product-group-new-' + group.key).width(36).height(36).margin({ right: 2 }).backgroundColor(Color.Transparent).accessibilityText($r('app.string.project_new_session')).enabled(!this.busy).onClick(() => this.run(() => this.createSession(group.projectId)))
+                    .id('product-group-new-' + group.key).width(36).height(36).margin({ right: 2 }).backgroundColor(Color.Transparent).accessibilityText($r('app.string.project_new_session')).enabled(!this.busy).onClick(() => { void this.openCreation(group.projectId ?? '') })
                 }
               }.width('100%')
               if (!this.collapsed.includes(group.key) || this.query.trim().length > 0) {
@@ -432,6 +648,11 @@ struct Index {
             }.width('100%')
           }
           if (!this.connectionEnabled) { Text($r('app.string.mvp_connection_prepare')).bodyText() }
+          if (this.workspace.supported() && this.product.deviceBindingMode() && this.view.connection === 'connected') {
+            Text($r('app.string.workspace_plugin_target')).detailText()
+            TextInput({ text: this.workspacePlugin, placeholder: $r('app.string.workspace_plugin_hint') }).id('product-workspace-plugin-target').inputField().width('100%').maxLength(256).enabled(!this.busy).accessibilityText($r('app.string.workspace_plugin_target')).onChange((value: string) => { this.workspacePlugin = value })
+            Button($r('app.string.workspace_plugins')).id('product-workspace-plugins').secondaryAction().width('100%').enabled(!this.busy).onClick(() => this.run(() => this.openWorkspace(this.workspacePlugin.trim())))
+          }
           Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) } }) {
             Button(this.connectable() ? $r('app.string.product_connect_host', this.connectionHost) : $r('app.string.product_connect')).id('product-connect').primaryAction().padding({ left: 20, right: 20 }).enabled(this.connectable() && !this.busy).onClick(() => this.run(() => this.connectShownHost(this.connectionHost)))
             Button($r('app.string.product_route_stop')).id('product-route-stop').secondaryAction().padding({ left: 20, right: 20 }).enabled(!this.busy).onClick(() => this.run(async () => { await this.rich.close(); await this.product.stopRoute(); this.networkApproved = false; this.routeReply = ''; this.refreshConnectionControls(); await this.rich.foreground() }))
@@ -534,13 +755,14 @@ struct Index {
           Row({ space: 8 }) { SymbolGlyph($r('sys.symbol.wifi_slash')).fontSize(16).fontColor([$r('app.color.warning')]); Text($r('app.string.mvp_offline')).fontSize(13).fontColor($r('app.color.text_secondary')).layoutWeight(1) }
             .width('100%').padding(10).backgroundColor($r('app.color.surface')).borderRadius(12)
         }
-        if (this.view.messages.length === 0 && this.view.liveText.length === 0) { Text($r('app.string.conversation_empty')).bodyText().textAlign(TextAlign.Center).padding({ top: 40 }) }
+        if (this.view.selected.length > 0 && this.view.messages.length === 0 && this.view.liveText.length === 0) { Text($r('app.string.conversation_empty')).bodyText().textAlign(TextAlign.Center).padding({ top: 40 }) }
         ForEach(this.view.messages, (message: ProductMessage) => { MessageView({ role: message.role, text: message.text }) }, (message: ProductMessage) => message.id)
         if (this.view.liveText.length > 0) { Column() { MessageView({ role: 'assistant', text: this.view.liveText, live: true }) }.id('product-live-text').width('100%') }
         ProductRichSurface({ owner: this.rich }).height(this.view.richJson.length > 0 ? 240 : 1).visibility(this.view.richJson.length > 0 ? Visibility.Visible : Visibility.Hidden)
       }
     }.padding({ left: 16, right: 16, top: 12, bottom: 20 }).width('100%').onAreaChange(() => this.followLatest())
     }.id('product-page-scroll').scrollable(ScrollDirection.Vertical).align(Alignment.Top).width('100%').height('100%').onDidScroll((xOffset: number, yOffset: number, state: ScrollState) => this.trackScroll(state)).onClick(() => this.dismissKeyboard()).onAreaChange(() => this.followLatest())
+    }
       if (this.page === 'conversation' && !this.stickToBottom) {
         Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.arrow_down')).fontSize(18).fontColor([$r('app.color.text_primary')]) }
           .id('product-jump-latest').width(40).height(40).margin({ right: 16, bottom: 12 }).backgroundColor($r('app.color.surface_high')).shadow({ radius: 12, color: '#66000000' }).accessibilityText($r('app.string.latest_messages')).onClick(() => { this.stickToBottom = true; this.scroller.scrollEdge(Edge.Bottom) })

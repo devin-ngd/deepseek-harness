@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Resource probe loading</title></head>
+<body><h1>Native workspace resources</h1><output id="result">Waiting for resources</output><script>
+(() => {
+  const checks = { emptyFirst: false, emptySecond: false, optionalFailed: false };
+  let port, finished = false;
+  const publish = () => {
+    if (!finished) return;
+    const passed = Object.values(checks).every(Boolean);
+    document.title = passed ? 'RESOURCE_PROBE_PASS' : 'RESOURCE_PROBE_FAIL';
+    document.getElementById('result').textContent = JSON.stringify({ passed, checks });
+    if (passed && port) port.postMessage('{"kind":"workspace.ready"}');
+  };
+  addEventListener('message', event => { if (event.ports.length === 1) { port = event.ports[0]; publish(); } });
+  const stylesheet = path => new Promise(resolve => {
+    const element = document.createElement('link'); element.rel = 'stylesheet'; element.href = path;
+    element.onload = () => resolve(true); element.onerror = () => resolve(false); document.head.append(element);
+  });
+  (async () => {
+    checks.emptyFirst = await stylesheet('/empty.css?read=1');
+    checks.emptySecond = await stylesheet('/empty.css?read=2');
+    checks.optionalFailed = !await stylesheet('/optional.css');
+    finished = true; publish();
+  })();
+})();
+</script></body>
+</html>

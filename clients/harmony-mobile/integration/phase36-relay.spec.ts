@@ -1,7 +1,7 @@
 /** Memory transports and public synthetic crypto scalars only; no ws dial, server, listener, key generation, profile or model is used. */
 import { expect, it, vi } from 'vitest'
 import { createECDH, createPrivateKey, createPublicKey, sign } from 'node:crypto'
-import { RelayRooms, relayTokenDigest, type RelaySocket } from './relay-core.ts'
+import { RelayRooms, relayTokenDigest, type RelayRoomDiagnostic, type RelaySocket } from './relay-core.ts'
 import { apply, Config } from '../relay-plugin/src/index.ts'
 import { validateWssPlan } from './wss-client.ts'
 import { EncryptedRelayConnection } from './e2e-socket.ts'
@@ -26,8 +26,8 @@ class MemorySocket implements RelaySocket {
   terminate() { if (this.terminated) return; this.terminated = true; for (const callback of this.end) callback() }
   receive(bytes: Uint8Array, binary = true) { for (const callback of this.frame) callback(bytes, binary) }
 }
-function fixture() {
-  let now = 1000; const authority = {}, rooms = new RelayRooms(authority, limits, () => now)
+function fixture(diagnostic?: (event: RelayRoomDiagnostic) => void) {
+  let now = 1000; const authority = {}, rooms = new RelayRooms(authority, limits, () => now, diagnostic)
   const plan = { room: roomId, desktopDigest: relayTokenDigest(desktopToken), phoneDigest: relayTokenDigest(phoneToken), expiresAt: 1500 }
   rooms.provision(authority, plan)
   return { authority, rooms, plan, advance: (value: number) => { now += value }, attach: () => { const desktop = new MemorySocket(), phone = new MemorySocket(); rooms.claim(roomId, 'desktop', desktopToken).attach(desktop); rooms.claim(roomId, 'phone', phoneToken).attach(phone); return { desktop, phone } } }
@@ -55,8 +55,17 @@ it('old attachment abort cannot revoke a successor room with the same identifier
   f.rooms.revoke(f.authority, roomId); f.rooms.provision(f.authority, f.plan); old.abort()
   const p = f.attach(); expect(p.phone.readyCount).toBe(1); f.rooms.close()
 })
-it.each(['expiry', 'pair', 'idle', 'buffer', 'text', 'size', 'frames', 'disconnect'] as const)('room closes both peers on %s and cannot reuse a ticket', (reason: string) => {
-  const f = fixture(), p = f.attach()
+it.each([
+  ['expiry', { reason: 'expired', frames: 0 }],
+  ['pair', { reason: 'pair-timeout', frames: 0 }],
+  ['idle', { reason: 'idle-timeout', frames: 0 }],
+  ['buffer', { reason: 'forward-buffer-limit', role: 'desktop', frames: 1, frameBytes: 1, bufferedBytes: limits.maxBufferedBytes }],
+  ['text', { reason: 'invalid-frame', role: 'phone', frames: 0, frameBytes: 1 }],
+  ['size', { reason: 'frame-size-limit', role: 'phone', frames: 0, frameBytes: 8193 }],
+  ['frames', { reason: 'frame-count-limit', role: 'phone', frames: 33, frameBytes: 1 }],
+  ['disconnect', { reason: 'data-ended', role: 'phone', frames: 0 }],
+] as const)('room closes both peers on %s and cannot reuse a ticket', (reason, expected) => {
+  const diagnostics: RelayRoomDiagnostic[] = [], f = fixture(event => diagnostics.push(event)), p = f.attach()
   if (reason === 'expiry') { f.advance(500); f.rooms.sweep() }
   if (reason === 'pair') { f.rooms.revoke(f.authority, roomId); f.rooms.provision(f.authority, f.plan); f.rooms.claim(roomId, 'desktop', desktopToken).attach(p.desktop); f.advance(100); f.rooms.sweep() }
   if (reason === 'idle') { f.advance(200); f.rooms.sweep() }
@@ -66,6 +75,14 @@ it.each(['expiry', 'pair', 'idle', 'buffer', 'text', 'size', 'frames', 'disconne
   if (reason === 'frames') for (let i = 0; i < 33; i++) p.phone.receive(Uint8Array.of(3))
   if (reason === 'disconnect') p.phone.terminate()
   expect(p.desktop.terminated).toBe(true); expect(p.phone.terminated).toBe(true); expect(() => f.rooms.claim(roomId, 'phone', phoneToken)).toThrow('denied'); f.rooms.close()
+  expect(diagnostics).toEqual(reason === 'pair' ? [{ reason: 'revoked', frames: 0 }, expected] : [expected])
+})
+it('a failing diagnostics sink leaves both socket and capability cleanup intact', () => {
+  const diagnostic = vi.fn(() => { throw new Error('synthetic sink failure') }), f = fixture(diagnostic), p = f.attach()
+  p.phone.terminate()
+  expect(p.desktop.terminated).toBe(true); expect(f.rooms.active(roomId)).toBe(false)
+  expect(() => f.rooms.claim(roomId, 'desktop', desktopToken)).toThrow('denied')
+  expect(diagnostic).toHaveBeenCalledOnce(); f.rooms.close()
 })
 it('WSS policy rejects plaintext, audience change, credentials/query/redirect-like URLs and placeholders before any dial', () => {
   const plan = { url: 'wss://dsh.devinho.me/harmony/relay/v1', expectedHost: 'dsh.devinho.me', room: roomId, role: 'phone' as const, token: phoneToken, handshakeTimeoutMs: 1000, maxFrameBytes: 8192, maxBufferedBytes: 16384 }

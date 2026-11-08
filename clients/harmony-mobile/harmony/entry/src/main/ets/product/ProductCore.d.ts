@@ -1,4 +1,7 @@
 /** Narrow native facade; implementation is generated from the shared TS product owners. */
+export declare function workspacePortMessage(raw: string, maxBytes: number): string
+/** @param error - native workspace failure. @returns a fixed category without exception text. */
+export declare function workspaceDiagnosticFailure(error: Error): string
 export interface ProductConnection { request(id: string, packet: string): Promise<void>; follow(id: string, packet: string): Promise<void>; stop(id: string): Promise<void>; close(): Promise<void> }
 export interface ProductStorage { read(maxBytes: number): Promise<string | null>; write(raw: string): Promise<void>; close(): Promise<void> }
 export interface ProductScheduler { after(ms: number, callback: () => void): () => void }
@@ -9,8 +12,9 @@ export declare class NativeProductFacade { scopeInput(raw: string): string; scop
 import { NativePorts, NativePrimitives, NativeRelayBudgets } from '../paired/PairedCore'
 export interface NativeDeviceCrypto { signer: { publicSpki: string; sign(bytes: Uint8Array): Promise<Uint8Array> }; primitives: NativePrimitives }
 export interface NativeDeviceNetwork { readonly ports: NativePorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
+export interface NativeDeviceForegroundSelection { binding: string | null; sessionId: string }
 export declare class NativeDeviceProductFacade {
-  constructor(authority: object, policy: string, identityAlias: string, host: string, routingExpiresAt: number, relay: NativeRelayBudgets, storage: ProductStorage, crypto: NativeDeviceCrypto, scheduler: ProductScheduler, clock: () => number, acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, publish: (view: string) => void, catalogRefreshMs: number, routeStorage?: ProductStorage, pairedConnection?: boolean)
+  constructor(authority: object, policy: string, identityAlias: string, host: string, routingExpiresAt: number, relay: NativeRelayBudgets, storage: ProductStorage, crypto: NativeDeviceCrypto, scheduler: ProductScheduler, clock: () => number, acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, publish: (view: string) => void, catalogRefreshMs: number, routeStorage?: ProductStorage, pairedConnection?: boolean, foregroundSelection?: NativeDeviceForegroundSelection)
   verifyStorageRecovery(expected: string): Promise<string>
   bootStatus(): Promise<void>
   static startupDiagnostic(error: Error, stage: string): string
@@ -33,6 +37,14 @@ export declare class NativeDeviceProductFacade {
   select(session: string): Promise<void>
   refresh(): Promise<void>
   manage(raw: string): Promise<string>
+  creationOptions(): Promise<string>
+  refreshSessions(): Promise<void>
+  workspaceGeneration(): number
+  workspaceContext(): Promise<string>
+  workspacePrepare(requestId: string, generation: number): Promise<string>
+  workspaceRequest(requestId: string, raw: string, generation: number): Promise<string>
+  workspaceResource(requestId: string, url: string, generation: number, maxBytes: number, maxChunkBytes: number): Promise<string>
+  cancelWorkspaceRequest(requestId: string): void
   submit(request: string, text: string): Promise<string>
   receipt(request: string): Promise<string>
   cancel(): Promise<void>
@@ -44,6 +56,12 @@ export declare class NativeDeviceProductFacade {
 
 /** App-owned automatic saved-device connection; no pairing or task is created. */
 export interface AutomaticConnectionPort { available(): boolean; connected(): boolean; connect(): Promise<void>; disconnect(): Promise<void>; failed(): void }
+/** Strict native rich rendering input, independent from Host workspace RPC. */
+export declare function workspaceRichRequest(raw: string, policyJson: string): string
+/** Bounded generated guest JSON; native control notifications are refused. */
+export declare function workspaceRichPacket(raw: string, maxBytes: number): string
+/** Bounded private-port correlation and scoped generated packet. */
+export declare function workspaceRichGuestMessage(raw: string, maxBytes: number): string
 export declare class AutomaticConnection {
   constructor(port: AutomaticConnectionPort, scheduler: { after(ms: number, callback: () => void): () => void }, retryDelayMs: number)
   start(): Promise<void>

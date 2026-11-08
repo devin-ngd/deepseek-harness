@@ -6,15 +6,16 @@ import { object, string } from './domain.ts'
 import { TransportError, jsonPayload } from './wire.ts'
 import type { DeviceSessionRoute } from './mobile-device-product.ts'
 import { deviceSessionDirectory, type DeviceSessionAction } from './device-session-directory.ts'
-interface Wait { resolve(value: unknown): void; reject(error: Error): void; stop(): void }
+import type { WorkspaceRequest } from './workspace-protocol.ts'
+interface Wait { readonly workspace: boolean; resolve(value: unknown): void; reject(error: Error): void; stop(): void }
 /** Existing native connection is shared; each selected Session has independent correlation ids and an owned subscriber. */
 export class DeviceProductRpc {
   private readonly pending = new Map<string, Wait>()
   private readonly views = new Map<string, (raw: string) => void>()
   private counter = 0
   private closed = false
-  /** @param network - verified native device carrier. @param scheduler - explicit native request timers. @param timeoutMs - finite wait budget. @param maxPending - local concurrent request cap. @param prefix - fresh native application/view identity, never an authorization field. */
-  constructor(private readonly network: ProductConnection, private readonly scheduler: CleanupScheduler, private readonly timeoutMs: number, private readonly maxPending: number, private readonly prefix: string) { if (![timeoutMs, maxPending].every(value => Number.isSafeInteger(value) && value > 0) || !/^[A-Za-z0-9_.:-]{1,128}$/.test(prefix)) throw new Error('device RPC configuration denied') }
+  /** @param network - verified native device carrier. @param scheduler - explicit native request timers. @param timeoutMs - finite wait budget. @param maxPending - reserved narrow native request capacity. @param prefix - fresh native application/view identity, never an authorization field. @param maxWorkspacePending - separately reserved workspace capacity; omission disables workspace requests. */
+  constructor(private readonly network: ProductConnection, private readonly scheduler: CleanupScheduler, private readonly timeoutMs: number, private readonly maxPending: number, private readonly prefix: string, private readonly maxWorkspacePending = 0) { if (![timeoutMs, maxPending].every(value => Number.isSafeInteger(value) && value > 0) || !Number.isSafeInteger(maxWorkspacePending) || maxWorkspacePending < 0 || !/^[A-Za-z0-9_.:-]{1,128}$/.test(prefix)) throw new Error('device RPC configuration denied') }
   /** @param raw - bounded decrypted result/frame from the verified native carrier. No caller may select a different view by desktop foreground state. */
   receive(raw: string): void {
     if (this.closed) return
@@ -22,17 +23,38 @@ export class DeviceProductRpc {
     const packet = fields(data, kind === 'result' || kind === 'frame' ? ['kind', 'id', 'value'] : kind === 'error' ? ['kind', 'id', 'code'] : ['kind', 'id'])
     if (!['result', 'frame', 'end', 'error'].includes(String(kind)) || typeof packet.id !== 'string') throw new Error('device RPC response denied')
     const pending = this.pending.get(packet.id)
-    if (pending !== undefined) { if (kind !== 'result' && kind !== 'error') throw new Error('device RPC unary response denied'); this.pending.delete(packet.id); pending.stop(); if (kind === 'error') pending.reject(new TransportError('unknown-outcome')); else pending.resolve(packet.value); return }
+    if (pending !== undefined) {
+      if (kind !== 'result' && kind !== 'error') throw new Error('device RPC unary response denied')
+      this.pending.delete(packet.id); pending.stop()
+      if (kind === 'error') {
+        const code = pending.workspace && packet.code === 'workspace-grant-required' ? packet.code : 'unknown-outcome'
+        pending.reject(new TransportError(code))
+      } else pending.resolve(packet.value)
+      return
+    }
     for (const [prefix, receive] of this.views) if (packet.id.startsWith(prefix)) { receive(raw); return }
   }
-  /** @param value - fixed metadata/select/manage request only, constructed by native code. @returns acknowledged public result; timeout never retries the operation. */
-  call(value: { readonly method: 'metadata'; readonly argument: null } | { readonly method: 'select'; readonly route: DeviceSessionRoute } | { readonly method: 'manage'; readonly action: DeviceSessionAction }): Promise<unknown> {
-    if (this.closed || this.pending.size >= this.maxPending) return Promise.reject(new TransportError('queue-full'))
+  /** @param value - fixed device or workspace request constructed by native code. @returns acknowledged public result. A missing workspace grant rejects before workspace dispatch. Timeout never retries the operation. */
+  call(value: { readonly method: 'metadata'; readonly argument: null } | { readonly method: 'creation-options' } | { readonly method: 'select'; readonly route: DeviceSessionRoute } | { readonly method: 'manage'; readonly action: DeviceSessionAction } | { readonly method: 'workspace'; readonly argument: WorkspaceRequest }, signal?: AbortSignal): Promise<unknown> {
+    const workspace = value.method === 'workspace', limit = workspace ? this.maxWorkspacePending : this.maxPending
+    if (this.closed || [...this.pending.values()].filter(wait => wait.workspace === workspace).length >= limit) return Promise.reject(new TransportError('queue-full'))
+    if (signal?.aborted) return Promise.reject(new TransportError('cancelled'))
     const id = this.prefix + '-rpc-' + ++this.counter
     return new Promise((resolve, reject) => {
-      const stop = this.scheduler.after(this.timeoutMs, () => { this.pending.delete(id); reject(new TransportError('timeout')); void this.network.stop(id).catch(error => { void error }) })
-      this.pending.set(id, { resolve, reject, stop })
-      void this.network.request(id, JSON.stringify(value)).catch(error => { const pending = this.pending.get(id); if (pending === undefined) return; this.pending.delete(id); pending.stop(); reject(error) })
+      const abort = () => {
+        const wait = this.pending.get(id)
+        if (wait === undefined) return
+        this.pending.delete(id); wait.stop(); reject(new TransportError('cancelled'))
+        void this.network.stop(id).catch(error => { void error })
+      }
+      // Stream waits are bounded by cancellation and the authenticated channel heartbeat, rather than a unary deadline.
+      const streaming = value.method === 'workspace' && ['stream-next', 'stream-write', 'stream-end'].includes(value.argument.operation)
+      const cancelTimer = streaming ? () => {} : this.scheduler.after(this.timeoutMs, () => { this.pending.delete(id); signal?.removeEventListener('abort', abort); reject(new TransportError('timeout')); void this.network.stop(id).catch(error => { void error }) })
+      const stop = () => { cancelTimer(); signal?.removeEventListener('abort', abort) }
+      this.pending.set(id, { workspace, resolve, reject, stop })
+      signal?.addEventListener('abort', abort, { once: true })
+      if (signal?.aborted) abort()
+      else void this.network.request(id, JSON.stringify(value)).catch(error => { const pending = this.pending.get(id); if (pending === undefined) return; this.pending.delete(id); pending.stop(); reject(error) })
     })
   }
   /** @param route - explicit immutable selected owner. @param received - original PhoneCore transport response sink. @returns a borrowed native connection whose close affects only its requests/followers, never another Session or the shared channel. */

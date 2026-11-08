@@ -7,8 +7,8 @@ const PAGE_BACKGROUND: string = '#0D0F13'
 const SYSTEM_BAR_CONTENT: string = '#E8EAF0'
 
 export default class EntryAbility extends UIAbility {
-  onBackground(): void { void NativeLifecycle.background() }
-  onForeground(): void { void NativeLifecycle.foreground() }
+  onBackground(): void { void NativeLifecycle.background().catch((error: Error) => { void error; console.error('DSH_NATIVE_BACKGROUND_FAILED') }) }
+  onForeground(): void { void NativeLifecycle.foreground().catch((error: Error) => { void error; console.error('DSH_NATIVE_FOREGROUND_FAILED') }) }
   async onDestroy(): Promise<void> { await NativeLifecycle.destroy() }
   onWindowStageCreate(stage: window.WindowStage): void {
     // Colour mode and system-bar colours are cosmetic; a refusal must not block the page.
