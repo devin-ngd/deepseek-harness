@@ -263,6 +263,7 @@
 - [x] 离线预演 rc2.59 到 rc2.61 的原位升级及简报启动采集。现场入口沿用恢复后的桌面包，仅在新授权和同一加密连接上尝试打开简报。[升级预检](../evidence/workspace-field-rc261-install-preflight.json) · [简报采集预检](../evidence/workspace-field-rc261-capture-preflight.json)
 - [x] 在标准 Web 启动链路中对照脚本 404、插件激活异常和成功挂载。确认前两种故障都报 `renderer-boot`，只有脚本 404 增加资源错误计数。[启动故障对照](../evidence/workspace-standard-boot-failure-differential-20261108.json)
 - [x] 修复清单声明非空的静态资源接受 200 空正文的问题。长度校验拒绝错误响应，真实空文件仍可读取，后续正确字节正常缓存。84 项原生替身检查通过，rc2.62 未签名包经 API 26 编译。[原生替身回归](../evidence/workspace-native-1794149101505.json) · [构建回执](../evidence/native-build/2026-11-08T14-45-22-222Z.json)
+- [x] 隔离 ArkWeb 用已提交代码复验合法空文件、错误空响应、后续正确样式生效和关闭返回。恢复原测试包。[ArkWeb 空响应复验](../evidence/workspace-arkweb-empty-manifest-rc262-20261108.json)
 - [x] 按授权原位安装 rc2.61，验证原配对在连接恢复后读取置顶简报原生正文。[连接采集](../evidence/workspace-phone-rc261-connection-20261108.json)
 - [ ] 真机标准 Web 复验仍需本轮连接标记或可核验的桌面授权基线。本轮两次采集均在点击前停止。[严格采集](../evidence/workspace-phone-rc261-boot-assets-boot261a.json) · [限时回执采集](../evidence/workspace-phone-rc261-boot-assets-boot261b.json)
 - [x] 在离线预演中将 DevFlow 目标绑定到获准创建的空白会话，按完整会话 ID 区分同名选项。分阶段核对保存、重开、恢复及原会话类型，22 项通过。[现场预检](../evidence/workspace-field-rc259-devflow-checkpoints-preflight-20261108.json)
