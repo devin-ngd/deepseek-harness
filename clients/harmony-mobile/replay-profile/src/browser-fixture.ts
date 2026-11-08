@@ -45,7 +45,7 @@ export async function serveBrowserFixture(ctx: Context, home: string, sessionId:
       const status = z.object({ state: z.string() }).passthrough().parse(await request('rich.status', { mountId: mount.mountId, actionId }))
       if (status.state === 'completed') {
         await ctx.agents.get(sessionId)!.whenIdle(); await ctx.sessionPersistence.flush()
-        const inspection = await ctx.sessionController.inspect(sessionId)
+        const inspection = await ctx.sessionQuery.readSession(sessionId)
         canonicalCompletedActionIds = inspection.events.flatMap(event => event.type !== 'assistant/message' ? [] : event.data.message.content.flatMap(block => block.type === 'tool-call' && block.name === 'rich_inline_complete' ? [z.object({ actionId: z.string() }).passthrough().parse(JSON.parse(block.arguments)).actionId] : []))
         completedSnapshot = await request('rich.snapshot', { mountId: mount.mountId })
         completed = true

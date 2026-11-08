@@ -1,7 +1,7 @@
 /**
- * Safe HTTP(S) retrieval for `ctx.web`: validates and pins public IP destinations, follows
- * only same-origin redirects, enforces time and size limits, classifies and decodes text,
- * and leaves presentation to `@deepseek-ai/dsh-tool-web`. Requests carry no browser cookies
+ * Bounded HTTP(S) retrieval for `ctx.web`: validates URLs, follows only same-origin redirects,
+ * enforces time and size limits, classifies and decodes text, and leaves presentation to
+ * `@deepseek-ai/dsh-tool-web`. Requests carry no browser cookies
  * or ambient credentials.
  * @module @deepseek-ai/dsh-web-fetch-http/provider
  */
@@ -10,9 +10,6 @@ import { WebError } from '@deepseek-ai/dsh-web'
 import type { WebFetchBody, WebFetchProvider, WebFetchRequest, WebFetchResult } from '@deepseek-ai/dsh-web'
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { Response } from 'undici'
-import { proxyRouteFor } from '@deepseek-ai/dsh-http-proxy'
-import { isNonPublicIpLiteral, publicHttpNetwork } from './network.ts'
-import type { PublicAddress } from './network.ts'
 import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, validateFetchUrl } from './policy.ts'
 
 /** Resolved provider limits (the plugin's schemastery Config supplies defaults). */
@@ -31,26 +28,28 @@ export interface HttpFetchLimits {
   userAgent: string
 }
 
-/** Resolve one hostname to an already policy-validated address set. */
-export type HttpFetchResolver = (hostname: string, signal: AbortSignal) => Promise<PublicAddress[]>
-
 /** Stable id this provider registers under. */
 export const LOCAL_FETCH_PROVIDER_ID = 'http'
 
-/** The anonymous public HTTP(S) fetch provider. */
+/** The anonymous HTTP(S) fetch provider. */
 export class HttpFetchProvider implements WebFetchProvider {
   readonly id = LOCAL_FETCH_PROVIDER_ID
+  /** Picker description: what this provider suits and what it costs or cannot do. */
+  readonly description: NonNullable<WebFetchProvider['description']> = {
+    en: 'Fetches URLs directly from this machine with no API key or charges, including intranet and loopback addresses. Decodes text, HTML, JSON, and XML only; no JavaScript, cookies, or PDFs. You can also try DeepSeek Fetch API.',
+    zh: '本机直接请求，免 API Key 与计费，可访问内网和本机。仅解码 HTML、JSON 等文本，不执行 JavaScript、不带登录态，不支持 PDF；也可以试试 DeepSeek Fetch API',
+    ja: 'このマシンから URL を直接取得し、API キーや料金は不要で、イントラネットやループバックのアドレスにもアクセスできます。テキスト、HTML、JSON、XML のみをデコードし、JavaScript、Cookie、PDF には対応しません。DeepSeek Fetch API も試せます。',
+    es: 'Obtiene las URL directamente desde este equipo, sin clave de API ni cargos, incluidas direcciones de la intranet y de bucle invertido. Solo decodifica texto, HTML, JSON y XML; sin JavaScript, cookies ni PDF. También puede probar DeepSeek Fetch API.',
+    fr: 'Récupère les URL directement depuis cette machine, sans clé API ni frais, y compris les adresses intranet et de bouclage. Ne décode que le texte, le HTML, le JSON et le XML ; ni JavaScript, ni cookies, ni PDF. Vous pouvez aussi essayer DeepSeek Fetch API.',
+    de: 'Ruft URLs direkt von diesem Rechner ab, ohne API-Schlüssel oder Kosten, auch Intranet- und Loopback-Adressen. Dekodiert nur Text, HTML, JSON und XML; kein JavaScript, keine Cookies, keine PDFs. Sie können auch DeepSeek Fetch API ausprobieren.',
+    ru: 'Загружает URL напрямую с этого компьютера без ключа API и оплаты, включая адреса интрасети и loopback. Декодирует только текст, HTML, JSON и XML; без JavaScript, cookie и PDF. Можно также попробовать DeepSeek Fetch API.',
+    pt: 'Obtém URLs diretamente desta máquina, sem chave de API nem cobranças, incluindo endereços da intranet e de loopback. Decodifica apenas texto, HTML, JSON e XML; sem JavaScript, cookies ou PDFs. Você também pode experimentar a DeepSeek Fetch API.',
+  }
 
-  /**
-   * @param limits - resolved transport and response limits.
-   * @param resolveAddresses - resolver that rejects non-public destinations before returning.
-   */
-  constructor(
-    private readonly limits: HttpFetchLimits,
-    private readonly resolveAddresses: HttpFetchResolver = publicHttpNetwork.resolve,
-  ) {}
+  /** @param limits - resolved transport and response limits. */
+  constructor(private readonly limits: HttpFetchLimits) {}
 
-  /** No credentials to check — an anonymous public fetcher is always usable. */
+  /** No credentials to check — an anonymous fetcher is always usable. */
   available(): boolean {
     return true
   }
@@ -74,7 +73,7 @@ export class HttpFetchProvider implements WebFetchProvider {
       const { response } = request
       try {
         if (isRedirectStatus(response.status)) {
-          // Enforce the redirect budget before resolving or validating the next hop.
+          // Enforce the redirect budget before validating the next hop.
           if (redirectsFollowed >= this.limits.maxRedirects) {
             await response.body?.cancel()
             throw new WebError(`exceeded the maximum of ${this.limits.maxRedirects} redirects`, 'WEB_REDIRECT_BLOCKED')
@@ -111,34 +110,26 @@ export class HttpFetchProvider implements WebFetchProvider {
 
         return await this.readBody(response, currentUrl, signal)
       } finally {
-        await request.close()
+        await request.close?.()
       }
     }
   }
 
-  private async requestOnce(url: URL, signal: AbortSignal) {
+  /** Send one GET using the selected address policy. */
+  private async requestOnce(url: URL, signal: AbortSignal): Promise<{ response: Response; close?: () => Promise<void> }> {
     const headers = {
       'user-agent': this.limits.userAgent,
       'accept': 'text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8',
     }
     try {
-      // A proxied hop skips public-address resolution and pinning: the proxy performs the origin's
-      // DNS, so there is no local address to validate, and pinning one would connect directly and
-      // bypass the proxy. A hop the policy bypasses — every loopback and every `NO_PROXY` entry —
-      // still takes the resolved-and-pinned path unchanged.
-      //
-      // One route decides both the branch and the dispatcher, so a mount or disposal between two
-      // reads cannot return a direct, unpinned agent for a URL this branch cleared as proxied.
-      //
-      // An IP literal the address checks would refuse never takes it. The proxy would resolve
-      // nothing — the address is already stated — so the shortcut would spend the checks for
-      // nothing and let a proxy on this machine reach the very service they keep out of reach.
-      const route = proxyRouteFor(url)
-      if (!this.limits.directOnly && route.proxied && !isNonPublicIpLiteral(url.hostname)) {
-        return await publicHttpNetwork.requestVia(route.dispatcher, url, headers, signal)
+      if (this.limits.directOnly === true) {
+        const { publicHttpNetwork } = await import('./network.ts')
+        const addresses = await publicHttpNetwork.resolve(url.hostname, signal)
+        return await publicHttpNetwork.request(url, addresses, headers, signal)
       }
-      const addresses = await this.resolveAddresses(url.hostname, signal)
-      return await publicHttpNetwork.request(url, addresses, headers, signal)
+      // Keep the Node-only transport out of browser-worker startup; a real request loads it here.
+      const { fetch } = await import('undici')
+      return { response: await fetch(url, { method: 'GET', redirect: 'manual', headers, signal }) }
     } catch (error: unknown) {
       if (error instanceof WebError) throw error
       throw translateAbortOrNetwork(error, signal)
@@ -154,9 +145,7 @@ export class HttpFetchProvider implements WebFetchProvider {
       throw new WebError(`unsupported content type "${contentType ?? 'unknown'}"`, 'WEB_UNSUPPORTED_CONTENT_TYPE')
     }
 
-    // Resolve the decoder BEFORE reading the body so an unsupported charset
-    // fails without consuming the stream — but cancel the body on that failure
-    // so the socket does not leak (matching the unsupported-content-type path).
+    // Reject unsupported declarations before reading, releasing the response stream.
     let decoder: TextDecoder
     try {
       decoder = decoderForCharset(parseCharset(contentType))
@@ -165,7 +154,17 @@ export class HttpFetchProvider implements WebFetchProvider {
       throw error
     }
     const { bytes, truncatedByBytes } = await this.readCapped(response, signal)
-    const decoded = decoder.decode(bytes)
+    let decoded: string
+    try {
+      // Only a real byte-cap truncation permits an incomplete UTF-8 suffix.
+      decoded = decoder.decode(bytes, { stream: decoder.fatal && truncatedByBytes })
+    } catch (error: unknown) {
+      throw new WebError(
+        'response body is not valid UTF-8 for the malformed charset declaration',
+        'WEB_UNSUPPORTED_CONTENT_TYPE',
+        { cause: error },
+      )
+    }
     const truncatedByChars = decoded.length > this.limits.maxBodyChars
     const content = truncatedByChars ? decoded.slice(0, this.limits.maxBodyChars) : decoded
     const body: WebFetchBody = kind === 'html' ? { kind: 'html', content } : { kind: 'text', content }

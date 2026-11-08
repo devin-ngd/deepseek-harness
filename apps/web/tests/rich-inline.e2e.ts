@@ -112,7 +112,7 @@ describe.skipIf(MODE === 'record')('rich-inline: real keyless Host pipeline and 
   let sessionId: SessionId, foreignSessionId: SessionId, messageId: MessageId, mount: RichMountValue
   const adapter = new RichAdapter()
   beforeAll(async () => {
-    scaffold = await launchWebScaffold({ extraOverlayPath: OVERLAY, extraInstallAnchors: [PACKAGE], toolsMode: 'native' })
+    scaffold = await launchWebScaffold({ extraOverlayPath: OVERLAY, extraInstallAnchors: [PACKAGE] })
     scaffold.ctx.effect(() => scaffold.ctx.llm.registerAdapter([PROVIDER], adapter), 'rich-inline deterministic test model')
     await scaffold.ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: MODEL })
     const executablePath = process.env.DSH_TEST_CHROMIUM_EXECUTABLE_PATH

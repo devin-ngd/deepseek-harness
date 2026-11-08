@@ -33,10 +33,10 @@ it('a concurrent receipt cannot turn a later unflushed prompt into accepted evid
   const parent = process.env.DSH_HARMONY_INTEGRATION_WORLD; if (!parent) throw new Error('isolated world required')
   const world = join(parent, 'concurrent-receipt'); await mkdir(world); const ctx = await sourceComposition(world), replay = await installFourResponses(ctx, world), sessionId = id<'SessionId'>('concurrent-receipt-session'), requestId = id<'session-request-id'>('later-prompt')
   await ctx.sessionController.create({ sessionId, cwd: world }); await ctx.sessionPersistence.flush()
-  const inspect = ctx.sessionController.inspect.bind(ctx.sessionController), flush = ctx.sessionPersistence.flush.bind(ctx.sessionPersistence)
+  const inspect = ctx.sessionQuery.readSession.bind(ctx.sessionQuery), flush = ctx.sessionPersistence.flush.bind(ctx.sessionPersistence)
   let releaseRead!: () => void, readStarted!: () => void, releaseFlush!: () => void
   const readGate = new Promise<void>(accept => { releaseRead = accept }), reading = new Promise<void>(accept => { readStarted = accept }), flushGate = new Promise<void>(accept => { releaseFlush = accept })
-  const readSpy = vi.spyOn(ctx.sessionController, 'inspect').mockImplementationOnce(async (...args: Parameters<typeof inspect>) => { const captured = await inspect(...args); readStarted(); await readGate; return captured }), flushSpy = vi.spyOn(ctx.sessionPersistence, 'flush').mockImplementation(async () => { await flushGate; return flush() }), ports = profileServicePorts(ctx)
+  const readSpy = vi.spyOn(ctx.sessionQuery, 'readSession').mockImplementationOnce(async (...args: Parameters<typeof inspect>) => { const captured = await inspect(...args); readStarted(); await readGate; return captured }), flushSpy = vi.spyOn(ctx.sessionPersistence, 'flush').mockImplementation(async () => { await flushGate; return flush() }), ports = profileServicePorts(ctx)
   let settled = false, submission: ReturnType<typeof ports.session.prompt> | undefined
   try {
     const receipt = ports.session.findPromptReceipt(sessionId, requestId); await reading

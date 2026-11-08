@@ -23,7 +23,7 @@ it('second approved API26 round owns exactly four synthetic responses and servic
   const records:object[]=[]
   const report=async()=>{
     lab.ctx.llm.assertZeroRealCalls();expect(upload).not.toHaveBeenCalled()
-    const inspection=await lab.ctx.sessionController.inspect(lab.sessionId)
+    const inspection=await lab.ctx.sessionQuery.readSession(lab.sessionId)
     await writeFile(join(parent,'inspection-'+mode+'.json'),JSON.stringify(inspection,null,2)+'\n')
     return {mode,counts:lab.ctx.llm.getOfflineReplayCounts(),promptCalls:prompt.mock.calls.length,uploadCalls:upload.mock.calls.length,carrier:{...lab.carrier.metrics},instance:lab.instance,eventTypes:inspection.events.map(event=>event.type),sourceOffloadSeen:inspection.events.some(event=>event.type==='rich-inline/source-offload')}
   }

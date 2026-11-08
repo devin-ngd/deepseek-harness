@@ -48,7 +48,7 @@ try {
   const request = (operation: string, payload: unknown) => invokeProfile(ctx, peer, { method: 'request', argument: { version: PROFILE_RPC_CODEC, packet: JSON.stringify({ protocol: MOBILE_LINK_PROTOCOL, desktopId, deviceId, grantEpoch: 1, commandId: 'installed-' + ++command, expiresAt: Date.now() + 30000, operation, payload }) } }, new AbortController().signal)
   const task = { sessionId, requestId: 'installed-task', text: 'Show the synthetic link form.' }
   await request('task.submit', task); await ctx.agents.get(sessionId)!.whenIdle(); await request('task.submit', task)
-  const saved = await ctx.sessionController.inspect(sessionId), message = saved.events.find(event => event.type === 'assistant/message')
+  const saved = await ctx.sessionQuery.readSession(sessionId), message = saved.events.find(event => event.type === 'assistant/message')
   assert.equal(message?.type, 'assistant/message', JSON.stringify(saved.events))
   // The fixture author key is part of the existing rich-html publication protocol.
   const blockId = 'inline-' + message!.data.message.id + '-phone-form'

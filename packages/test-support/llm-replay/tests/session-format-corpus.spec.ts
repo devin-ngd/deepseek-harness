@@ -2,6 +2,9 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
+import { richSourceProjection } from '@deepseek-ai/dsh-experimental-rich-inline/src/host/source.ts'
+import { richToolSourceProjection } from '@deepseek-ai/dsh-experimental-rich-inline/src/host/tool-source.ts'
+import { registerCurrentSessionMessageProjection } from '@deepseek-ai/dsh-session-format-catalog/message-projections'
 import { SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format-catalog'
 import { expectedUnsupported, unversionedProtocolFixtures } from './session-format-corpus-inventory.ts'
 import { parseSessionLog } from '../src/index.ts'
@@ -80,6 +83,9 @@ describe('committed Session format corpus', () => {
   it.each(fixtures)('$key', ({ file, key }) => {
     const bytes = readFileSync(file)
     const source = bytes.toString('utf8')
+    const richFixture = key.startsWith('snapshots/sdk/rich-inline-source/')
+    const removeSource = richFixture ? registerCurrentSessionMessageProjection(richSourceProjection) : undefined
+    const removeTool = richFixture ? registerCurrentSessionMessageProjection(richToolSourceProjection) : undefined
     try {
       if (unversionedProtocolFixtures.has(key)) {
         expect(declaresFormat(source), key + ': protocol fixture must remain unversioned').toBe(false)
@@ -94,6 +100,8 @@ describe('committed Session format corpus', () => {
       expect(header.version, key + ': filename/header Session generation').toBe(filenameFormatVersion(file))
       assertRestoration(key, header.version, () => parseSessionLog(source), expectedUnsupported[key])
     } finally {
+      removeTool?.()
+      removeSource?.()
       expect(readFileSync(file), key + ': source bytes remain unchanged').toEqual(bytes)
     }
   })

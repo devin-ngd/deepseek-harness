@@ -9,6 +9,7 @@
     includeHarnessIdentity: false
     includeRuntimeContext: false
 - name: cordis:tools
+- name: cordis:nativeTools
 - name: cordis:agentLoop
   config:
     agents: []
@@ -29,6 +30,7 @@
 - name: cordis:cwd
 - name: cordis:typert
 - name: cordis:remoteAccess
+- name: cordis:gateway
 - name: cordis:commands
 - name: cordis:disabledCarrier
 - name: cordis:attachments

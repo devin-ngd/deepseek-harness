@@ -15,7 +15,7 @@ it('serves a finite synthetic workspace only to the independent emulator applica
   const panelTarget = process.env.DSH_HARMONY_WORKSPACE_PLUGIN_TARGET === '1'
   const staged = JSON.parse(await readFile(join(clientRoot, panelTarget ? 'evidence/workspace-plugin-host-native-review-project.json' : 'evidence/workspace-native-review-project.json'), 'utf8')) as { fixtureConfiguration: string }
   const packageName = panelTarget ? z.object({ name: z.string().min(1).max(256) }).parse(JSON.parse(await readFile(join(devflow, 'package.json'), 'utf8'))).name : undefined
-  const scaffold = await launchWebScaffold({ firstUse: true, toolsMode: 'native', extraOverlayPath: join(world, 'workspace.overlay.yml'),
+  const scaffold = await launchWebScaffold({ firstUse: true, extraOverlayPath: join(world, 'workspace.overlay.yml'),
     profile: { hmr: false, packages: [{ dir: rich, enabled: true }, { dir: navigation, enabled: true }, { dir: devflow, enabled: true }] } })
   try {
     await runWorkspaceEmulator(scaffold.ctx, { world, clientRoot, shellIndex: join(root, 'apps/web/dist/index.html'), fixtureConfiguration: staged.fixtureConfiguration,

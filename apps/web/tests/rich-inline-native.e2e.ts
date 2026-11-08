@@ -211,7 +211,7 @@ async function runNativeChat(copyOnly: boolean): Promise<void> {
   const world = { workspaceCwd: join(output, 'world', 'workspace'), persistenceRoot: join(output, 'world', 'sessions') }
   for (const directory of Object.values(world)) await mkdir(directory, { recursive: true })
   const boot = () => launchWebScaffold({ extraOverlayPath: join(root, 'apps/web/tests/rich-inline.overlay.yml'),
-    extraInstallAnchors: [join(root, 'packages/experimental/rich-inline/package.json')], toolsMode: 'native',
+    extraInstallAnchors: [join(root, 'packages/experimental/rich-inline/package.json')],
     persistentWorld: world, harnessHome: join(output, 'world', 'home') })
   const require = createRequire(new URL('../../desktop/package.json', import.meta.url))
   const electron = require('electron') as string

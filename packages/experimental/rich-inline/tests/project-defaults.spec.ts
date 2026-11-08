@@ -22,7 +22,7 @@ it('defaults only fresh project sessions, allows manual Standard selection, and 
   })).agent
   const project = await create('rich-project-default', cwd)
   expect(ctx.agentPresets.composedPreset(project.ctx)).toBe('lumina')
-  expect(ctx.sessionProjections.stateOf(project.session, 'agentPreset')).toBe('lumina')
+  expect(ctx.agentPresets.presetForSession(project.session)).toBe('lumina')
   await ctx.agentPresets.select(project, 'standard')
   expect(ctx.agentPresets.composedPreset(project.ctx)).toBe('standard')
   const other = await create('rich-other-project')

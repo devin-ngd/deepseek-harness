@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-session-query'
 /** Single-Session product entry reusing normal DSH services and independently supplied device/relay providers. */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-app-boot'
@@ -22,7 +23,7 @@ function selection(ctx: Context, options: Desktop.Options): Desktop.Spec {
 export async function createPairing(ctx: Context, authority: object, options: Desktop.Options, policy: Omit<DesktopFirstUsePolicy, 'desktopId' | 'profileId' | 'sessionId'>, signer: P256IdentitySigner, clock: () => number = Date.now, openPorts?: DesktopFirstUsePorts): Promise<DesktopFirstUse> {
   const spec = selection(ctx, options)
   if (!spec.enabled || spec.desktopId === null || spec.profileId === null || spec.sessionId === null) throw new Error('product pairing requires enabled local selection')
-  await ctx.sessionController.inspect(spec.sessionId)
+  await ctx.sessionQuery.readSession(spec.sessionId)
   return new DesktopFirstUse(ctx, authority, { ...policy, desktopId: spec.desktopId, profileId: spec.profileId, sessionId: spec.sessionId }, signer, clock, openPorts)
 }
 /** @param ctx - existing normal profile with canonical SessionController/RichInline and an independently authenticated device provider. @param options - local owner configuration; enabled requires exactly one existing sessionId, disabled acquires nothing. @returns after mounting the original desktop service with single-Session filtering; model/approval behavior remains owned by the normal profile. */

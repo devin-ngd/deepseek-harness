@@ -22,7 +22,7 @@ function fixture(format: 'legacy' | 'current' = 'legacy', renderRevision = 1, da
   const events = session.snapshotEvents()
   const sessionId = SessionId('fork-unit-child')
   return { session, events, args, blockId, message, request: { sessionId, messageId: message.id, blockId },
-    inspection: { meta: { id: sessionId, parentSession: session.id }, inheritedEventCount: events.length, events } }
+    inspection: { header: { id: sessionId, parentSession: session.id }, inheritedEventCount: events.length, events } }
 }
 
 describe('rich fork restoration', () => {
@@ -80,7 +80,7 @@ describe('rich fork restoration', () => {
   it('rejects foreign targets, unrelated sessions, missing lineage, and markers after the inherited cut', () => {
     const f = fixture()
     expect(restoreForkBlock(f.inspection, { ...f.request, sessionId: SessionId('foreign') }, 2_097_152)).toBeNull()
-    expect(restoreForkBlock({ ...f.inspection, meta: { id: f.request.sessionId } }, f.request, 2_097_152)).toBeNull()
+    expect(restoreForkBlock({ ...f.inspection, header: { id: f.request.sessionId } }, f.request, 2_097_152)).toBeNull()
     expect(restoreForkBlock({ ...f.inspection, inheritedEventCount: f.events.length - 1 }, f.request, 2_097_152)).toBeNull()
     expect(restoreForkBlock(f.inspection, { ...f.request, blockId: brandString<RichBlockId>('foreign-block') }, 2_097_152)).toBeNull()
   })

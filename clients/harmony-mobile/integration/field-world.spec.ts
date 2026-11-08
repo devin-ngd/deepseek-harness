@@ -23,7 +23,7 @@ it('create refuses an existing directory and incomplete initialization cannot be
 it('fixed position reads canonical completed responses and refuses unfinished, foreign or exhausted snapshots without activating an Agent', async () => {
   const world = path('fixed-position'); await mkdir(world); const ctx = await sourceComposition(world), replay = await installFourResponses(ctx, world), sessionId = id<'SessionId'>('position-session')
   await ctx.sessionController.create({ sessionId, cwd: world }); await ctx.sessionController.prompt({ sessionId, requestId: id<'session-request-id'>('position-task'), mode: 'queue', content: [{ type: 'text', text: 'Fixed position fixture.' }] }, new AbortController().signal); await ctx.agents.get(sessionId)!.whenIdle(); await ctx.sessionPersistence.flush()
-  const inspection = await ctx.sessionController.inspect(sessionId), inspect = vi.spyOn(ctx.sessionController, 'inspect'), resolve = vi.spyOn(ctx.sessionController, 'resolveAgent')
+  const inspection = await ctx.sessionQuery.readSession(sessionId), inspect = vi.spyOn(ctx.sessionQuery, 'readSession'), resolve = vi.spyOn(ctx.sessionController, 'resolveAgent')
   try {
     expect(await fixedReplayPosition(ctx, sessionId)).toBe(1)
     inspect.mockResolvedValue({ ...inspection, events: inspection.events.filter(event => event.type !== 'turn/end') }); await expect(fixedReplayPosition(ctx, sessionId)).rejects.toThrow('unfinished')

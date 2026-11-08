@@ -45,7 +45,7 @@ describe.skipIf(MODE === 'record')('rich-inline editable plan workflow', () => {
   let tripwire: ReturnType<typeof watchConsole>
   const adapter = new WorkflowAdapter()
   beforeAll(async () => {
-    scaffold = await launchWebScaffold({ extraOverlayPath: OVERLAY, extraInstallAnchors: [PACKAGE], toolsMode: 'native' })
+    scaffold = await launchWebScaffold({ extraOverlayPath: OVERLAY, extraInstallAnchors: [PACKAGE] })
     scaffold.ctx.effect(() => scaffold.ctx.llm.registerAdapter(['rich-workflow-keyless'], adapter), 'rich workflow test adapter')
     await scaffold.ctx.agentDefaultModel.saveSelection({ provider: 'rich-workflow-keyless', model: 'rich-workflow-scripted' })
     browser = await launchTestChromium()

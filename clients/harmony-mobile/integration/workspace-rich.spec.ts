@@ -30,7 +30,7 @@ it('saves drafts, distinguishes accepted actions from settlement and restores un
   const encryptedAdmission = process.env.DSH_HARMONY_WORKSPACE_ADMISSION_CIPHER === '1'
   assert.ok(world && richPackage && navigation)
   const root = resolve(import.meta.dirname, '../../..'), clientRoot = resolve(import.meta.dirname, '..')
-  const scaffold = await launchWebScaffold({ firstUse: true, toolsMode: 'native', extraOverlayPath: join(world, 'workspace.overlay.yml'),
+  const scaffold = await launchWebScaffold({ firstUse: true, extraOverlayPath: join(world, 'workspace.overlay.yml'),
     profile: { hmr: false, packages: [{ dir: richPackage, enabled: true }, { dir: navigation, enabled: true }, ...(devflow === undefined ? [] : [{ dir: devflow, enabled: true }])] } })
   onTestFinished(() => scaffold.close())
   const ctx = scaffold.ctx
@@ -244,7 +244,7 @@ it('saves drafts, distinguishes accepted actions from settlement and restores un
       scopedHostDraft: true, draft: finalDraft, actionReceipt: 'accepted', settledAction: 'completed', restoredUnresolvedAction: 'outcome_unknown',
       lostReceipts, invokeRequests, statusRequests, replayResponses: replay.count(), models: 0, arkWebExecuted: false, ...documentPort.metrics() }) + '\n')
   } catch (error) {
-    const history = await ctx.sessionController.inspect(sessionId)
+    const history = await ctx.sessionQuery.readSession(sessionId)
     let ledger: object
     try { ledger = JSON.parse(await readFile(join(scaffold.workspaceCwd, '.dsh-storages/rich_inline.json'), 'utf8')) }
     catch (diagnosticError) { ledger = { unavailable: String(diagnosticError) } }

@@ -7,7 +7,6 @@ import assert from 'node:assert/strict'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { z } from 'zod'
 import WebSocket from 'ws'
-import Gateway from '@deepseek-ai/dsh-api-gateway'
 import DynamicCordisRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import SessionTitle from '@deepseek-ai/dsh-session-title'
 import { CommandId } from '@deepseek-ai/dsh-commands/brand'
@@ -102,7 +101,6 @@ async function fixture(realTime = false, maxChunkBytes = 8192, devflow?: string,
   ctx.provide('profileContext', { name: 'desktop', dir: world, patchPath: join(world, 'patch.yml'),
     cwd: world, home: world, installAnchor: world, startedBundles: [], overlays: [], telemetryDisabledEnv: undefined })
   if (devflow === undefined) {
-    await ctx.plugin(Gateway)
     await ctx.plugin(SessionTitle, { fallbackMaxWords: 8, fallbackMaxBytes: 256, maxTitleBytes: 1024 })
     ctx.effect(() => ctx.typert.register(validateTypertManifest('@deepseek-ai/dsh-api-session-controller', SESSION_TYPERT)))
   }

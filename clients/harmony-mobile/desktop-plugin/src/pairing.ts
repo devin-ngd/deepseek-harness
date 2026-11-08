@@ -52,7 +52,7 @@ class PairingCommand {
     const peer = this.ctx.invocation?.peer
     if (this.closed || this.busy || peer !== undefined && peer !== this.ctx.connection.browserPeer) return { kind: 'error', text: 'Pairing requires the local desktop command UI.' }
     const profile = this.ctx.get('profileContext')
-    if (profile === undefined || this.ctx.agents.get(invocation.agent.id) !== invocation.agent || !this.ctx.agents.roots().includes(invocation.agent)) return { kind: 'error', text: 'Select a live root conversation in this desktop profile.' }
+    if (profile === undefined || this.ctx.agents.get(invocation.agent.id) !== invocation.agent || invocation.agent.session.header.origin === 'subagent') return { kind: 'error', text: 'Select a live root conversation in this desktop profile.' }
     const input = invocation.rawInput.trim(), split = input.search(/\s/), verb = split < 0 ? input : input.slice(0, split), raw = split < 0 ? '' : input.slice(split).trim()
     if (new TextEncoder().encode(raw).length > this.options.publicTrustMaxBytes) return { kind: 'error', text: 'Public pairing input exceeds the configured capacity.' }
     const sessionId = invocation.agent.session.id

@@ -7,7 +7,8 @@ import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as JsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { mountAgentLoopTestDependencies, mountAgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
-import { defineContentToolFixture, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
+import type { ToolExecutionToken } from '@deepseek-ai/dsh-tools'
+import { defineContentToolFixture, executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { ResearchAccess } from '../src/access.ts'
 import { loadTrustedSkill } from '../src/contract.ts'
@@ -96,16 +97,16 @@ describe('minimal real AgentLoop worker', () => {
       { name: 'research_read', agent, arguments: { id: 's1', url: 'https://evil.test' } },
       { name: 'research_read', agent, arguments: { id: 's1' }, parent: Symbol('ptc') as ToolExecutionToken },
     ]) {
-      const out = await ctx.tools.execute({ ...input, callId: ToolCallId('denied'), signal: new AbortController().signal })
+      const out = await executeToolFixture(ctx, { ...input, callId: ToolCallId('denied'), signal: new AbortController().signal })
       expect(out.isError).toBe(true)
     }
     expect(execute).not.toHaveBeenCalled()
-    expect((await ctx.tools.execute({ name: 'research_read', agent, arguments: { id: 's1' }, callId: ToolCallId('valid'), signal: abort.signal })).isError).toBe(false)
+    expect((await executeToolFixture(ctx, { name: 'research_read', agent, arguments: { id: 's1' }, callId: ToolCallId('valid'), signal: abort.signal })).isError).toBe(false)
     const removeShadow = agent.ctx.tools.register(defineContentToolFixture({ name: 'research_read', description: 'shadow', parameters: {}, execute }))
-    expect((await ctx.tools.execute({ name: 'research_read', agent, arguments: { id: 's1' }, callId: ToolCallId('shadow'), signal: abort.signal })).isError).toBe(true)
+    expect((await executeToolFixture(ctx, { name: 'research_read', agent, arguments: { id: 's1' }, callId: ToolCallId('shadow'), signal: abort.signal })).isError).toBe(true)
     removeShadow()
     abort.abort()
-    expect((await ctx.tools.execute({ name: 'research_read', agent, arguments: { id: 's1' }, callId: ToolCallId('stopped'), signal: new AbortController().signal })).isError).toBe(true)
+    expect((await executeToolFixture(ctx, { name: 'research_read', agent, arguments: { id: 's1' }, callId: ToolCallId('stopped'), signal: new AbortController().signal })).isError).toBe(true)
     expect(execute).toHaveBeenCalledTimes(1)
   })
   it('cancels and drains a worker before unloading the host entry', async () => {
@@ -122,7 +123,7 @@ describe('minimal real AgentLoop worker', () => {
     const fiber = await ctx.plugin(Plugin, config)
     const agent = await ctx.agentLoop.create(SessionId('caller'))
     agent.ctx.systemPrompt.context({ name: 'private-memory', order: 0, text: 'SIMULATED_PRIVATE_MEMORY' })
-    const call = ctx.tools.execute({ name: 'public_research', agent, arguments: request, callId: ToolCallId('research'), signal: new AbortController().signal })
+    const call = executeToolFixture(ctx, { name: 'public_research', agent, arguments: request, callId: ToolCallId('research'), signal: new AbortController().signal })
     await Promise.race([entered.promise, call.then((out) => { throw new Error(JSON.stringify(out)) })])
     const disposal = fiber.dispose()
     const [out] = await Promise.all([call, disposal])

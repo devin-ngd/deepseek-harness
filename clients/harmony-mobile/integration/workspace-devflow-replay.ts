@@ -28,7 +28,7 @@ export async function installWorkspaceDevflowReplay(ctx: Context, world: string)
     { type: 'step/end', seq: 3, time: chunks.length + 1, data: { turn: 1, step: 1 } },
     { type: 'turn/end', seq: 4, time: chunks.length + 2, data: { turn: 1, reason: { kind: 'completed' } } },
   ].map(value => JSON.stringify(value)).join('\n') + '\n')
-  const calls: GenerateOptions[] = []
+  const calls: GenerateOptions<string>[] = []
   const stop = ctx.on('llm-replay/request', options => { calls.push(options) })
   const handle = installLlmReplay(ctx, { file, overrideFile: file, childFiles: [child], offline: true, providers: [{ id: 'workspace-replay', models: [
     { id: 'main', contextWindow: 100000, defaultMaxTokens: 1000 }, { id: 'worker', contextWindow: 100000, defaultMaxTokens: 1000, reasoningEfforts: ['low', 'high'] },

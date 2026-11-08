@@ -361,16 +361,16 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 /**
  * Hide one known Session from Workspace grouping surfaces.
  * @param request - Session identity to archive.
- * @returns the complete resulting archive set.
+ * @returns the resulting archive set visible to the caller.
  */
-@Remote('archiveSession') archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue>
+@Remote('archiveSession') async archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue>
 
 /**
  * Restore one archived Session to Workspace grouping surfaces.
  * @param request - Session identity to unarchive.
- * @returns the complete resulting archive set.
+ * @returns the resulting archive set visible to the caller.
  */
-@Remote('unarchiveSession') unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue>
+@Remote('unarchiveSession') async unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue>
 
 /**
  * Surface one known unarchived Session ahead of unpinned Sessions.

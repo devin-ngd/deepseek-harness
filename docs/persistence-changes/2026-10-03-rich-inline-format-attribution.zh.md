@@ -27,20 +27,20 @@ id: 2026-10-03-rich-inline-format-attribution
 baseline: false
 changes:
   - root: "event:agent/inbox/spliced"
-    previous: "2026-10-13-user-rpc-principal"
-    after: "058d1c15434a3106dbd18660d95a720dbc3331381b0fd12979e2db3b846d9ffe"
+    previous: "2026-10-27-retry-control-input"
+    after: "22677bfa6ac8f0cc4ef872a2c011376ee362b7987c756501ed395a915baa06d6"
     decision: same-version
   - root: "event:developer/message"
-    previous: "2026-10-13-user-rpc-principal"
-    after: "037ed2593911c74bd680ee4657a8dfc969a389fe4c79f540643abc9fefbc0de6"
+    previous: "2026-10-27-retry-control-input"
+    after: "48b0bcad187955b249b78475619835d82fe929bef9c08862ef3af98446a6365e"
     decision: same-version
   - root: "event:session/title-llm-request"
-    previous: "2026-10-13-user-rpc-principal"
-    after: "f6442fed975bf80bbc07a48e10c543feba1f8f10c472efa837db0121ec6f45d3"
+    previous: "2026-10-27-retry-control-input"
+    after: "47755e72890708060cb50817b1c572c04c7baeff99095c7c12b64f0e32b1a54d"
     decision: same-version
   - root: "event:user/message"
-    previous: "2026-10-13-user-rpc-principal"
-    after: "3006d32caea1ec8402c8c78f4370698be42b8b00ebb2a965cd8dcb004945b5b7"
+    previous: "2026-10-27-retry-control-input"
+    after: "0266ce3326fc9596621fb35a5054c136cdab5c180fd997ef81a6962ea9640546"
     decision: same-version
 ```
 

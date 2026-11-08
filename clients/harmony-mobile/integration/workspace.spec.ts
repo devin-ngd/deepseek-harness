@@ -442,7 +442,7 @@ await writeFile(${JSON.stringify(removalReceipt)}, JSON.stringify({ name }), { f
         expect(runs.runs).toContainEqual(expect.objectContaining({ status: 'completed', purpose: 'code', access: 'readonly',
           resolvedRoute: expect.objectContaining({ provider: 'workspace-replay', model: 'worker', reasoningEffort: 'high' }) }))
         const childId = runs.runs.find(run => run.status === 'completed')?.childId; assert.ok(childId)
-        const persisted = await ctx.sessionController.inspect(id<'SessionId'>(childId))
+        const persisted = await ctx.sessionQuery.readSession(id<'SessionId'>(childId))
         expect(persisted.events.filter(event => event.type === 'request/header').map(event => event.data.header.config)).toContainEqual(expect.objectContaining({
           provider: 'workspace-replay', model: 'worker', reasoningEffort: 'high',
         }))

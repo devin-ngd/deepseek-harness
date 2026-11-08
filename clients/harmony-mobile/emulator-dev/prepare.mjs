@@ -27,15 +27,8 @@ const source=join(client,'.build/native-controls-device-rc2-32'), target=join(cl
 await mkdir(target)
 for(const d of ['AppScope','entry/src','hvigor'])await cp(join(source,d),join(target,d),{recursive:true,errorOnExist:true,force:false})
 for(const f of ['platform.json','build-profile.json5','hvigorfile.ts','oh-package.json5','entry/hvigorfile.ts','entry/build-profile.json5','entry/oh-package.json5']){await mkdir(resolve(target,f,'..'),{recursive:true});await cp(join(source,f),join(target,f))}
-const file=join(target,'entry/src/main/ets/native/NativeRelaySocket.ets'), before=await readFile(file,'utf8')
-assert.equal(before.match(/skipServerCertVerification: false/g).length,2)
-await writeFile(file,"import { EmulatorLocalTrust } from './EmulatorLocalTrust'\n"+before.replaceAll('skipServerCertVerification: false','skipServerCertVerification: false, caPath: EmulatorLocalTrust.caPath').replace("'wss://' + this.policy.expectedHost + path", "'wss://localhost:18081' + path"))
 await writeFile(join(target,'entry/src/main/ets/native/EmulatorLocalTrust.ets'),"/** Application-private CA path set by the native emulator owner before dialing. */\nexport class EmulatorLocalTrust { static caPath: string = '' }\n")
 await cp(cert,join(target,'entry/src/main/resources/rawfile/emulator-ca.pem'))
-const owner=join(target,'entry/src/main/ets/product/NativeDeviceProductOwner.ets'), original=await readFile(owner,'utf8')
-const needle='this.filesDir = context.filesDir; await this.start('
-assert.equal(original.split(needle).length,2)
-await writeFile(owner,"import { EmulatorLocalTrust } from '../native/EmulatorLocalTrust'\nimport { fileIo } from '@kit.CoreFileKit'\n"+original.replace(needle,"this.filesDir = context.filesDir; EmulatorLocalTrust.caPath = context.filesDir + '/emulator-ca.pem'; const ca = await context.resourceManager.getRawFileContent('emulator-ca.pem'); const caFile = fileIo.openSync(context.filesDir + '/emulator-ca.pem', fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC | fileIo.OpenMode.WRITE_ONLY); try { fileIo.writeSync(caFile.fd, ca.buffer) } finally { fileIo.closeSync(caFile) }; await this.start("))
 const hash=b=>createHash('sha256').update(b).digest('hex'), inputs=[]
 await mkdir(join(output,'inputs'),{recursive:true})
 for(const[path,bytes]of captured){assert.equal(hash(await readFile(path)),hash(bytes),'Source changed during build: '+path);await writeFile(join(output,'inputs',hash(bytes)+'.ts'),bytes);inputs.push({path,sha256:hash(bytes)})}

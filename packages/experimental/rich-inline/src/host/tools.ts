@@ -1,5 +1,6 @@
 /** Model-facing publication and explicit, causally correlated action settlement. */
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -36,6 +37,8 @@ export interface RichDataInput {
 }
 /** Capabilities captured by the owning Host; no ambient tool runtime reaches content. */
 export interface RichToolOwner {
+  readonly canRead: (agent: Agent) => boolean
+  readonly canAuthor: (agent: Agent) => boolean
   publish(sessionId: SessionId, input: RichPublishInput): Promise<RichPublishValue>
   updateData(sessionId: SessionId, input: RichDataInput): Promise<{ blockId: RichBlockId; dataRevision: number }>
   prepareCompletion(sessionId: SessionId, actionId: RichActionId, callId: ToolCallId): Promise<void>
@@ -70,7 +73,7 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
       if (exec.agent === undefined) throw new Error('Rich source reading requires an owning Agent')
       return owner.readSource(exec.agent.id, args)
     },
-  })), 'rich-inline.read-tool')
+  }), { when: ({ agent }) => owner.canRead(agent) }), 'rich-inline.read-tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_publish',
     description: 'Author complete HTML/CSS/JavaScript for an interactive block inside chat. The plugin owns validation, isolated execution, rendering, and bounded error feedback; publication is not runtime success. Do not render with browser/shell tools or deliver screenshots/files unless explicitly requested. For visual tasks, your final reply contains only the exact returned rich-inline marker(s), with essential instructions inside the HTML; no explanatory prose unless requested. The isolated SDK is window.rich: onState(callback), getState(), getDraft(), setDraft(fields), submit(values,{actionId,fileGrants}), status(actionId), cancel(actionId), bindForm(form). onState fires after initialization and updates. Keep filters, tabs, and animation local. Never access host files, credentials, or network. For render feedback, repair the existing blockId and preserve stateSchemaVersion and confirmed values. Existing block updates need no additional marker. Use rich_inline_complete only after processing a submitted business interaction.',
@@ -94,7 +97,7 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
       return owner.publish(exec.agent.id, { ...args, blockId: args.blockId,
         values: args.values === undefined ? undefined : parsedValues(args.values, maxValueBytes) })
     },
-  })), 'rich-inline.publish-tool')
+  }), { when: ({ agent }) => owner.canAuthor(agent) }), 'rich-inline.publish-tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_update',
     description: 'Replace confirmed state and readable fallback of an existing interactive block without changing HTML/CSS/JavaScript or unsent inputs. Use window.rich.onState in the published page to render values. Supply the current render and data revisions from publication or interactive input; a stale revision is rejected. Progress in an ordinary task may use this tool without an actionId. Tool or task completion must still come from its actual outcome. No new marker is needed.',
@@ -117,7 +120,7 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
       if (exec.agent === undefined) throw new Error('Rich state update requires an owning Agent')
       return owner.updateData(exec.agent.id, { ...args, values: parsedValues(args.values, maxValueBytes) })
     },
-  })), 'rich-inline.update-tool')
+  }), { when: ({ agent }) => owner.canAuthor(agent) }), 'rich-inline.update-tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_complete',
     description: 'Settle the exact actionId supplied in an interactive user input after its requested work is complete. Completed means the work succeeded; failed means its failure is known. This does not promise exactly-once external effects. Return structured values for the block. Do not settle another session or infer completion from being idle.',
@@ -136,7 +139,7 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
       await owner.prepareCompletion(exec.agent.id, args.actionId as RichActionId, exec.callId)
       return { actionId: args.actionId, state: args.state, values }
     },
-  })), 'rich-inline.complete-tool')
+  }), { when: ({ agent }) => owner.canAuthor(agent) }), 'rich-inline.complete-tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_progress',
     description: 'Report progress for the exact actionId supplied in an interactive input. Progress is not completion. Use non-negative integer done and total, with done no larger than total; label describes the work already performed.',
@@ -155,5 +158,5 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
       await owner.prepareCompletion(exec.agent.id, args.actionId as RichActionId, exec.callId)
       return args
     },
-  })), 'rich-inline.progress-tool')
+  }), { when: ({ agent }) => owner.canAuthor(agent) }), 'rich-inline.progress-tool')
 }

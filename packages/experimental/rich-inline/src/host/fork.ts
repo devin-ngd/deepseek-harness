@@ -7,7 +7,7 @@ import { canonicalRichJson, isRichValues, richMarkerIds, typedRichValuesValid } 
 import type { RichBlockRecord } from './ledger.ts'
 
 interface Inspection {
-  readonly meta: { readonly id: SessionId; readonly parentSession?: SessionId }
+  readonly header: { readonly id: SessionId; readonly parentSession?: SessionId }
   readonly inheritedEventCount: number
   readonly events: readonly SessionEvent[]
 }
@@ -25,7 +25,7 @@ function restoreForkState(block: RichBlockRecord, values: RichValues, fallbackTe
  * @returns independent read-only data with no actions, outbox, grants, or transferred drafts.
  */
 export function restoreForkBlock(inspection: Inspection, request: RichMountRequest, maxBytes: number): RichBlockRecord | null {
-  if (inspection.meta.id !== request.sessionId || inspection.meta.parentSession === undefined
+  if (inspection.header.id !== request.sessionId || inspection.header.parentSession === undefined
     || inspection.inheritedEventCount <= 0) return null
   const inherited = inspection.events.filter(event => event.seq < inspection.inheritedEventCount)
   if (!inherited.some(event => event.type === 'assistant/message' && event.data.interrupted !== true

@@ -6,11 +6,13 @@ import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
-import { createScope } from '@deepseek-ai/dsh-scope'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { createAssistantMessage, createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
@@ -35,6 +37,7 @@ import { legacyContent } from '../src/host/legacy.ts'
 import { offloadRichSources } from '../src/host/source.ts'
 import type { SessionPromptRequest } from '@deepseek-ai/dsh-api-session-controller/types'
 
+const modelSelection = { provider: 'unit', model: 'unit' }
 const resources: { ctx: Context; root: string; remove: boolean }[] = []
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface PrincipalMap {
@@ -57,7 +60,7 @@ const limits: ProfileConfig = { maxContentBytes: 2_097_152, maxInputBytes: 131_0
   maxFormatRepairAttempts: 1, sourceOffloadMinBytes: 4_096, sourceReadMaxChars: 8_192, theme: 'cyber', accent: 'blue' }
 
 async function harness(root?: string, seed: readonly SessionEvent[] = [], config: Partial<ProfileConfig> = {},
-  options: { live?: boolean; preset?: string; remote?: boolean; origin?: 'subagent'; parentAgent?: Agent; beforeRich?: (ctx: Context) => void } = {}) {
+  options: { live?: boolean; preset?: string; remote?: boolean; origin?: 'subagent' } = {}) {
   const dir = root ?? await mkdtemp(join(tmpdir(), 'dsh-rich-host-'))
   const ctx = new Context()
   if (options.preset !== undefined) ctx.provide('agentPresets', { composedPreset: () => options.preset } as never)
@@ -66,9 +69,11 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
   await ctx.plugin(StorageJson, { root: dir })
   await ctx.plugin(StorageDomain, { backend: 'json' })
   await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   const session = ctx.sessions.create(SessionId('session-rich-unit'), { seed, ...(options.origin ? { meta: { origin: options.origin } } : {}) })
   const pending: UserMessage[] = []
   const nextStep: UserMessage[] = []
@@ -77,6 +82,7 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
   }
   const unsupported = (): never => { throw new Error('unit harness does not implement this inbox mutation') }
   const agent: Agent = { id: session.id, ctx, session, options: {}, status: 'idle',
+    model: { current: () => modelSelection, select: unsupported },
     inbox: { nextTurn: pending, nextStep, clear: () => { pending.length = 0; nextStep.length = 0 },
       append: unsupported, prepend: unsupported, replace: unsupported, splice: unsupported,
       remove: (id) => { const index = pending.findIndex(message => message.id === id); if (index < 0) return false; pending.splice(index, 1); session.append('agent/inbox/spliced', { target: 'next-turn', start: index, removedCount: 1, inserted: [], outcome: 'canceled' }); return true } },
@@ -85,9 +91,7 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
     inject: unsupported, send: unsupported, cancel: unsupported,
     whenIdle: () => Promise.resolve(), runMaintenance: task => task(new AbortController().signal),
   }
-  if (options.origin || options.parentAgent) await ctx.plugin(Object.assign((inner: Context) => { Object.assign(agent, { ctx: createScope(inner, agent).ctx }) }, { inject: ['tools', 'systemPrompt'] }))
-  if (options.parentAgent) { ctx.effect(() => ctx.agents.enter(agent, options.parentAgent)); await ctx.agents.announce(agent, 'startup') }
-  else await ctx.agents.register(agent)
+  await ctx.agents.register(agent)
   const prompts: SessionPromptRequest[] = []
   const resolved = vi.fn(async () => ({ agent }))
   const prompt = vi.fn(async (request: SessionPromptRequest) => {
@@ -97,25 +101,50 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
     }
     return { accepted: true }
   })
-  ctx.provide('sessionController', { resolveAgent: resolved, inspect: async () => ({ meta: session.header, inheritedEventCount: 0, events: session.snapshotEvents() }), prompt } as never)
+  ctx.provide('sessionController', { resolveAgent: resolved, prompt } as never)
+  ctx.provide('sessionQuery', {
+    observeSession: async (): Promise<Pick<SessionObservation, 'header' | 'events' | 'inheritedEventCount' | typeof Symbol.dispose>> => ({
+      header: session.header, events: session.snapshotEvents(), inheritedEventCount: session.inheritedEventCount, [Symbol.dispose]() {},
+    }),
+  } as never)
   const flush = vi.fn(async () => {})
   ctx.provide('sessionPersistence', { flush } as never)
   if (options.remote === true) await ctx.plugin(TypertRegistry)
   else ctx.provide('typert', {} as never)
   ctx.provide('attachments', {} as never)
   ctx.provide('fileUploads', {} as never)
-  options.beforeRich?.(ctx)
   // A Loader entry lets a test edit the profile configuration the way the Plugins page theme picker does.
   const live = options.live === true ? await liveConfig(ctx, RichInline, { ...limits, ...config }) : undefined
   const owner = live?.fiber ?? await ctx.plugin(RichInline, { ...limits, ...config })
   const host = ctx.richInline
-  const tool = async (name: string, args: Record<string, unknown>) => {
+  const assemble = async () => {
+    const signal = new AbortController().signal
+    const toolSet = await ctx.tools.resolve({ agent, modelSelection, signal })
+    try {
+      return await ctx.systemPrompt.assemble({ scope: agent, agent, modelSelection, signal, toolSet })
+    } finally {
+      toolSet.dispose()
+    }
+  }
+  const tool = async (name: string, args: Record<string, unknown>, admitted = true) => {
     const callId = ToolCallId(`unit-${randomUUID()}`)
-    session.append('tool/call', { turn: 1, step: 1, callId, name, arguments: JSON.stringify(args) })
-    const result = await ctx.tools.execute({ agent, callId, name, arguments: args, signal: new AbortController().signal })
-    session.append('tool/result', { turn: 1, step: 1, message: createToolResultMessage({ callId, content: result.content, isError: result.isError }),
-      ...result.meta === undefined ? {} : { meta: result.meta } }, { surfaceOp: 'append' })
-    return result
+    const argumentsJson = JSON.stringify(args)
+    const signal = new AbortController().signal
+    const toolSet = admitted ? await ctx.tools.resolve({ agent, modelSelection, signal }) : undefined
+    try {
+      session.append('tool/call', { turn: 1, step: 1, callId, name, arguments: argumentsJson })
+      const batch = await ctx.tools.execute({
+        agent, signal, calls: [{ type: 'tool-call', id: callId, name, arguments: argumentsJson }],
+        ...toolSet === undefined ? {} : { toolSet },
+      })
+      const result = batch.results[0]?.result
+      if (result === undefined) throw new Error('Executor omitted the fixture tool result')
+      session.append('tool/result', { turn: 1, step: 1, message: createToolResultMessage({ callId, content: result.content, isError: result.isError }),
+        ...result.meta === undefined ? {} : { meta: result.meta } }, { surfaceOp: 'append' })
+      return result
+    } finally {
+      toolSet?.dispose()
+    }
   }
   const publish = async (blockId?: RichBlockId, values: Record<string, unknown> = {}, stateSchemaVersion = 1) => {
     const result = await tool('rich_inline_publish', { html: '<div id="any"><form><input name="last"><button>Submit</button></form></div>',
@@ -141,7 +170,7 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
     session.append('user/message', message, { surfaceOp: 'append' })
     return message
   }
-  return { ctx, dir, session, agent, host, prompts, prompt, resolved, flush, owner, live, tool, publish, bind, claim }
+  return { ctx, dir, session, agent, host, prompts, prompt, resolved, flush, owner, live, assemble, tool, publish, bind, claim }
 }
 
 describe('Remote Session access', () => {
@@ -215,14 +244,7 @@ function intent(mounted: Awaited<ReturnType<RichInline['mount']>>, actionId = br
 
 describe('bounded final format correction', () => {
   it('logs one correction, removes tools, denies forged tool execution, and never retries on historical mounting', async () => {
-    const seesBusinessTool = vi.fn()
-    const h = await harness(undefined, [], {}, { beforeRich: (ctx) => {
-      ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
-        const result = await next()
-        seesBusinessTool(result.tools.some(tool => tool.name === 'business_operation'))
-        return result
-      })
-    } })
+    const h = await harness()
     let executions = 0
     h.ctx.tools.register(defineTool({ name: 'business_operation', description: 'Count executions', parameters: {},
       output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
@@ -238,9 +260,8 @@ describe('bounded final format correction', () => {
     const correction = h.agent.inbox.nextStep[0]!
     expect(correction.source).toMatchObject({ kind: 'rich-inline-format' })
     expect(correction.content).toMatchSnapshot('logged format correction')
-    expect((await h.ctx.systemPrompt.assemble({ agent: h.agent })).tools).toEqual([])
-    expect(seesBusinessTool).toHaveBeenLastCalledWith(true)
-    const forged = await h.tool('business_operation', {})
+    expect((await h.assemble()).tools).toEqual([])
+    const forged = await h.tool('business_operation', {}, false)
     expect(forged.isError).toBe(true)
     expect(executions).toBe(0)
     const human = createUserMessage({ content: [{ type: 'text', text: 'Start a different task.' }], source: { kind: 'user' } })
@@ -253,17 +274,17 @@ describe('bounded final format correction', () => {
     await h.host.mount({ sessionId: h.session.id, messageId: answer.id, blockId: authoredBlockId(answer.id, 'legacy') })
     expect(h.agent.inbox.nextStep).toHaveLength(1)
     h.ctx.emit('agent/inbox/claimed', { agent: h.agent, message: human, turn: 1 })
-    expect((await h.ctx.systemPrompt.assemble({ agent: h.agent })).tools.some(tool => tool.name === 'business_operation')).toBe(true)
-    expect((await h.tool('business_operation', {})).isError).toBe(true)
+    expect((await h.assemble()).tools.some(tool => tool.name === 'business_operation')).toBe(true)
+    expect((await h.tool('business_operation', {}, false)).isError).toBe(true)
     h.session.append('user/message', human, { surfaceOp: 'append' })
     expect((await h.tool('business_operation', {})).isError).not.toBe(true)
     expect(executions).toBe(1)
     h.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-    expect((await h.ctx.systemPrompt.assemble({ agent: h.agent })).tools.some(tool => tool.name === 'business_operation')).toBe(true)
+    expect((await h.assemble()).tools.some(tool => tool.name === 'business_operation')).toBe(true)
     expect((await h.tool('business_operation', {})).isError).not.toBe(true)
     expect(executions).toBe(2)
     h.ctx.emit('agent/inbox/claimed', { agent: h.agent, message: correction, turn: 2 })
-    expect((await h.ctx.systemPrompt.assemble({ agent: h.agent })).tools).toEqual([])
+    expect((await h.assemble()).tools).toEqual([])
     expect((await h.tool('business_operation', {})).isError).toBe(true)
     expect(executions).toBe(2)
     await h.owner.dispose()
@@ -373,29 +394,32 @@ function publicationAtBytes(bytes: number, blockId?: RichBlockId) {
 }
 
 describe('RichInline Host', () => {
-  it('excludes child agents from authoring, native and PTC schemas, direct tools and format repair', async () => {
+  it('excludes child agents from authoring, model tool admission, direct tools and format repair', async () => {
     const parent = await harness()
-    for (const options of [{ origin: 'subagent' as const }, { parentAgent: parent.agent }]) {
-      const child = await harness(undefined, [], {}, options)
-      const assembly = await child.ctx.systemPrompt.assemble({ agent: child.agent })
-      expect(assembly.sections.some(section => section.name === 'rich-inline:authoring' && section.text.length > 0)).toBe(false)
-      expect(assembly.contexts.some(context => context.name === 'rich-inline:output-format' && context.text.length > 0)).toBe(false)
-      expect(assembly.tools.some(tool => tool.name.startsWith('rich_inline_'))).toBe(false)
-      expect(child.ctx.tools.schemas(child.agent).some(tool => tool.name.startsWith('rich_inline_'))).toBe(false)
-      const restore = child.agent.ctx.tools.presentAs('ptc')
-      expect(JSON.stringify(await child.ctx.systemPrompt.assemble({ agent: child.agent }))).not.toContain('rich_inline_')
-      restore()
-      for (const name of ['rich_inline_publish', 'rich_inline_read', 'rich_inline_update', 'rich_inline_complete', 'rich_inline_progress']) expect((await child.tool(name, {})).isError).toBe(true)
-      child.session.append('turn/start', { turn: 1 })
-      child.session.append('assistant/message', { turn: 1, step: 1, message: createAssistantMessage({ content: [{ type: 'text', text: '# Internal report\n' + 'Details.\n'.repeat(30) }], source: { provider: 'unit', model: 'unit' } }), stream: [] }, { surfaceOp: 'append' })
-      await child.ctx.serial('agent/turn-stopping', { agent: child.agent, turn: 1, signal: new AbortController().signal })
-      expect(child.agent.inbox.nextStep).toHaveLength(0)
+    const child = await harness(undefined, [], {}, { origin: 'subagent' })
+    const assembly = await child.assemble()
+    expect(assembly.sections.some(section => section.name === 'rich-inline:authoring' && section.text.length > 0)).toBe(false)
+    expect(assembly.contexts.some(context => context.name === 'rich-inline:output-format' && context.text.length > 0)).toBe(false)
+    expect(assembly.tools.some(tool => tool.name.startsWith('rich_inline_'))).toBe(false)
+    const toolSet = await child.ctx.tools.resolve({ agent: child.agent, modelSelection, signal: new AbortController().signal })
+    try {
+      expect(child.ctx.tools.definitions(child.agent, toolSet).some(tool => tool.name.startsWith('rich_inline_'))).toBe(false)
+    } finally {
+      toolSet.dispose()
     }
-    expect((await parent.ctx.systemPrompt.assemble({ agent: parent.agent })).tools.some(tool => tool.name === 'rich_inline_publish')).toBe(true)
+    for (const name of ['rich_inline_publish', 'rich_inline_read', 'rich_inline_update', 'rich_inline_complete', 'rich_inline_progress']) {
+      expect((await child.tool(name, {})).isError).toBe(true)
+      expect((await child.tool(name, {}, false)).isError).toBe(true)
+    }
+    child.session.append('turn/start', { turn: 1 })
+    child.session.append('assistant/message', { turn: 1, step: 1, message: createAssistantMessage({ content: [{ type: 'text', text: '# Internal report\n' + 'Details.\n'.repeat(30) }], source: { provider: 'unit', model: 'unit' } }), stream: [] }, { surfaceOp: 'append' })
+    await child.ctx.serial('agent/turn-stopping', { agent: child.agent, turn: 1, signal: new AbortController().signal })
+    expect(child.agent.inbox.nextStep).toHaveLength(0)
+    expect((await parent.assemble()).tools.some(tool => tool.name === 'rich_inline_publish')).toBe(true)
   })
   it('keeps standard coding output unchanged while Lumina exposes rich tools and checks final formatting', async () => {
     const h = await harness(undefined, [], { activePresets: ['lumina'] }, { preset: 'standard' })
-    const standard = await h.ctx.systemPrompt.assemble({ agent: h.agent })
+    const standard = await h.assemble()
     expect(standard.sections.filter(section => section.text.length > 0).some(section => section.name === 'rich-inline:authoring')).toBe(false)
     expect(standard.contexts.some(context => context.name === 'rich-inline:output-format' && context.text.length > 0)).toBe(false)
     expect(standard.tools.filter(tool => tool.name.startsWith('rich_inline_')).map(tool => tool.name)).toEqual(['rich_inline_read'])
@@ -406,7 +430,7 @@ describe('RichInline Host', () => {
     await h.ctx.serial('agent/turn-stopping', { agent: h.agent, turn: 1, signal: new AbortController().signal })
     expect(h.agent.inbox.nextStep).toHaveLength(0)
     const lumina = await harness(undefined, [], { activePresets: ['lumina'] }, { preset: 'lumina' })
-    const active = await lumina.ctx.systemPrompt.assemble({ agent: lumina.agent })
+    const active = await lumina.assemble()
     expect(active.sections.find(section => section.name === 'rich-inline:authoring')?.text).toContain('You author code')
     expect(active.tools.some(tool => tool.name === 'rich_inline_publish')).toBe(true)
     await expect(lumina.publish()).resolves.toBeDefined()
@@ -415,7 +439,7 @@ describe('RichInline Host', () => {
     await lumina.ctx.serial('agent/turn-stopping', { agent: lumina.agent, turn: 1, signal: new AbortController().signal })
     expect(lumina.agent.inbox.nextStep).toHaveLength(1)
     const allModes = await harness(undefined, [], { activePresets: [] }, { preset: 'standard' })
-    const unrestricted = await allModes.ctx.systemPrompt.assemble({ agent: allModes.agent })
+    const unrestricted = await allModes.assemble()
     expect(unrestricted.sections.find(section => section.name === 'rich-inline:authoring')?.text)
       .toBe(active.sections.find(section => section.name === 'rich-inline:authoring')?.text)
     expect(unrestricted.contexts.find(context => context.name === 'rich-inline:output-format')?.text)

@@ -52,7 +52,7 @@ export async function runCreationCipherEmulator(ctx: Context, world: string, cli
       { type: 'block-end', index: 0, block: { type: 'text', text } }, { type: 'finish', reason: { kind: 'stop' } }] : [{ type: 'finish', reason: { kind: 'stop' } }]
     return { kind: 'chunks', chunks }
   })) + '\n')
-  const calls: GenerateOptions[] = []
+  const calls: GenerateOptions<string>[] = []
   const stopCalls = ctx.on('llm-replay/request', options => { calls.push(options) })
   const replay = installLlmReplay(ctx, { file, overrideFile: file, offline: true, providers: [{ id: 'workspace-creation-replay', models: [
     { id: 'creation-main', contextWindow: 100000, defaultMaxTokens: 1000 },

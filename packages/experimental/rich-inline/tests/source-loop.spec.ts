@@ -7,6 +7,7 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { installRichSourceOffload, readRichSource } from '../src/host/source.ts'
@@ -21,6 +22,7 @@ describe('source offload model requests', () => {
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
+      await ctx.plugin(NativeToolExecutor)
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(AgentLoop, { agents: [] })
       const source = { key: 'result', html: '<p>Synthetic ISP ROI image comparison</p>'.repeat(150),
@@ -69,7 +71,7 @@ describe('source offload model requests', () => {
       if (declaration?.type !== 'rich-inline/source-offload' || declaration.data.targets[0] === undefined) throw new Error('missing source declaration')
       expect(readRichSource(events, { sourceRef: declaration.data.targets[0].sourceRef, field: 'js', offset: 0, length: 100 }, 100).text).toBe(source.js)
       expect(events.filter(event => event.type === 'request/header' && (event.data.startsSeries === true || event.data.reason === 'series'))).toHaveLength(2)
-      const child = await ctx.agents.create({ sessionId: SessionId('source-loop-child'), parentAgent: agent,
+      const child = await agent.ctx.agents.create({ sessionId: SessionId('source-loop-child'),
         meta: { origin: 'subagent' }, agentOptions: { provider: 'fixed', model: 'fixed' } })
       try {
         child.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Return a plain internal report' }], source: { kind: 'user' } }))

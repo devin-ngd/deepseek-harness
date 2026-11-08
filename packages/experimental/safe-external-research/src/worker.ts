@@ -11,6 +11,7 @@ import type { SessionId as ParentSessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SessionHandle, SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import * as nativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
@@ -90,7 +91,8 @@ export async function runWorker(input: WorkerInputs): Promise<{ workerId: string
     await worker.plugin(SessionStore)
     await worker.plugin(SessionProjectionRegistry)
     await worker.plugin(SystemPrompt, {})
-    await worker.plugin(ToolRuntime, { mode: 'native', maxParallelSubCalls: 1 })
+    await worker.plugin(ToolRuntime, {})
+    await worker.plugin(nativeToolExecutor)
     await worker.plugin(AgentRegistry)
     await worker.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
     let submitted: ResearchResult | undefined
@@ -158,9 +160,9 @@ export async function runWorker(input: WorkerInputs): Promise<{ workerId: string
         ctx.tools.restrict({ allow: [...definitions.keys()] })
         worker.tools.guard(workerGuard(created, worker.tools, definitions, input.signal, input.audit))
         ctx.systemPrompt.section({ name: 'research:trusted-skill', order: 0, complete: true, interpolate: false, text: `${WORKER_GUIDANCE}\n\n${input.skill}` })
-        ctx.on('system-prompt/assemble', async (assembly, _context, next) => {
+        ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
           const resolved = await next()
-          return { ...resolved, tools: assembly.tools.filter(tool => definitions.has(tool.name)), contexts: [] }
+          return { ...resolved, contexts: [] }
         })
         ctx.on('agent/pre-step', async (_current, next) => {
           checkActive()

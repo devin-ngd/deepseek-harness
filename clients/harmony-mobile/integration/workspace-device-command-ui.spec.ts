@@ -105,8 +105,8 @@ it('loads the valid chunk policy and executes actual device status commands only
         await page.screenshot({ path: join(world, 'actual-device-command-claimed.png') })
       }
       await composer.press('Enter')
-      await expect.poll(async () => (await ctx.sessionController.inspect(sessionId)).events.filter(event => event.type === 'command/done').length).toBe(index + 1)
-      const done = (await ctx.sessionController.inspect(sessionId)).events.filter(event => event.type === 'command/done').at(-1)
+      await expect.poll(async () => (await ctx.sessionQuery.readSession(sessionId)).events.filter(event => event.type === 'command/done').length).toBe(index + 1)
+      const done = (await ctx.sessionQuery.readSession(sessionId)).events.filter(event => event.type === 'command/done').at(-1)
       assert.ok(done?.data.text); expect(done.data.kind).toBe('success')
       const result = z.object({ state: z.string(), publicResult: z.object({ enabled: z.boolean(), expiresAt: z.number().nullable() }).optional() }).parse(JSON.parse(done.data.text))
       expect(result.state).toBe(index === 0 ? 'not-bound' : 'workspace-disabled')
@@ -119,7 +119,7 @@ it('loads the valid chunk policy and executes actual device status commands only
     await expect.poll(() => chip.count()).toBe(1); await composer.press('Enter')
     await expect.poll(async () => (await page.locator('body').innerText()).includes('unknown or malformed command: /harmony-device status')).toBe(true)
     await clear()
-    const events = (await ctx.sessionController.inspect(sessionId)).events
+    const events = (await ctx.sessionQuery.readSession(sessionId)).events
     expect(events.filter(event => event.type === 'turn/start')).toEqual([])
     expect(events.filter(event => event.type === 'command/run')).toHaveLength(3)
     expect(events.filter(event => event.type === 'command/done')).toHaveLength(3)

@@ -12,6 +12,8 @@
   ],
   "references": [
     { "path": "../../preset/agent-preset-registry" },
+    { "path": "../../session-query/session-query" },
+    { "path": "../../core/tool-executor-ptc" },
     {
       "path": "../../../vendor/cordis"
     },

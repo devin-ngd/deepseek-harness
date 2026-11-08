@@ -62,9 +62,9 @@ export class FieldWorldOwner {
       const path = join(this.root, 'field-world.json')
       try { await withFileLock(path, async () => { const current = schema.parse(JSON.parse(await readFile(path, 'utf8'))); if (JSON.stringify(current) !== JSON.stringify(this.manifest)) throw new FieldWorldError('world-invalid'); await writeFileAtomic(path, JSON.stringify({ ...current, state: 'ready' }, null, 2) + '\n', { mode: 0o600, dirMode: 0o700 }) }, { waitMs: this.spec.lockWaitMs }) } catch (error) { if (error instanceof FieldWorldError) throw error; throw new FieldWorldError('write-unknown') }
     } else {
-      let inspection: Awaited<ReturnType<typeof ctx.sessionController.inspect>>
-      try { inspection = await ctx.sessionController.inspect(sessionId) } catch (error) { void error; throw new FieldWorldError('session-unavailable') }
-      if (inspection.meta.cwd === undefined || !samePath(inspection.meta.cwd, this.root)) throw new FieldWorldError('world-invalid')
+      let inspection: Awaited<ReturnType<typeof ctx.sessionQuery.readSession>>
+      try { inspection = await ctx.sessionQuery.readSession(sessionId) } catch (error) { void error; throw new FieldWorldError('session-unavailable') }
+      if (inspection.session.cwd === undefined || !samePath(inspection.session.cwd, this.root)) throw new FieldWorldError('world-invalid')
       const state = await openProfileJournal(ctx, this.spec.maxAdmissionRecords, policy); await state.close()
       const resumed = await ctx.sessionController.resolveAgent(sessionId)
       if ('error' in resumed) throw new FieldWorldError('session-unavailable')

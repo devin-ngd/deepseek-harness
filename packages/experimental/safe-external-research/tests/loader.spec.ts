@@ -13,7 +13,9 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import * as JsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import * as native from '@deepseek-ai/dsh-tool-executor-native'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { defineContentToolFixture, executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { HttpFetchProvider } from '@deepseek-ai/dsh-web-fetch-http'
 import * as Research from '../src/index.ts'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
@@ -37,7 +39,8 @@ it('boots the real Loader composition and logs only the minimal worker and valid
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   for (const [name, plugin] of Object.entries({ llm: LlmRuntime, session: SessionStore, projection: SessionProjectionRegistry,
-    prompt: SystemPrompt, tools: ToolRuntime, agents: AgentRegistry, persistence: JsonlPersistence, loop: AgentLoop, research: Research,
+    prompt: SystemPrompt, tools: ToolRuntime, native, agents: AgentRegistry,
+    persistence: JsonlPersistence, loop: AgentLoop, research: Research,
   })) {
     ctx.loader.builtins[name] = plugin
   }
@@ -87,7 +90,7 @@ it('boots the real Loader composition and logs only the minimal worker and valid
     expect(JSON.stringify(log)).toContain('research_submit')
     expect(JSON.stringify(log)).not.toContain('SIMULATED_PRIVATE_MEMORY')
   } finally { await handle.close() }
-  const call = (name: string) => ctx!.tools.execute({
+  const call = (name: string) => executeToolFixture(ctx!, {
     name, arguments: {}, agent: parent, callId: ToolCallId(name), signal: new AbortController().signal,
   })
   expect((await call('web_fetch')).isError).toBe(true)

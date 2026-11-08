@@ -42,7 +42,7 @@ export async function restartFixture(host: Context, signal: AbortSignal): Promis
   const replay = await installFourResponses(ctx, owner.root, undefined, fixture, consumed)
   ctx.deepseekLlmApiExtensions.prepare = async () => { throw new Error('UPLOAD_DISABLED') }
   async function summary() {
-    const inspection = await ctx.sessionController.inspect(sessionId), counts = ctx.llm.getOfflineReplayCounts(), handle = await ctx.sessionPersistence.open(sessionId, 'read')
+    const inspection = await ctx.sessionQuery.readSession(sessionId), counts = ctx.llm.getOfflineReplayCounts(), handle = await ctx.sessionPersistence.open(sessionId, 'read')
     try {
       const durable = await handle.read(), original = (message: { readonly source: unknown }) => { const source = message.source; return source !== null && typeof source === 'object' && 'kind' in source && source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId }
       ctx.llm.assertZeroRealCalls()
@@ -81,7 +81,7 @@ export async function restartFixture(host: Context, signal: AbortSignal): Promis
     } else {
       const receiptBefore = await request('task.receipt', { sessionId, requestId }), duplicate = await request('task.submit', task)
       await ctx.agents.get(sessionId)?.whenIdle(); await ctx.sessionPersistence.flush()
-      const inspection = await ctx.sessionController.inspect(sessionId), publication = inspection.events.find(event => event.type === 'assistant/message')
+      const inspection = await ctx.sessionQuery.readSession(sessionId), publication = inspection.events.find(event => event.type === 'assistant/message')
       let historicalRich = false, richCompleted = false, richDuplicate = false, cancellation = false, browserEvidence: Awaited<ReturnType<typeof serveBrowserFixture>> | undefined
       if (publication?.type === 'assistant/message' && !activationRefused) {
         const mount = await request('rich.mount', { sessionId, messageId: publication.data.message.id, blockId: authoredBlockId(publication.data.message.id, 'phone-form'), guestProtocol: 'lumina-rich/1' })

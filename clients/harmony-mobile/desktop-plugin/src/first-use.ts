@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-session-query'
 /** Desktop-local first use: existing signer, original authorization owner and paired provider; no Remote enrollment or automatic activation. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { AuthorizationInteraction } from '@deepseek-ai/dsh-authorization'
@@ -45,7 +46,7 @@ export class DesktopFirstUse {
     this.owner = new DeviceAuthorizationOwner(ctx, { desktopId: policy.desktopId, profileId, desktopCredentialId, localAuthority: authority, clock, verifier: this.verifier, limits: policy.auth, identities: { challenge: () => id<'harmony-device-challenge'>(randomUUID()) }, copy: { label: 'Harmony phone', method: 'Local fingerprint comparison', allow: 'Allow this selected Session scope', deny: 'Deny', confirm: details => JSON.stringify(details) } })
   }
   private selection(): void { const profile = this.ctx.get('profileContext'); if (profile !== undefined && profile.name !== this.policy.profileId) throw new Error('first-use selected profile or Session denied') }
-  private async selectedSession(): Promise<void> { this.selection(); await this.ctx.sessionController.inspect(this.policy.sessionId) }
+  private async selectedSession(): Promise<void> { this.selection(); await this.ctx.sessionQuery.readSession(this.policy.sessionId) }
   private local(authority: object): void { if (authority !== this.authority || this.closed) throw new Error('first-use local decision denied') }
   /** @param authority - exact desktop-local UI. @param publicIdentity - explicitly imported phone public identity only. @returns signed short-lived proof request; creates no grant, trust file or connection. */
   async issue(authority: object, publicIdentity: unknown): Promise<FirstUseOffer> {

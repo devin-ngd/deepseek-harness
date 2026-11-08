@@ -70,7 +70,7 @@ it('requires a command chip before submission and keeps an unloaded claimed comm
   expect(executed).toEqual(['status'])
   expect(await claimed()).toBe(true)
   await composer.press('ControlOrMeta+A'); await composer.press('Backspace'); await composer.press('Escape')
-  const history = await ctx.sessionController.inspect(sessionId)
+  const history = await ctx.sessionQuery.readSession(sessionId)
   expect(history.events.filter(event => event.type === 'turn/start')).toEqual([])
   expect(history.events.filter(event => event.type === 'command/run')).toHaveLength(1)
   expect(history.events.filter(event => event.type === 'command/done')).toHaveLength(1)

@@ -82,6 +82,8 @@ describe('plugin-owned message projections', () => {
       seed: [...live.snapshotEvents()], meta: { ...live.header, id: SessionId('restore') },
       inheritedEventCount: live.inheritedEventCount, eventState: 'shared-frozen',
     })
+    ctx.effect(() => ctx.sessions.enter(restored))
+    ctx.sessions.announce(restored)
     expect(restored.deriveMessages()).toEqual(before)
     for (const session of [live, pending, child, restored]) {
       expect(session.messageProjections).toBe(ctx.sessions.messageProjections)

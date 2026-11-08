@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
+import { NativeToolExecutor } from '@deepseek-ai/dsh-tool-executor-native'
 import { LlmAdapter, LlmError, OfflineReplayCounter, ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
@@ -35,13 +36,13 @@ class TestRun {
   readonly deadline: number
   constructor(readonly agent: Agent, readonly policy: Settings) { this.deadline = Date.now() + policy.ttlMs }
   check(): void { if (this.closed || Date.now() >= this.deadline) throw new MobileTestError('closed') }
-  guard(options: GenerateOptions): void {
+  guard(options: GenerateOptions<string>): void {
     this.check()
     if (options.sessionId !== this.agent.id || options.provider !== this.policy.provider || options.model !== this.policy.model || options.purpose !== undefined) throw new MobileTestError('scope')
     if (this.calls >= this.policy.responseLimit) throw new MobileTestError('exhausted')
     if (options.messages.some(message => message.content.some(block => block.type === 'image' || block.type === 'file'))) throw new MobileTestError('scope')
   }
-  chunks(options: GenerateOptions): StreamChunk[] {
+  chunks(options: GenerateOptions<string>): StreamChunk[] {
     this.guard(options)
     const slot = this.calls++
     if (slot === 0) return textChunks('```rich-html\n' + JSON.stringify(content) + '\n```')
@@ -58,11 +59,17 @@ class TestRun {
     const agent = this.agent, policy = this.policy
     // These refusals belong to the Agent lifetime. Removing the test entry closes them; it never exposes the Agent's original live route.
     agent.ctx.on('agent/pre-step', async (_payload, next) => { this.check(); return next() }, { prepend: true })
-    agent.ctx.on('agent/request', async (_payload, next) => { await next(); this.check(); if (this.calls >= policy.responseLimit) throw new MobileTestError('exhausted'); return { provider: policy.provider, model: policy.model, maxTokens: policy.maxTokens } }, { prepend: true })
-    agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => { const value = await next(); this.check(); const tools = value.tools.filter(tool => tool.name === 'rich_inline_complete'); if (tools.length !== 1) throw new MobileTestError('rich-disabled'); return { ...value, variables: { ...value.variables, provider: policy.provider, model: policy.model }, tools } }, { prepend: true })
+    agent.model.select({ provider: policy.provider, model: policy.model })
+    agent.ctx.on('agent/request', async (_payload, next) => {
+      const request = await next()
+      this.check()
+      if (this.calls >= policy.responseLimit) throw new MobileTestError('exhausted')
+      return { ...request, maxTokens: policy.maxTokens }
+    }, { prepend: true })
+    agent.ctx.tools.restrict({ allow: ['rich_inline_complete'] })
     agent.ctx.on('llm/stream', (options, next) => { if (options.sessionId === agent.id) this.guard(options); return next() }, { prepend: true })
     agent.ctx.on('tools/pre-execute', async (exec, next) => { this.check(); if (exec.name !== 'rich_inline_complete') throw new MobileTestError('tool'); return next() }, { prepend: true })
-    agent.ctx.tools.presentAs('native')
+    agent.ctx.tools.setExecutor(new NativeToolExecutor(agent.ctx))
   }
   async close(): Promise<void> { this.closed = true; this.agent.cancel({ kind: 'hook', reason: 'Mobile link test entry closed; this test Session remains blocked.' }); await this.agent.whenIdle() }
 }
@@ -74,7 +81,7 @@ class TestAdapter extends LlmAdapter {
   override providerInfo(provider: string) { return { id: provider, name: 'Mobile link test (fixed, no provider IO)' } }
   override listModels(provider: string) { return Promise.resolve([{ id: this.policy.model, name: 'Synthetic mobile link check', context: { contextWindow: this.policy.contextWindow }, provider }]) }
   override resolveModel(provider: string, model: string) { if (provider !== this.policy.provider || model !== this.policy.model) throw new MobileTestError('scope'); return Promise.resolve({ provider, id: model, name: 'Synthetic mobile link check', context: { contextWindow: this.policy.contextWindow } }) }
-  async *stream(options: GenerateOptions): AsyncGenerator<StreamChunk> {
+  async *stream(options: GenerateOptions<string>): AsyncGenerator<StreamChunk> {
     const run = this.run; if (run === undefined) throw new MobileTestError('scope')
     const chunks = run.chunks(options)
     for (const chunk of chunks) {
@@ -103,7 +110,7 @@ export async function apply(ctx: Context, request: unknown = { enabled: false })
       if (adapter.run?.agent === agent) return
       const used = agent.session.snapshotEvents().some(event => event.type === 'turn/start' || event.type === 'user/message' || event.type === 'request/header' || event.type === 'model/selection' || event.type === 'agent/inbox/spliced' && event.data.inserted.length > 0)
       const run = new TestRun(agent, policy)
-      if (adapter.run !== undefined || !fresh.has(agent) || used || !inner.agents.roots().includes(agent)) { run.closed = true; run.install(); throw new MobileTestError('session-used') }
+      if (adapter.run !== undefined || !fresh.has(agent) || used || agent.session.header.origin === 'subagent') { run.closed = true; run.install(); throw new MobileTestError('session-used') }
       try { run.install() } catch (error) { run.closed = true; throw error }
       adapter.run = run
     }
@@ -126,7 +133,7 @@ export async function apply(ctx: Context, request: unknown = { enabled: false })
       return next()
     }, { prepend: true })
     inner.effect(() => inner.commands.register({ name: 'harmony-test', description: 'Create or inspect the dedicated synthetic mobile link Session', input: { hint: 'new | status' }, recordInput: false, handler: async invocation => {
-      if (inner.invocation?.peer !== undefined && inner.invocation.peer !== inner.connection.browserPeer || inner.agents.get(invocation.agent.id) !== invocation.agent || !inner.agents.roots().includes(invocation.agent)) return { kind: 'error', text: 'Use the local desktop root conversation.' }
+      if (inner.invocation?.peer !== undefined && inner.invocation.peer !== inner.connection.browserPeer || inner.agents.get(invocation.agent.id) !== invocation.agent || invocation.agent.session.header.origin === 'subagent') return { kind: 'error', text: 'Use the local desktop root conversation.' }
       const operation = invocation.rawInput.trim()
       if (operation === 'new') {
         if (created === undefined && adapter.run !== undefined) return { kind: 'error', text: 'This entry already owns a test Session; its response budget cannot reset.' }

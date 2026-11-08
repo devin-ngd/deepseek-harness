@@ -133,7 +133,7 @@ class DeviceCommand {
     const stopWorkspace = raw === '' && verb === 'workspace-stop'
     const stopping = stopConnection || stopWorkspace
     const peer = this.ctx.invocation?.peer, agent = original.agent
-    if (this.closed || this.stopping || this.busy && !stopConnection && !(stopWorkspace && this.workspaceApproval !== undefined) || this.ctx.get('profileContext')?.name !== 'desktop' || peer !== undefined && peer !== this.ctx.connection.browserPeer || this.ctx.agents.get(agent.id) !== agent || !this.ctx.agents.roots().includes(agent)) return { kind: 'error', text: 'Device binding requires a live root conversation in the local desktop profile.' }
+    if (this.closed || this.stopping || this.busy && !stopConnection && !(stopWorkspace && this.workspaceApproval !== undefined) || this.ctx.get('profileContext')?.name !== 'desktop' || peer !== undefined && peer !== this.ctx.connection.browserPeer || this.ctx.agents.get(agent.id) !== agent || agent.session.header.origin === 'subagent') return { kind: 'error', text: 'Device binding requires a live root conversation in the local desktop profile.' }
     if (new TextEncoder().encode(raw).length > this.options.maxPublicBytes) return { kind: 'error', text: 'Public device input exceeds the configured capacity.' }
     const approval = verb === 'workspace-allow' && raw === '' ? { controller: new AbortController(), completion: Promise.withResolvers<void>() } : undefined
     const signals = [original.signal, this.lifetime.signal]

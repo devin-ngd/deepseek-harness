@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-session-query'
 /** Default-disabled private profile bundle; exports only authenticated metadata/request/follow and opens no network listener. */
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -27,7 +28,7 @@ import type {} from '@deepseek-ai/dsh-workspace'
 /** Installable private bundle name and its own independent version. */
 export const name = '@deepseek-ai/dsh-experimental-harmony-mobile'
 /** Profile bundle revision; matching this is not proof of an installed desktop's service compatibility. */
-export const version = '0.0.0-normal-controls.1'
+export const version = '0.0.0-rc2.36'
 /** Deployment policy; defaults are resolved by this Config before any activation. */
 export interface Options {
   readonly enabled?: boolean; readonly desktopId?: string; readonly profileId?: string
@@ -217,11 +218,11 @@ export async function apply(ctx: Context, request: Options = {}): Promise<void> 
   const spec = resolveOptions(request, Date.now)
   if (!spec.enabled) return
   if (spec.relayEnabled && ctx.get('harmonyRelayLifecycle') === undefined) throw new Error('harmony activation requires service: harmonyRelayLifecycle')
-  const required = ['connection', 'remoteAccess', 'typert', 'typertGateway', 'sessionController', 'sessionPersistence', 'richInline', 'agents', 'workspaceRegistry', 'storageDomain', 'harmonyAuthenticatedDevices'] as const
+  const required = ['connection', 'remoteAccess', 'typert', 'typertGateway', 'sessionController', 'sessionQuery', 'sessionPersistence', 'richInline', 'agents', 'workspaceRegistry', 'storageDomain', 'harmonyAuthenticatedDevices'] as const
   for (const key of required) if (ctx.get(key) === undefined) throw new Error('harmony activation requires service: ' + key)
   await ctx.inject([...required], async inner => {
     if (spec.desktopId === null || spec.profileId === null) throw new LinkError('invalid-packet')
-    if (spec.sessionId !== null) await inner.sessionController.inspect(spec.sessionId)
+    if (spec.sessionId !== null) await inner.sessionQuery.readSession(spec.sessionId)
     const desktopId = spec.desktopId, profileId = spec.profileId
     const state = await deviceCommandStep('journal-open', () => openProfileJournal(inner, spec.maxAdmissionRecords, { mode: spec.journalMode, desktopId, profileId }))
     await deviceCommandStep('executor-mount', async () => { new HarmonyDesktop(inner, spec, state); if (spec.relayEnabled) { const stop = await inner.harmonyRelayLifecycle.mount(inner); inner.effect(() => stop) } }, [() => state.close()])

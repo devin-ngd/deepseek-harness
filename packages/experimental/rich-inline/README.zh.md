@@ -42,7 +42,7 @@ CLI 管理的 **Web** 配置已验证以下安装/移除路径：
 
 ```powershell
 $env:DSH_HOME = 'D:\Temp\dsh-rich-profile'
-node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.1-alpha.2.tgz' --ignore-scripts --config.auto-install-peers=false
+node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.2-rc.1.tgz' --ignore-scripts --config.auto-install-peers=false
 node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-experimental-rich-inline'
 ```
 
@@ -65,7 +65,7 @@ projectDefaults:
 
 在启用的会话模式中，插件提供默认[创作规则](src/host/guidance.ts)，放在通用交付规则之后，并提供写入会话日志的运行时格式提醒；已有会话的下一回合也生效。日常解释、建议、总结、操作步骤、代码分析和问题回答的最终结果默认使用 HTML，简短答案也适用，报告、对比和交互界面同样如此。简单回答使用内置样式的段落、列表或代码；`css` 和 `js` 可以为空。控件按内容需要添加。自然提问即可，不必提醒工具名。不含实质信息的简短确认、执行中的短进度，以及明确要求的文字、源码或文件保持对应呈现。已有至少 600 字符的结构化长回答显示有明确标注的兼容阅读，不新增模型调用。这仍是 Markdown 的展示，不代表模型生成了交互 HTML；原文可查看，持久化内容不改写。
 
-实时回合准备结束时，插件检查完整发布、唯一块名和块外文字。实质性纯文本回答（至少 160 字符）或非法 `rich-html` 会收到至多一次已记录的格式修正请求（`maxFormatRepairAttempts`，0–2，默认 1）。修正只使用已有结果。Native 和 PTC 保留各自的工具呈现方式，修正请求单独隐藏工具定义。执行保护会拒绝修正期间的业务操作。简短交流、明确要求文字或源码、已有内容块更新均免除修正。查看历史、挂载及刷新不会触发修正。模型仍拒绝格式时保留原回答及兼容提示，不能视为 HTML 验收通过。
+实时回合准备结束时，插件检查完整发布、唯一块名和块外文字。实质性纯文本回答（至少 160 字符）或非法 `rich-html` 会收到至多一次已记录的格式修正请求（`maxFormatRepairAttempts`，0–2，默认 1）。修正只使用已有结果。修正步骤不接收模型工具，包括 PTC 的程序执行入口。修正期间，执行保护也会拒绝步骤外的工具调用。简短交流、明确要求文字或源码、已有内容块更新均免除修正。查看历史、挂载及刷新不会触发修正。模型仍拒绝格式时保留原回答及兼容提示，不能视为 HTML 验收通过。
 
 新结果使用 `rich-html` 围栏 JSON，字段为 `key`、`html`、`css`、`js`、`fallbackText`、`stateSchemaVersion` 及可选的 `values`。key 在同一消息中唯一。插件负责渲染，Agent 不运行浏览器或交付截图。只有完整且未中断的助手消息才能提交；Host 重新读取该持久化消息，才创建状态并启用脚本。原有 `rich_inline_publish` 工具和标记继续用于更新及修复；同一 `blockId` 更新原消息。
 
@@ -175,7 +175,7 @@ Agent 生成完整代码并返回发布对象或旧格式标记，插件负责�
 
 每个 Session 的权威记录原子保存草稿、原始回执和发件箱。派发使用稳定的 Session 请求 ID 与既有持久化机制。相同动作重试返回原始回执，同一 ID 改变内容会冲突。完成必须来自所属 Session 的成功工具结果和对应回合。接收、完成和外部副作用是不同事实。
 
-远程挂载操作声明其访问的 Session。挂载后的每次请求携带 `sessionId` 和 `mountId`；Session 与挂载记录的所属者不一致时，Host 拒绝请求。可信 Client 在读取 guest 数据后补入 Session，生成脚本不能选择它。非 owner 调用需要针对确切 `richInline/<method>` 动作的 Session 授权；全局权限不授予 Session 权限。Host 与 Client 一起更新，并刷新旧页面；见 [RPC 迁移说明](../../../docs/upgrade-guide/v0.2.1-alpha.4/rich-inline-session-requests/guide.zh.md)。包的 `engines.dsh` 为 `>=0.2.1-rc.2 <0.2.1-rc.3`；完整原生交互仍需要下文列出的 Desktop 接入。
+远程挂载操作声明其访问的 Session。挂载后的每次请求携带 `sessionId` 和 `mountId`；Session 与挂载记录的所属者不一致时，Host 拒绝请求。可信 Client 在读取 guest 数据后补入 Session，生成脚本不能选择它。非 owner 调用需要针对确切 `richInline/<method>` 动作的 Session 授权；全局权限不授予 Session 权限。Host 与 Client 一起更新，并刷新旧页面；见 [RPC 迁移说明](../../../docs/upgrade-guide/v0.2.1-alpha.4/rich-inline-session-requests/guide.zh.md)。包的 `engines.dsh` 为 `>=0.2.2-rc.1 <0.2.2-rc.2`；完整原生交互仍需要下文列出的 Desktop 接入。
 
 可选的 Host 服务 `ctx.richAuthoringPolicy.excludes(agent)` 在选择预设前，按确切 Agent 实例排除创作提示和工具。顶层 Agent 没有该服务时按 `activePresets` 决定创作资格；该策略不改变查看和已保存的发布内容。
 

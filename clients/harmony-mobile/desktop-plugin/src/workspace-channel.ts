@@ -101,7 +101,7 @@ export class WorkspaceChannel {
   bootstrap(): readonly IndexInjection[] {
     this.current()
     const table: IndexInjection[] = []
-    this.ctx.emit('webserver/index-inject', table)
+    this.ctx.emit('webserver/index-inject', table, this.admission.peer)
     // __DSH_INSPECTOR__ carries the Host's loopback developer-socket endpoint and credential; a phone resolves loopback against itself.
     const rows = table.filter(row =>
       row.kind !== 'global' || !['__DSH_REMOTE_ACCESS__', '__DSH_TRANSPORT__', '__DSH_INSPECTOR__', '__DSH_WORKSPACE_INITIAL_SELECTION__'].includes(row.name))

@@ -181,8 +181,8 @@ Chromium 侧 Rich 主测试的 `outcome_unknown` 间歇失败已定位为测试�
 | 项目 | 原仓库提交 | 说明 |
 | --- | --- | --- |
 | DevFlow `0.3.0-alpha.3` | `dsh_plugins` `5d321d0` | 工具箱远程操作接入标准 Remote 授权。候选新增的测试把 Host 连接类型带进工具箱类型检查，造成 `ConnectionHandle` 转换 TS2352（基线 HEAD 上不存在）；合并时新增 `tests/tsconfig.toolbox-access.json`，工具箱程序排除该测试，`typecheck:toolbox` 串联两个程序。单元 265 项、client 36 项、`run-toolbox` 组合检查通过，host／client／toolbox／toolbox-access 类型检查为 0 个错误。 |
-| Rich 客户端承载层 | 主仓 `lumina` `ac97a94e30` | 提交内容与候选只有门禁要求的差异：README 承载层段落移入实现细节（摘要字数上限），`RichGuest.tsx` 补接口和 JSDoc 并拆行，`native.ts` JSDoc 拆行，两个测试的订阅替身改为 `(packet) => { void listener(packet) }` 以满足 oxlint。不含私人封装的 `harmony.1` 版本后缀。rich-inline 18 个测试文件 167 项、oxlint 0 错误、客户端类型检查，以及 UI 文案、导出 JSDoc、README 摘要等文档门禁通过。 |
-| Rich 镜像 | `dsh_plugins` `040112f` | 把同样 10 个文件放入 `dsh-rich-inline/workspace`，在 `source-manifest.json` 新增 `RichGuest.tsx` 并登记 `ac97a94e30` 为兼容提交。`check` 报告 `filesToSync` 为空，`doctor` 确认 67 个受管文件一致，管理工具 3 项测试通过。 |
+| Rich 客户端承载层 | 主仓 `lumina` 的客户端承载层 | 提交内容与候选只有门禁要求的差异：README 承载层段落移入实现细节（摘要字数上限），`RichGuest.tsx` 补接口和 JSDoc 并拆行，`native.ts` JSDoc 拆行，两个测试的订阅替身改为 `(packet) => { void listener(packet) }` 以满足 oxlint。不含私人封装的 `harmony.1` 版本后缀。rich-inline 18 个测试文件 167 项、oxlint 0 错误、客户端类型检查，以及 UI 文案、导出 JSDoc、README 摘要等文档门禁通过。 |
+| Rich 镜像 | `dsh_plugins` `040112f` | 把同样 10 个文件放入 `dsh-rich-inline/workspace`，在 `source-manifest.json` 新增 `RichGuest.tsx` 并登记对应的主仓兼容提交。`check` 报告 `filesToSync` 为空，`doctor` 确认 67 个受管文件一致，管理工具 3 项测试通过。 |
 
 主仓级门禁中，`verify-no-unknown-casts`（`clients/harmony-mobile/standalone-relay/src/route-maintenance.ts`）和 `verify-translation-pairing`（`clients/harmony-mobile/README.i18n.yaml` 及 handoff 快照副本）失败，来自 harmony-mobile 既有的未提交实验改动，与这两个包无关，没有处理。`controller.ts` 出现一条 oxlint 未使用的 disable 指令警告（基线指令因本改动不再触发），只是警告。Harmony 的 rc2.35 与 harmony-mobile 其余改动仍未提交。
 

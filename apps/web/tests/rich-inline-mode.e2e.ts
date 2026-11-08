@@ -52,7 +52,7 @@ describe.skipIf(MODE === 'record')('rich-inline selected mode and project defaul
       .replace('        id: standard', '        id: lumina\n        name: Lumina')
     const overlay = join(root, 'scope.patch.yml')
     await writeFile(overlay, lumina + '\n- insert:\n    - id: rich-inline\n      name: "@deepseek-ai/dsh-experimental-rich-inline"\n      config:\n        activePresets: [lumina]\n        projectDefaults:\n          - path: ' + JSON.stringify(project) + '\n            preset: lumina\n')
-    scaffold = await launchWebScaffold({ extraOverlayPath: overlay, extraInstallAnchors: [ANCHOR], toolsMode: 'native' })
+    scaffold = await launchWebScaffold({ extraOverlayPath: overlay, extraInstallAnchors: [ANCHOR] })
     scaffold.ctx.effect(() => scaffold.ctx.llm.registerAdapter([PROVIDER], adapter), 'rich-mode test adapter')
     await scaffold.ctx.agentDefaultModel.saveSelection({ provider: PROVIDER, model: MODEL })
     await scaffold.ctx.workspaceRegistry.create(ordinary)

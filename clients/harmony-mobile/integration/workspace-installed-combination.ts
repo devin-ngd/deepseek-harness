@@ -113,7 +113,7 @@ async function devflow(ctx: Context, sessionId: SessionId, replay: Awaited<Retur
   const panel = z.object({ runs: z.array(z.object({ status: z.string(), childId: z.string().optional(), resolvedRoute: z.object({ provider: z.string(), model: z.string(), reasoningEffort: z.string().optional() }) })) }).parse(await invoke('devflowToolbox', 'panelGet', { sessionId }))
   const completed = panel.runs.find(run => run.status === 'completed'); assert.ok(completed?.childId)
   assert.deepEqual(completed.resolvedRoute, { provider: 'workspace-replay', model: 'worker', reasoningEffort: 'high' })
-  const persisted = await ctx.sessionController.inspect(id<'SessionId'>(completed.childId))
+  const persisted = await ctx.sessionQuery.readSession(id<'SessionId'>(completed.childId))
   assert.ok(persisted.events.some(event => event.type === 'request/header' && event.data.header.config.model === 'worker' && event.data.header.config.reasoningEffort === 'high'))
   assert.equal((await ctx.sessionController.readModelSelection({ sessionId })).selected?.model, 'main')
   return { directHasNoDelegationTool: true, readonlyChildCompleted: true, childModel: 'worker', childEffort: 'high', parentModel: 'main', persistedRequestChecked: true }

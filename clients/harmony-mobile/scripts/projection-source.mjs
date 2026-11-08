@@ -1,7 +1,6 @@
 /** Resolve the isolated source patch and already-installed digest library; no installs or mutations outside the lab. */
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { createHash } from 'node:crypto'
 import { resolve, join, dirname } from 'node:path'
 import assert from 'node:assert/strict'
 import { prepareProjectionInputs } from './projection-inputs.mjs'
@@ -21,34 +20,10 @@ export async function projectionPaths(project, root) {
   const require = createRequire(join(root, 'package.json')), ts = require('typescript')
   const raw = ts.readConfigFile(join(root, 'tsconfig.base.json'), ts.sys.readFile)
   if (raw.error) throw new Error(ts.flattenDiagnosticMessageText(raw.error.messageText, '\n'))
-  const isolated = ts.readConfigFile(join(spec.checkout, 'tsconfig.base.json'), ts.sys.readFile)
-  if (isolated.error) throw new Error(ts.flattenDiagnosticMessageText(isolated.error.messageText, '\n'))
-  const sourcePaths = Object.fromEntries(Object.entries(isolated.config.compilerOptions.paths).map(([name, values]) => [name, values.map(value => resolve(spec.checkout, value))]))
-  const primaryPaths = Object.fromEntries(Object.entries(raw.config.compilerOptions.paths).map(([name, values]) => [name, values.map(value => resolve(root, value))]))
-  const paths = { ...sourcePaths, ...primaryPaths }
+  const paths = Object.fromEntries(Object.entries(raw.config.compilerOptions.paths)
+    .map(([name, values]) => [name, values.map(value => resolve(root, value))]))
   const current = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(current.version, '0.2.1-rc.2')
-  // The registry remains retained; browser interpreters use the verified lab snapshot.
-  for (const file of [spec.registryEntry]) {
-    const hash = bytes => createHash('sha256').update(bytes).digest('hex')
-    assert.equal(hash(await readFile(resolve(spec.checkout, file))), hash(await readFile(resolve(root, file))), 'Retained projection input differs from rc.2: ' + file)
-  }
-  // Preserve the existing source-check-only generic erasure; installed API checks never use this copy.
-  const registryFile = 'packages/typert/registry/src/service.ts'
-  const retainedRegistry = (await readFile(resolve(spec.checkout, registryFile), 'utf8')).replaceAll('\r\n', '\n')
-  const currentRegistry = (await readFile(resolve(root, registryFile), 'utf8')).replaceAll('\r\n', '\n')
-  const erasedRegistry = currentRegistry.replace('const entry: ProviderEntry<TypertLookupProvider> = { provider, owner }', [
-    'const entry: ProviderEntry<TypertLookupProvider> = {',
-    '      // Consumers validate the wire identity before this heterogeneous registry restores its declared type.',
-    '      provider: { ...provider, resolve: id => provider.resolve(id as Wire) }, owner,',
-    '    }',
-  ].join('\n')).replace("    return this.registerProvider(ctx, this.hosts, 'host-context', key, adapter)", [
-    "    // The adapter retains its resource declaration; only the stored resolver's Wire parameter is erased.",
-    '    const erased: TypertHostContextAdapter = { ...adapter, resolve: id => adapter.resolve(id as Wire) }',
-    "    return this.registerProvider(ctx, this.hosts, 'host-context', key, erased)",
-  ].join('\n'))
-  assert.equal(retainedRegistry, erasedRegistry, 'Retained registry must differ only by the two existing variance wrappers')
-  paths['@deepseek-ai/dsh-typert-registry'] = [resolve(spec.checkout, spec.registryEntry)]
+  assert.equal(current.version, '0.2.2-rc.1')
   paths['@deepseek-ai/dsh-client-connection/client'] = [join(root, 'packages/client/connection/src/client/index.ts')]
   const digest = createRequire(join(root, 'packages/experimental/webworker-runtime/package.json'))
   const sha = digest.resolve('@noble/hashes/sha2.js'), utils = digest.resolve('@noble/hashes/utils.js')

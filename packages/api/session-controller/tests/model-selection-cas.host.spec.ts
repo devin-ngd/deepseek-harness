@@ -1,14 +1,13 @@
 /** Host-only native selection revision, serial comparison, and exact-Agent lifetime behavior. */
 
 import { Context } from '@deepseek-ai/cordis'
-import { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { SessionModelSelectionSnapshot } from '@deepseek-ai/dsh-api-session-controller'
 import { mountAgentLoopTestDependencies, mountAgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { LlmAdapter, ReasoningEffortId, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { installModelSelectionProjection } from '../src/model-selection-projection.ts'
+import { modelSelectionRevisionProjection } from '../src/model-selection-projection.ts'
 import { createSessionTestController } from './test-remote.ts'
 
 class SelectionAdapter extends LlmAdapter {
@@ -34,9 +33,13 @@ async function harness() {
   await mountAgentLoopTestDependencies(ctx)
   await mountAgentLoopTestHarness(ctx)
   ctx.llm.registerAdapter(['selection'], new SelectionAdapter())
-  const handle = await ctx.agents.create({ sessionId: SessionId('selection-cas'), meta: { cwd: process.cwd() } })
+  const handle = await ctx.agents.create({
+    sessionId: SessionId('selection-cas'),
+    agentOptions: { provider: 'selection', model: 'base' },
+    meta: { cwd: process.cwd() },
+  })
   const saveDefault = vi.fn()
-  const controller = createSessionTestController(ctx, {
+  const controller = await createSessionTestController(ctx, {
     cwd: process.cwd(),
     defaultModelSelection: () => ({ provider: 'selection', model: 'base' }),
     saveDefaultModelSelection: saveDefault,
@@ -83,7 +86,7 @@ describe('Host native model selection comparison', () => {
   it('advances on repeated identical selections and effort-only intent without writing defaults', async () => {
     const { agent, controller, saveDefault } = await harness()
     const first = await controller.compareAndSelectModel({ sessionId: agent.id, expectedSelectionRevision: -1, selection: director })
-    expect(first).toMatchObject({ applied: true, selected: { ...director, reasoningEffort: 'high' } })
+    expect(first).toMatchObject({ applied: true, selected: director })
     const second = await controller.compareAndSelectModelForAgent(agent, {
       expectedSelectionRevision: first.selectionRevision, selection: first.selected,
     })
@@ -94,18 +97,15 @@ describe('Host native model selection comparison', () => {
     expect(saveDefault).not.toHaveBeenCalled()
   })
 
-  it('keeps revision through request consumption and feeds the same native assembly and request route', async () => {
-    const { ctx, agent, controller } = await harness()
+  it('keeps the revision when the official Agent model consumes the selection', async () => {
+    const { agent, controller } = await harness()
     const selected = await controller.compareAndSelectModelForAgent(agent, { expectedSelectionRevision: -1, selection: director })
-    expect((await ctx.systemPrompt.assemble({ scope: agent })).variables).toMatchObject(director)
-    await expect(agentEvents(ctx, agent).waterfall('agent/request', {
-      turn: 1, step: 1, signal: new AbortController().signal,
-    }, () => Promise.resolve({ provider: 'seed', model: 'seed' }))).resolves.toMatchObject(director)
+    expect(agent.model.current()).toEqual(director)
     agent.session.append('request/header', {
-      header: { config: { ...director, reasoningEffort: ReasoningEffortId('high') } }, reason: 'initial',
+      header: { config: { ...director, reasoningEffort: ReasoningEffortId('high') }, adapterDefaults: { reasoningEffort: true } }, reason: 'initial',
     })
     expect(controller.readModelSelectionForAgent(agent)).toEqual({
-      selected: { ...director, reasoningEffort: 'high' }, selectionRevision: selected.selectionRevision,
+      selected: director, selectionRevision: selected.selectionRevision,
     })
   })
 
@@ -202,7 +202,7 @@ describe('Host native model selection comparison', () => {
     expect(saveDefault).not.toHaveBeenCalled()
   })
 
-  it('does not update execution cache when the selection append rejects', async () => {
+  it('leaves the native selection unchanged when its append rejects', async () => {
     const { agent, controller } = await harness()
     const before = controller.readModelSelectionForAgent(agent)
     const append = vi.spyOn(agent.session, 'append').mockImplementationOnce(() => { throw new Error('append refused') })
@@ -219,10 +219,9 @@ describe('Host native model selection comparison', () => {
     const session = ctx.sessions.create()
     session.append('model/selection', director)
     const latest = session.append('model/selection', director)
-    const fiber = ctx.plugin({ name: 'selection-projection-fixture', inject: ['sessionProjections'], apply: installModelSelectionProjection })
-    await fiber
-    expect(ctx.sessionProjections.stateOf(session, 'modelSelectionRevision')).toBe(latest.seq)
-    await fiber.dispose()
+    const revision = await ctx.sessionProjections.register(modelSelectionRevisionProjection)
+    expect(revision.stateOf(session)).toBe(latest.seq)
+    await revision.dispose()
     expect(ctx.sessionProjections.stateOf(session, 'modelSelectionRevision')).toBeUndefined()
   })
 })

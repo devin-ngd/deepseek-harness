@@ -9,7 +9,7 @@
 import { lookup as systemLookup } from 'node:dns/promises'
 import type { LookupAddress, LookupOptions } from 'node:dns'
 import { isIP } from 'node:net'
-import type { Dispatcher, Response } from 'undici'
+import type { Response } from 'undici'
 
 import ipaddr from 'ipaddr.js'
 import { WebError } from '@deepseek-ai/dsh-web'
@@ -159,21 +159,6 @@ function embeddedIpv4Address(bytes: readonly number[], prefixLength: Nat64Prefix
 }
 
 /**
- * Whether a hostname is an IP literal that {@link resolvePublicAddresses} would refuse.
- *
- * A proxied hop skips those checks because the proxy resolves the origin, but a literal needs no
- * resolution: the address is already stated, and handing it to a proxy running on this machine
- * would reach exactly the loopback or private service the checks exist to keep out of reach.
- *
- * @param hostname - a URL's hostname, bracketed or not.
- * @returns true when the host is a literal address no request may be sent to.
- */
-export function isNonPublicIpLiteral(hostname: string): boolean {
-  const unbracketed = stripIpv6Brackets(hostname)
-  return isIP(unbracketed) !== 0 && !isPublicIpAddress(unbracketed)
-}
-
-/**
  * Fetch through an agent whose lookup callback returns only the already validated address set. The
  * URL hostname remains intact for HTTP Host and TLS SNI.
  *
@@ -197,9 +182,7 @@ export async function requestPinned(
   // Keep the Node-only transport out of browser-worker startup. The preview can load the provider
   // and fail loud at its DNS stub without evaluating Undici; a real request resolves it here.
   const { Agent, fetch } = await import('undici')
-  // Reached only where `proxyRouteFor` reported no proxy for this URL, and the pinned lookup this
-  // agent carries is per-request state the process-wide dispatcher cannot hold.
-  // proxy-exempt: pinning one request's validated addresses, on a URL the policy routes directly.
+  // proxy-exempt: the public-only caller requires a direct connection to these validated addresses.
   const dispatcher = new Agent({ autoSelectFamily: true, connect: { lookup: createPinnedLookup(addresses) } })
   try {
     // proxy-exempt: the agent above, whose lifetime is this one request.
@@ -211,38 +194,10 @@ export async function requestPinned(
   }
 }
 
-/**
- * Fetch through the dispatcher the proxy policy already installed, letting the proxy resolve the
- * origin.
- *
- * No address set is pinned because none exists to pin: the proxy performs the lookup, and a
- * connection pinned to a locally resolved address would reach the origin directly and defeat the
- * proxy. The dispatcher is the process-wide one, so hops share its connection pool and no caller
- * closes it.
- *
- * @param dispatcher - the route's dispatcher, from `proxyRouteFor`.
- * @param url - validated HTTP(S) URL the policy routes through a proxy.
- * @param headers - request headers.
- * @param signal - request and body-read cancellation signal.
- * @returns a response plus a disposer that releases nothing, so both paths close alike.
- */
-export async function requestVia(
-  dispatcher: Dispatcher,
-  url: URL,
-  headers: Record<string, string>,
-  signal: AbortSignal,
-): Promise<PinnedResponse> {
-  const { fetch } = await import('undici')
-  // proxy-exempt: the dispatcher is the installed policy's own, handed over by `proxyRouteFor`.
-  const response = await fetch(url, { method: 'GET', redirect: 'manual', headers, signal, dispatcher })
-  return { response, close: () => Promise.resolve() }
-}
-
 /** Production network operations kept as an object so provider tests can replace resolution only. */
 export const publicHttpNetwork = {
   resolve: resolvePublicAddresses,
   request: requestPinned,
-  requestVia,
 }
 
 type LookupCallback = (

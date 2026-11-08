@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-session-query'
 /** Actual same-profile SessionController/RichInline binding; contains no fixture label or copied rich/session implementation. */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
@@ -24,7 +25,7 @@ export function profileServicePorts(ctx: Context, window?: SessionWindowPolicy):
       const matches = (message: UserMessage) => message.source.kind === 'user' && 'rpcId' in message.source && message.source.rpcId === requestId
       const agent = ctx.agents.get(sessionId)
       let found = agent !== undefined && [...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(matches)
-      if (!found) { const inspection = await ctx.sessionController.inspect(sessionId); found = inspection.events.some(event => event.type === 'user/message' && matches(event.data) || event.type === 'agent/inbox/spliced' && event.data.inserted.some(message => message.role === 'user' && matches(message))) }
+      if (!found) { const inspection = await ctx.sessionQuery.readSession(sessionId); found = inspection.events.some(event => event.type === 'user/message' && matches(event.data) || event.type === 'agent/inbox/spliced' && event.data.inserted.some(message => message.role === 'user' && matches(message))) }
       if (!found) return 'absent'
       try { await ctx.sessionPersistence.flush() } catch (error) { void error; return 'unavailable' }
       return 'accepted'

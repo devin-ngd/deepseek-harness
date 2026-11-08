@@ -11,3 +11,7 @@
                 defaultMaxTokens: 256000
                 reasoningEfforts: [off, low, high, max]
                 defaultReasoningEffort: high
+- id: time-context
+  disabled: true
+- id: tool-subagent-control
+  disabled: true

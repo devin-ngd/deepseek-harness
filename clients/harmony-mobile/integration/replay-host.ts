@@ -58,7 +58,7 @@ export async function installFourResponses(ctx: Context, world: string, publicat
 
 /** @param ctx - passive canonical reader before Agent activation. @param sessionId - exact fixed world Session. @returns completed replay position; unfinished turns or foreign routes refuse activation. */
 export async function fixedReplayPosition(ctx: Context, sessionId: SessionId): Promise<number> {
-  const inspection = await ctx.sessionController.inspect(sessionId)
+  const inspection = await ctx.sessionQuery.readSession(sessionId)
   let activeTurn = false, requests = 0, completed = 0
   for (const event of inspection.events) {
     if (event.type === 'turn/start') activeTurn = true
@@ -85,7 +85,7 @@ export function realReplayPorts(ctx: Context): DesktopServicePorts {
       const matches = (message: UserMessage) => message.source.kind === 'user' && 'rpcId' in message.source && message.source.rpcId === requestId
       const agent = ctx.agents.get(sessionId)
       if (agent !== undefined && [...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(matches)) return 'accepted'
-      const inspection = await ctx.sessionController.inspect(sessionId)
+      const inspection = await ctx.sessionQuery.readSession(sessionId)
       return inspection.events.some(event => event.type === 'user/message' && matches(event.data)) ? 'accepted' : 'absent'
     },
   }, rich: {

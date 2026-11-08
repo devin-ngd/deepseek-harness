@@ -9,6 +9,8 @@ import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-session-persistence'
+import type {} from '@deepseek-ai/dsh-session-query'
+import type {} from '@deepseek-ai/dsh-tool-executor-ptc/types'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
@@ -106,7 +108,7 @@ function savedDraft(draft: RichDraft, revision: number): RichBlockRecord['draft'
 /** Host authority and generated Remote namespace. It exposes no shell, credentials, or file paths. */
 export class RichInline extends TypertRemoteService {
   static inject = [
-    'typert', 'storage', 'storageDomain', 'sessionController', 'sessionPersistence', 'tools', 'attachments', 'fileUploads', 'agents', 'systemPrompt', 'sessions',
+    'typert', 'storage', 'storageDomain', 'sessionController', 'sessionPersistence', 'sessionQuery', 'tools', 'attachments', 'fileUploads', 'agents', 'systemPrompt', 'sessions',
   ]
   static Config = z.object({
     activePresets: z.array(z.string().min(1)).default([]),
@@ -148,7 +150,10 @@ export class RichInline extends TypertRemoteService {
     ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
     installProjectDefaults(ctx, config.projectDefaults ?? [])
     installRichSourceOffload(ctx, config.sourceOffloadMinBytes,
-      async (sessionId, signal) => (await ctx.sessionController.inspect(sessionId, signal)).events, agent => !isRichChild(agent))
+      async (sessionId, signal) => {
+        using observation = await ctx.sessionQuery.observeSession(sessionId, { signal, projectionMode: 'none' })
+        return observation.events
+      }, agent => !isRichChild(agent))
     ctx.systemPrompt.section({ name: 'rich-inline:authoring', text: context => this.authoringEnabled(context.agent)
       ? RICH_AUTHORING_GUIDANCE + '\n\n' + RICH_APPEARANCE_GUIDANCE : '',
     order: ctx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'), interpolate: false })
@@ -160,25 +165,13 @@ export class RichInline extends TypertRemoteService {
       publish: (sessionId, input) => this.publish(sessionId, input),
       updateData: (sessionId, input) => this.updateData(sessionId, input),
       prepareCompletion: (sessionId, actionId, callId) => this.prepareCompletion(sessionId, actionId, callId),
-      readSource: async (sessionId, request) => readRichSource((await ctx.sessionController.inspect(sessionId)).events,
-        request, config.sourceReadMaxChars),
+      readSource: async (sessionId, request) => {
+        using observation = await ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+        return readRichSource(observation.events, request, config.sourceReadMaxChars)
+      },
+      canRead: agent => !isRichChild(agent),
+      canAuthor: agent => this.authoringEnabled(agent),
     }, this.config.maxInputBytes)
-    ctx.effect(() => {
-      const masks = new Map<Agent, () => void>()
-      const restrict = (agent: Agent) => {
-        if (!isRichChild(agent)) return
-        masks.set(agent, agent.ctx.tools.restrict({ deny: ctx.tools.schemas(agent).map(tool => tool.name).filter(name => name.startsWith('rich_inline_')) }))
-      }
-      for (const agent of ctx.agents.list()) restrict(agent)
-      const created = ctx.on('agent/created', ({ agent }) => { restrict(agent) })
-      const disposed = ctx.on('agent/disposed', ({ agent }) => { masks.get(agent)?.(); masks.delete(agent) })
-      return () => { created(); disposed(); for (const release of masks.values()) release(); masks.clear() }
-    })
-    ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
-      const assembly = await next()
-      return this.authoringEnabled(context.agent) ? assembly
-        : { ...assembly, tools: assembly.tools.filter(tool => !tool.name.startsWith('rich_inline_') || tool.name === 'rich_inline_read' && !isRichChild(context.agent)) }
-    })
     ctx.tools.guard(execution => execution.name.startsWith('rich_inline_') && (isRichChild(execution.agent) || execution.name !== 'rich_inline_read' && !this.authoringEnabled(execution.agent))
       ? 'Rich inline authoring is not enabled for this session mode.' : undefined)
     installFormatCheck(ctx, this.config.maxFormatRepairAttempts, agent => this.authoringEnabled(agent))
@@ -227,7 +220,7 @@ export class RichInline extends TypertRemoteService {
    */
   @Remote({ resources: { session: (sessionId: SessionId) => sessionId } })
   async taskUsage(sessionId: SessionId): Promise<RichTaskUsage> {
-    const inspection = await this.ctx.sessionController.inspect(sessionId)
+    using inspection = await this.ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
     return deriveRichTaskUsage([{ sessionId, events: inspection.events, inheritedEventCount: inspection.inheritedEventCount }])
   }
 
@@ -296,7 +289,7 @@ export class RichInline extends TypertRemoteService {
   @Remote({ resources: { session: (request: RichMountRequest) => request.sessionId } })
   async mount(request: RichMountRequest): Promise<RichMountValue> {
     await this.startup
-    const inspection = await this.ctx.sessionController.inspect(request.sessionId)
+    using inspection = await this.ctx.sessionQuery.observeSession(request.sessionId, { projectionMode: 'none' })
     const owner = inspection.events.find(event => event.type === 'assistant/message' && event.data.interrupted !== true
       && event.data.message.id === request.messageId)
     if (owner?.type !== 'assistant/message') bad('Block is not referenced by a settled assistant message')
@@ -322,7 +315,7 @@ export class RichInline extends TypertRemoteService {
         if (code === undefined) bad('MISSING_AUTHORED_CONTENT')
         if (size(code) > this.config.maxContentBytes) bad('BLOCK_PUBLICATION_TOO_LARGE')
         if (Object.keys(record.blocks).length >= this.config.maxBlocksPerSession) bad('BLOCK_LIMIT')
-        const readOnly = inspection.meta.parentSession !== undefined && owner.seq < inspection.inheritedEventCount
+        const readOnly = inspection.header.parentSession !== undefined && owner.seq < inspection.inheritedEventCount
         block = { manifest: { blockId: request.blockId, renderRevision: 1, html: code.html, css: code.css, js: code.js,
           fallbackText: code.fallbackText, stateSchemaVersion: code.stateSchemaVersion,
           contentHash: hash(canonicalRichJson({ html: code.html, css: code.css, js: code.js,
@@ -564,8 +557,9 @@ export class RichInline extends TypertRemoteService {
       return Promise.resolve()
     })
     const agent = await this.resolveAgent(scope.sessionId)
-    const attachment = this.ctx.fileUploads.resolve(agent, request.receiptId)
-    if (attachment === undefined || attachment.bytes > this.config.maxFileBytes) bad('FILE_NOT_UPLOADED_OR_TOO_LARGE')
+    const upload = this.ctx.fileUploads.resolve(agent, request.receiptId)
+    if (upload?.type !== 'file' || upload.attachment.bytes > this.config.maxFileBytes) bad('FILE_NOT_UPLOADED_OR_TOO_LARGE')
+    const { attachment } = upload
     await this.readFile(attachment, signal)
     return this.serial(scope.sessionId, async (record) => {
       const block = this.block(record, scope)
@@ -902,7 +896,7 @@ export class RichInline extends TypertRemoteService {
   private async recover(): Promise<void> {
     const table = (await this.domain).table('sessions')
     for (const [sessionId] of table.entries()) {
-      const inspection = await this.ctx.sessionController.inspect(sessionId)
+      using inspection = await this.ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
       let turn: number | null = null
       for (const event of inspection.events) {
         if (event.type === 'turn/start') turn = event.data.turn

@@ -18,6 +18,8 @@ export function apply(ctx: Context): void {
   const blockId = brandString<RichBlockId>('rich-synthetic')
   let dataRevision = 0
   installRichTools(ctx, {
+    canRead: () => true,
+    canAuthor: () => true,
     async publish(_sessionId, input) {
       assert.equal(input.blockId, undefined)
       dataRevision = 1

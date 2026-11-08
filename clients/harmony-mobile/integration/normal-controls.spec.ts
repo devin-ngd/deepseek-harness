@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-compaction-basic'
 /** Temporary normal profiles exercise the deployed test entry; sentinel adapters perform no provider or network IO. */
 import { it, expect, vi } from 'vitest'
 import { readFile, mkdir } from 'node:fs/promises'
@@ -23,7 +24,7 @@ class Sentinel extends LlmAdapter {
   calls = 0
   resolves = 0
   override resolveModel(provider: string, model: string) { this.resolves++; return Promise.resolve({ provider, id: model, name: model, context: { contextWindow: 100000 } }) }
-  async *stream(_options: GenerateOptions): AsyncGenerator<StreamChunk> { this.calls++; yield { type: 'block-start', index: 0, blockType: 'text' }; yield { type: 'text-delta', index: 0, text: 'Unrelated sentinel response.' }; yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Unrelated sentinel response.' } }; yield { type: 'finish', reason: { kind: 'stop' } } }
+  async *stream(_options: GenerateOptions<string>): AsyncGenerator<StreamChunk> { this.calls++; yield { type: 'block-start', index: 0, blockType: 'text' }; yield { type: 'text-delta', index: 0, text: 'Unrelated sentinel response.' }; yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Unrelated sentinel response.' } }; yield { type: 'finish', reason: { kind: 'stop' } } }
 }
 async function setup(label: string, previous?: string, richDisabled = false) {
   const parent = process.env.DSH_HARMONY_INTEGRATION_WORLD; if (parent === undefined) throw new Error('isolated controls profile required')
@@ -138,7 +139,7 @@ it('the explicit local new command creates one fresh test Session and repeated c
     const first = await run(), second = await run()
     expect(first?.result.kind).toBe('success'); expect(second?.result).toEqual(first?.result)
     const created = z.object({ sessionId: z.string().transform(value => id<'SessionId'>(value)) }).parse(JSON.parse(first!.result.text!))
-    expect(created.sessionId).not.toBe(existingId); expect(f.ctx.agents.roots()).toHaveLength(2)
+    expect(created.sessionId).not.toBe(existingId); expect(f.ctx.agents.list().filter(agent => agent.session.header.origin !== 'subagent')).toHaveLength(2)
     const agent = f.ctx.agents.get(created.sessionId)!
     expect(f.ctx.agentPresets.composedPreset(agent.ctx)).toBe(policy.presetId)
     const status = await f.ctx.commands.execute(agent, '/harmony-test status', [], new AbortController().signal)

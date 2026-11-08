@@ -129,7 +129,7 @@ it('persisted normal grant stays bound on cold reload, cannot autoactivate, and 
     f.ctx.llm.assertZeroRealCalls(); await f.ctx.sessionPersistence.flush(); await f.first.close(); await f.ctx.fiber.dispose()
     cold = await fixture('normal-grant-reload', f.world)
     expect(cold.ctx.sessions.get(sessionId)).toBeUndefined()
-    expect((await cold.ctx.sessionController.inspect(sessionId)).meta.cwd).toBe(f.world)
+    expect((await cold.ctx.sessionQuery.readSession(sessionId)).session.cwd).toBe(f.world)
     // The real owner validates these JSON records when reading its configured credential key.
     for (const entry of JSON.parse(await readFile(path, 'utf8'))) await cold.ctx.credentials.modifyRecord(entry.key, async () => entry.record)
     expect(await cold.first.owner.storedGrant(cold.authority, cold.policy.deviceId)).toMatchObject({ profileId, sessions: [sessionId], epoch: 1, revoked: false })
@@ -141,7 +141,7 @@ it('persisted normal grant stays bound on cold reload, cannot autoactivate, and 
     expect(stored).toMatchObject({ profileId, sessions: [sessionId], epoch: 2, revoked: true })
     await cold.first.close()
     const now = original.phone.paired.expiresAt + 1
-    await cold.ctx.sessionController.inspect(otherSession)
+    await cold.ctx.sessionQuery.readSession(otherSession)
     const altered = new DesktopFirstUse(cold.ctx, cold.authority, { ...cold.policy, sessionId: otherSession, pairId: 'ordinary-other-successor' }, desktopKey, () => now, cold.openPorts); owners.push(altered)
     await expect(altered.issueRenewal(cold.authority, identity, JSON.stringify(original.publicDocument))).rejects.toThrow('fixed scope')
     await altered.close()
