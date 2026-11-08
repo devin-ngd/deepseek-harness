@@ -57,7 +57,7 @@ const limits: ProfileConfig = { maxContentBytes: 2_097_152, maxInputBytes: 131_0
   maxFormatRepairAttempts: 1, sourceOffloadMinBytes: 4_096, sourceReadMaxChars: 8_192, theme: 'cyber', accent: 'blue' }
 
 async function harness(root?: string, seed: readonly SessionEvent[] = [], config: Partial<ProfileConfig> = {},
-  options: { live?: boolean; preset?: string; remote?: boolean; origin?: 'subagent'; parentAgent?: Agent } = {}) {
+  options: { live?: boolean; preset?: string; remote?: boolean; origin?: 'subagent'; parentAgent?: Agent; beforeRich?: (ctx: Context) => void } = {}) {
   const dir = root ?? await mkdtemp(join(tmpdir(), 'dsh-rich-host-'))
   const ctx = new Context()
   if (options.preset !== undefined) ctx.provide('agentPresets', { composedPreset: () => options.preset } as never)
@@ -104,6 +104,7 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
   else ctx.provide('typert', {} as never)
   ctx.provide('attachments', {} as never)
   ctx.provide('fileUploads', {} as never)
+  options.beforeRich?.(ctx)
   // A Loader entry lets a test edit the profile configuration the way the Plugins page theme picker does.
   const live = options.live === true ? await liveConfig(ctx, RichInline, { ...limits, ...config }) : undefined
   const owner = live?.fiber ?? await ctx.plugin(RichInline, { ...limits, ...config })
@@ -214,7 +215,14 @@ function intent(mounted: Awaited<ReturnType<RichInline['mount']>>, actionId = br
 
 describe('bounded final format correction', () => {
   it('logs one correction, removes tools, denies forged tool execution, and never retries on historical mounting', async () => {
-    const h = await harness()
+    const seesBusinessTool = vi.fn()
+    const h = await harness(undefined, [], {}, { beforeRich: (ctx) => {
+      ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+        const result = await next()
+        seesBusinessTool(result.tools.some(tool => tool.name === 'business_operation'))
+        return result
+      })
+    } })
     let executions = 0
     h.ctx.tools.register(defineTool({ name: 'business_operation', description: 'Count executions', parameters: {},
       output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
@@ -231,6 +239,7 @@ describe('bounded final format correction', () => {
     expect(correction.source).toMatchObject({ kind: 'rich-inline-format' })
     expect(correction.content).toMatchSnapshot('logged format correction')
     expect((await h.ctx.systemPrompt.assemble({ agent: h.agent })).tools).toEqual([])
+    expect(seesBusinessTool).toHaveBeenLastCalledWith(true)
     const forged = await h.tool('business_operation', {})
     expect(forged.isError).toBe(true)
     expect(executions).toBe(0)

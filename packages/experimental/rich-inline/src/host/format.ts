@@ -70,6 +70,7 @@ export function outputFormatProblem(text: string): string | null {
 }
 
 /** Install a turn-boundary format check without replaying old results or authoring hidden model input.
+ * Format-only requests hide tool schemas after tool presentation listeners settle.
  * @param ctx - plugin lifetime and existing Host services.
  * @param maxAttempts - bounded extra model requests for formatting each live turn; zero disables correction.
  * @param enabled - whether this Agent's selected mode requires rich output; history presentation stays independent.
@@ -89,11 +90,12 @@ export function installFormatCheck(ctx: Context, maxAttempts: number, enabled: (
     }
   })
   ctx.on('agent/disposed', ({ agent }) => { formatting.delete(agent); humanClaimed.delete(agent) })
+  // Presentation listeners need the full tool list to distinguish Native from PTC.
   ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
     const result = await next()
     if (context.agent !== undefined && formatting.has(context.agent) && !humanClaimed.has(context.agent)) return { ...result, tools: [] }
     return result
-  })
+  }, { prepend: true })
   ctx.tools.guard(execution => execution.agent !== undefined && formatting.has(execution.agent)
     ? 'Output formatting may only generate code; business tools are disabled. Use the existing transcript without repeating operations.' : undefined)
   ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
