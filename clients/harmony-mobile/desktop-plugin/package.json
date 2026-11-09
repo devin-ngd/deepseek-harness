@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-harmony-mobile",
-  "version": "0.0.0-rc2.36",
+  "version": "0.0.0-rc2.37",
   "private": true,
   "type": "module",
   "description": "Default-disabled private Harmony mobile profile adapter with independent authenticated peer admission",
@@ -80,8 +80,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-client-hmr": "0.2.2-rc.1",
-    "@deepseek-ai/cordis": "~4.0.5",
-    "@deepseek-ai/schemastery": "~3.18.5",
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/schemastery": "~3.19.0",
     "@deepseek-ai/dsh": "0.2.2-rc.1",
     "@deepseek-ai/dsh-app-boot": "0.2.2-rc.1",
     "@deepseek-ai/dsh-credentials": "0.2.2-rc.1",
