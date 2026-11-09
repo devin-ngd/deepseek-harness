@@ -59,7 +59,8 @@ async function startPlugin(ctx: Context, input: unknown): Promise<void> {
   }
   const storage = new CredentialDeviceBindingStorage(ctx, desktopId, deviceId)
   const scheduler = { after: (ms: number, fn: () => void) => { const timer = setTimeout(fn, ms); return () => clearTimeout(timer) } }
-  const owner = new DeviceBindingOwner(authority, { desktopId, profileId: 'desktop', deviceId, identityAlias: 'dsh-emulator', audience: 'localhost', enrollmentTtlMs: 600000, connectionTtlMs: 600000, challengeTtlMs: 15000, maxChallenges: 100000, maxCatalogRows: 10000, maxPublicBytes: 524288 }, storage, signer, deviceProfileSessionPorts(ctx), Date.now, { id: randomUUID, nonce: () => randomBytes(32).toString('base64url') }, scheduler)
+  // Reserve one second for skew between the host and emulator clocks.
+  const owner = new DeviceBindingOwner(authority, { desktopId, profileId: 'desktop', deviceId, identityAlias: 'dsh-emulator', audience: 'localhost', enrollmentTtlMs: 600000, connectionTtlMs: 600000, challengeTtlMs: budgets.maxChallengeTtlMs - 1000, maxChallenges: 100000, maxCatalogRows: 10000, maxPublicBytes: 524288 }, storage, signer, deviceProfileSessionPorts(ctx), Date.now, { id: randomUUID, nonce: () => randomBytes(32).toString('base64url') }, scheduler)
   let stop: (() => Promise<void>) | undefined, relay: StandaloneRelay | undefined, tls: ReturnType<typeof createServer> | undefined
   let state = 'unpaired', seen = 0, running = false, closed = false, testSession = ''
   let automatic: AutomaticConnection | undefined
