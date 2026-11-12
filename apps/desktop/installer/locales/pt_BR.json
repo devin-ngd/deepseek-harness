@@ -22,6 +22,7 @@
     "INSTALLER_PATH_INVALID": "Escolha um caminho completo para a pasta local. Raízes de unidade, pastas de sistema, links e caracteres especiais não são suportados.",
     "INSTALLER_PATH_OWNERSHIP": "Escolha uma pasta vazia ou a pasta de instalação DeepSeek Harness registrada.",
     "INSTALLER_PATH_WRITABLE": "Este local não é gravável. Escolha uma pasta disponível para o usuário atual.",
+    "INSTALLER_ACCESS_FAILED": "Não foi possível configurar as permissões de leitura e execução do aplicativo. A instalação anterior permanece inalterada. Escolha uma pasta cujas permissões você possa gerenciar. Erro do Windows:",
     "INSTALLER_DISK_SPACE": "Não há espaço livre suficiente em disco. Escolha outro local.",
     "INSTALLER_PER_USER": "Este instalador oferece suporte apenas ao usuário atual. Desinstale primeiro a instalação existente para todos os usuários.",
     "INSTALLER_EXTRACT_FAILED": "Os arquivos do aplicativo não puderam ser extraídos.",

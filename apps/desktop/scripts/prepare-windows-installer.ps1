@@ -24,6 +24,16 @@ $compileLines = @('@echo off', ('call "{0}" >nul' -f $vcvars), 'if errorlevel 1 
 & $env:ComSpec /d /c $compileScript
 if ($LASTEXITCODE -ne 0) { throw 'Native installer helper compilation failed.' }
 if ($TestProgress -or $CompileProgressOnly) {
+    $accessSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../tests/windows-installer-access.cpp'))
+    $accessExecutable = Join-Path $output 'access-test.exe'
+    $accessScript = Join-Path $output 'compile-access-test.cmd'
+    [IO.File]::WriteAllLines($accessScript, @('@echo off', ('call "{0}" >nul' -f $vcvars), 'if errorlevel 1 exit /b %errorlevel%', ('cl /nologo /MT /W4 /WX /EHsc "{0}" /Fo"{1}" /Fe"{2}" /link "{3}" advapi32.lib' -f $accessSource, (Join-Path $output 'access-test.obj'), $accessExecutable, (Join-Path $output 'window-frame.lib'))), [Text.Encoding]::Default)
+    & $env:ComSpec /d /c $accessScript
+    if ($LASTEXITCODE -ne 0) { throw 'Application access test compilation failed.' }
+    if ($TestProgress) {
+        & $accessExecutable (Join-Path $output ('access-' + [Guid]::NewGuid().ToString('N')))
+        if ($LASTEXITCODE -ne 0) { throw 'Application access regression failed.' }
+    }
     $cleanupSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../tests/windows-uninstall-data.cpp'))
     # UAC installer detection demands elevation from unmanifested executables named after installation.
     $cleanupExecutable = Join-Path $output 'data-cleanup-test.exe'

@@ -22,6 +22,7 @@
     "INSTALLER_PATH_INVALID": "Wählen Sie einen vollständigen lokalen Ordnerpfad. Laufwerksstämme, Systemordner, Links und Sonderzeichen werden nicht unterstützt.",
     "INSTALLER_PATH_OWNERSHIP": "Wählen Sie einen leeren Ordner oder den registrierten DeepSeek Harness-Installationsordner.",
     "INSTALLER_PATH_WRITABLE": "Dieser Ort ist nicht beschreibbar. Wählen Sie einen Ordner, der für den aktuellen Benutzer verfügbar ist.",
+    "INSTALLER_ACCESS_FAILED": "Die erforderlichen Lese- und Ausführungsberechtigungen konnten nicht eingerichtet werden. Die bisherige Installation bleibt unverändert. Wählen Sie einen Ordner, dessen Berechtigungen Sie verwalten können. Windows-Fehler:",
     "INSTALLER_DISK_SPACE": "Es ist nicht genügend freier Speicherplatz vorhanden. Wählen Sie einen anderen Standort.",
     "INSTALLER_PER_USER": "Dieses Installationsprogramm unterstützt nur den aktuellen Benutzer. Deinstallieren Sie zunächst die vorhandene All-User-Installation.",
     "INSTALLER_EXTRACT_FAILED": "Die Anwendungsdateien konnten nicht extrahiert werden.",

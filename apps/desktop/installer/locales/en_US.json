@@ -22,6 +22,7 @@
     "INSTALLER_PATH_INVALID": "Choose a full local folder path. Drive roots, system folders, links and special characters are not supported.",
     "INSTALLER_PATH_OWNERSHIP": "Choose an empty folder or the registered DeepSeek Harness installation folder.",
     "INSTALLER_PATH_WRITABLE": "This location is not writable. Choose a folder available to the current user.",
+    "INSTALLER_ACCESS_FAILED": "Could not prepare application read/execute permissions. The previous installation is unchanged. Choose a folder whose permissions you can manage. Windows error:",
     "INSTALLER_DISK_SPACE": "There is not enough free disk space. Choose another location.",
     "INSTALLER_PER_USER": "This installer supports the current user only. Uninstall the existing all-users installation first.",
     "INSTALLER_EXTRACT_FAILED": "The application files could not be extracted.",

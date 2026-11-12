@@ -2,7 +2,7 @@
 param(
   [Parameter(Mandatory)][string]$Makensis,
   [Parameter(Mandatory)][string]$SevenZip,
-  [string]$FrameLibrary,
+  [Parameter(Mandatory)][string]$FrameLibrary,
   [scriptblock]$SignExecutable
 )
 $ErrorActionPreference = 'Stop'
@@ -18,6 +18,10 @@ function Invoke-Checked([string]$Executable, [string[]]$Arguments) {
 }
 
 try {
+  $localeModule = [uri]::new((Join-Path $PSScriptRoot 'installer-locales.mjs')).AbsoluteUri
+  $strings = Join-Path $scratch 'strings.nsh'
+  $node = (Get-Command node -CommandType Application | Select-Object -First 1).Source
+  Invoke-Checked $node @('--input-type=module', '-e', 'import { writeFileSync } from "node:fs"; const { readInstallerLocales, renderInstallerStrings } = await import(process.argv[1]); writeFileSync(process.argv[2], renderInstallerStrings(readInstallerLocales()), "utf8")', $localeModule, $strings)
   $payload = Join-Path $scratch 'payload'
   New-Item -ItemType Directory -Path $payload | Out-Null
   [System.IO.File]::WriteAllText((Join-Path $payload 'asset.txt'), 'new asset')
@@ -29,10 +33,21 @@ try {
   $brokenArchive = Join-Path $scratch 'broken.7z'
   [System.IO.File]::WriteAllText($brokenArchive, 'invalid archive')
 
-  foreach ($mode in @('first', 'upgrade', 'transient-lock', 'locked', 'locked-stage', 'missing-stage', 'restore-conflict', 'broken', 'cancelled')) {
+  foreach ($mode in @('first', 'upgrade', 'transient-lock', 'locked', 'locked-stage', 'missing-stage', 'restore-conflict', 'broken', 'cancelled', 'access-denied')) {
     $caseRoot = Join-Path $scratch $mode
     $target = Join-Path $caseRoot 'Application'
     New-Item -ItemType Directory -Path $caseRoot | Out-Null
+    if ($mode -eq 'access-denied') {
+      # OWNER RIGHTS removes the staging owner's implicit WRITE_DAC while leaving payload IO and cleanup available.
+      $security = Get-Acl -LiteralPath $caseRoot
+      $security.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+        [Security.Principal.SecurityIdentifier]::new('S-1-3-4'),
+        [Security.AccessControl.FileSystemRights]::ChangePermissions,
+        [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit',
+        [Security.AccessControl.PropagationFlags]::InheritOnly,
+        [Security.AccessControl.AccessControlType]::Deny))
+      Set-Acl -LiteralPath $caseRoot -AclObject $security
+    }
     if ($mode -ne 'first') {
       New-Item -ItemType Directory -Path $target | Out-Null
       [System.IO.File]::WriteAllText((Join-Path $target 'asset.txt'), 'old asset')
@@ -45,7 +60,7 @@ try {
     $caseArchive = if ($mode -eq 'broken') { $brokenArchive } else { $archive }
     $reportDir = Join-Path $caseRoot 'installer-logs'
     $compileArgs = @('/V2', "/DOUTPUT_FILE=$probe", "/DPAYLOAD_FILE=$caseArchive", "/DTARGET_DIR=$target", "/DDSH_SEVENZIP_PATH=$SevenZip")
-    if ($FrameLibrary) { $compileArgs += @("/DSOURCE_DLL=$FrameLibrary", "/DREPORT_DIR=$reportDir") }
+    if ($FrameLibrary) { $compileArgs += @("/DSOURCE_DLL=$FrameLibrary", "/DREPORT_DIR=$reportDir", "/DINSTALLER_STRINGS_FILE=$strings") }
     if ($mode -eq 'missing-stage') { $compileArgs += '/DMISSING_STAGE' }
     if ($mode -eq 'locked-stage') { $compileArgs += '/DLOCKED_STAGE' }
     if ($mode -eq 'restore-conflict') { $compileArgs += '/DRESTORE_CONFLICT' }
@@ -124,6 +139,12 @@ try {
       throw "Directory smoke $mode changed the wrong version"
     }
     $expectObsolete = $mode -notin @('first', 'upgrade', 'transient-lock')
+    if (-not $expectObsolete) {
+      foreach ($entry in @($target, (Join-Path $target 'asset.txt'), (Join-Path $target ([IO.Path]::GetRelativePath($payload, $deepPayload))))) {
+        $rules = @((Get-Acl -LiteralPath $entry).GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | Where-Object { $_.IdentityReference.Value -eq 'S-1-15-2-1' -and $_.AccessControlType -eq 'Allow' })
+        if (@($rules | Where-Object { [int]$_.FileSystemRights -eq 1179817 }).Count -eq 0) { throw "Missing exact application-package RX on $entry" }
+      }
+    }
     if ((Test-Path -LiteralPath (Join-Path $target 'obsolete.txt')) -ne $expectObsolete) {
       throw "Directory smoke $mode did not preserve the expected old-only file state"
     }
@@ -133,7 +154,7 @@ try {
     if ($FrameLibrary) {
       $reports = @(if (Test-Path -LiteralPath $reportDir) { Get-ChildItem -LiteralPath $reportDir -File })
       if ($mode -eq 'broken') {
-        if ($reports.Count -ne 1 -or $reports[0].Name -notmatch '^extract-failure-20\d{6}-\d{6}\.log$') {
+        if ($reports.Count -ne 1 -or $reports[0].Name -notmatch '^extract-failure-20\d{6}-\d{5,6}\.log$') {
           throw "Directory smoke $mode did not save exactly one extraction report"
         }
         $report = Get-Content -LiteralPath $reports[0].FullName -Raw -Encoding UTF8
@@ -141,7 +162,7 @@ try {
           if (-not $report.Contains($expected)) { throw "Directory smoke $mode report lacks '$expected'" }
         }
       } elseif ($mode -in @('locked', 'locked-stage', 'missing-stage')) {
-        if ($reports.Count -ne 1 -or $reports[0].Name -notmatch '^directory-failure-20\d{6}-\d{6}\.log$') {
+        if ($reports.Count -ne 1 -or $reports[0].Name -notmatch '^directory-failure-20\d{6}-\d{5,6}\.log$') {
           throw "Directory smoke $mode did not save exactly one directory report"
         }
         $report = Get-Content -LiteralPath $reports[0].FullName -Raw -Encoding UTF8

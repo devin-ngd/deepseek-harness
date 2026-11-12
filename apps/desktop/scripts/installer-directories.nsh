@@ -116,6 +116,14 @@ Var dshRecoveryStopped
     SetErrorLevel 2
     Quit
   ${EndIf}
+  System::Call '$PLUGINSDIR\window-frame.dll::InstallerGrantAppPackageRead(w "$dshNewDirectory") i.s ?c'
+  Pop $dshDirectoryError
+  ${If} $dshDirectoryError != 0
+    Call dshRollbackDirectories
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(INSTALLER_ACCESS_FAILED) ($dshDirectoryError)" /SD IDOK
+    SetErrorLevel 2
+    Quit
+  ${EndIf}
   File /oname=$PLUGINSDIR\dsh-7za.exe "${DSH_SEVENZIP_PATH}"
   StrCpy $INSTDIR $dshNewDirectory
   SetOutPath $INSTDIR

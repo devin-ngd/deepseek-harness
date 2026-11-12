@@ -3,6 +3,7 @@
 #define NOMINMAX
 #define UNICODE
 #include <windows.h>
+#include <aclapi.h>
 #include <tlhelp32.h>
 #include <objidl.h>
 #include <commctrl.h>
@@ -17,6 +18,38 @@
 #include "uninstall-data.h"
 
 using namespace Gdiplus;
+
+// Apply inherited read/execute before promotion; a failure leaves the old installation in place.
+extern "C" __declspec(dllexport) DWORD __cdecl InstallerGrantAppPackageRead(LPCWSTR directory) {
+    const DWORD attributes = GetFileAttributesW(directory);
+    if (attributes == INVALID_FILE_ATTRIBUTES) return GetLastError();
+    if (!(attributes & FILE_ATTRIBUTE_DIRECTORY) || (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
+        return ERROR_INVALID_PARAMETER;
+    BYTE sid[SECURITY_MAX_SID_SIZE];
+    DWORD sidSize = sizeof(sid);
+    if (!CreateWellKnownSid(WinBuiltinAnyPackageSid, nullptr, sid, &sidSize)) return GetLastError();
+    PACL previous = nullptr;
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    DWORD result = GetNamedSecurityInfoW(directory, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+        nullptr, nullptr, &previous, nullptr, &descriptor);
+    if (result != ERROR_SUCCESS) return result;
+    if (!previous) { LocalFree(descriptor); return ERROR_INVALID_ACL; }
+    EXPLICIT_ACCESSW access{};
+    access.grfAccessPermissions = FILE_GENERIC_READ | FILE_GENERIC_EXECUTE;
+    access.grfAccessMode = GRANT_ACCESS;
+    access.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+    access.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+    access.Trustee.ptstrName = reinterpret_cast<LPWSTR>(sid);
+    PACL updated = nullptr;
+    result = SetEntriesInAclW(1, &access, previous, &updated);
+    if (result == ERROR_SUCCESS)
+        result = SetNamedSecurityInfoW(const_cast<LPWSTR>(directory), SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION, nullptr, nullptr, updated, nullptr);
+    LocalFree(updated);
+    LocalFree(descriptor);
+    return result;
+}
 
 // Returns whether the UTF-8 report was saved; failure still presents the original error unless silent.
 extern "C" __declspec(dllexport) int __cdecl InstallerReportDirectoryFailure(

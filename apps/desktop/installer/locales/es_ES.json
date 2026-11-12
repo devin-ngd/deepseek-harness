@@ -22,6 +22,7 @@
     "INSTALLER_PATH_INVALID": "Elija una ruta de carpeta local completa. No se admiten raíces de unidades, carpetas del sistema, enlaces ni caracteres especiales.",
     "INSTALLER_PATH_OWNERSHIP": "Elija una carpeta vacía o la carpeta de instalación registrada de DeepSeek Harness.",
     "INSTALLER_PATH_WRITABLE": "Esta ubicación no se puede escribir. Elija una carpeta disponible para el usuario actual.",
+    "INSTALLER_ACCESS_FAILED": "No se pudieron configurar los permisos de lectura y ejecución de la aplicación. La instalación anterior no se modificó. Elija una carpeta cuyos permisos pueda administrar. Error de Windows:",
     "INSTALLER_DISK_SPACE": "No hay suficiente espacio libre en disco. Elija otra ubicación.",
     "INSTALLER_PER_USER": "Este instalador solo admite el usuario actual. Primero desinstale la instalación existente para todos los usuarios.",
     "INSTALLER_EXTRACT_FAILED": "No se pudieron extraer los archivos de la aplicación.",

@@ -3,7 +3,7 @@ param(
   [Parameter(Mandatory)][string]$Makensis,
   [Parameter(Mandatory)][string]$SevenZip,
   [Parameter(Mandatory)][string]$PluginDir,
-  [string]$FrameLibrary
+  [Parameter(Mandatory)][string]$FrameLibrary
 )
 $ErrorActionPreference = 'Stop'
 $desktopRoot = Split-Path $PSScriptRoot -Parent

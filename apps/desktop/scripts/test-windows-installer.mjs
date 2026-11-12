@@ -61,11 +61,13 @@ try {
   const presentationTest = join(output, 'ui', 'presentation-test.exe')
   const renderTest = join(output, 'ui', 'render-test.exe')
   const cleanupTest = join(output, 'ui', 'data-cleanup-test.exe')
+  const accessTest = join(output, 'ui', 'access-test.exe')
   if (sign) {
     await sign({ path: progressTest, hash: 'sha256', isNest: false })
     await sign({ path: presentationTest, hash: 'sha256', isNest: false })
     await sign({ path: renderTest, hash: 'sha256', isNest: false })
     await sign({ path: cleanupTest, hash: 'sha256', isNest: false })
+    await sign({ path: accessTest, hash: 'sha256', isNest: false })
     await sign({ path: join(output, 'ui', 'window-frame.dll'), hash: 'sha256', isNest: false })
     installWindowsNsisBootstrapSigner({ sign })
   }
@@ -91,6 +93,7 @@ try {
     await writeFile(join(output, 'render-results.log'), renderResults.join(''))
   }
   await execute(cleanupTest, [join(output, 'ui', `cleanup-${id}`)], childOptions)
+  await execute(accessTest, [join(output, 'ui', `access-${id}`)], childOptions)
   const payloadSource = join(output, 'payload.nsi')
   await writeFile(payloadSource, `Unicode true
 RequestExecutionLevel user

@@ -1,5 +1,8 @@
 ; Compile against the production directory transaction using a private payload and target.
 Unicode true
+!ifndef SOURCE_DLL
+  !error "Directory smoke requires the production window-frame.dll"
+!endif
 RequestExecutionLevel user
 SilentInstall silent
 Name "Desktop directory replacement smoke"
@@ -12,7 +15,7 @@ LangString decompressionFailed ${LANG_ENGLISH} "Payload extraction failed"
 !macroend
 !ifdef SOURCE_DLL
   LoadLanguageFile "${NSISDIR}\Contrib\Language files\SimpChinese.nlf"
-  !include "..\..\installer\strings.nsh"
+  !include "${INSTALLER_STRINGS_FILE}"
   !define DSH_INSTALLER_LOG_DIR "${REPORT_DIR}"
   !include "..\..\scripts\installer.nsh"
 !else
