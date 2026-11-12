@@ -153,6 +153,30 @@ describe('Inspector source buffer', () => {
     })
   })
 
+  it('drops a late Host state update after the observation publisher closes', () => {
+    const channel = new MessageChannel()
+    const sent = vi.spyOn(channel.port1, 'postMessage')
+    const publisher = new HostBridgePublisher(channel.port1, source, {
+      topics: ['*'],
+      maxQueuedRecords: 2,
+      maxQueuedBytes: 32_768,
+      maxRecordsPerFrame: 1,
+      maxFrameBytes: 32_768,
+    })
+    try {
+      publisher.setState('test/state', { ordinal: 1 })
+      publisher.close()
+      publisher.setState('test/state', { ordinal: 2 })
+      publisher.flush()
+      expect(sent).toHaveBeenCalledTimes(1)
+      expect(sent.mock.calls[0]?.[0]).toMatchObject({ records: [{ payload: { ordinal: 1 } }] })
+    } finally {
+      publisher.close()
+      channel.port1.close()
+      channel.port2.close()
+    }
+  })
+
   it('keeps at most one Host MessagePort observation batch in flight', async () => {
     const channel = new MessageChannel()
     const messages: unknown[] = []

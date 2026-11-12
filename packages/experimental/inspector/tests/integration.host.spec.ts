@@ -1,6 +1,8 @@
 /** Host-driven integration over an isolated Client fixture. */
 
+import { once } from 'node:events'
 import { createServer, type Server } from 'node:http'
+import { createConnection } from 'node:net'
 import { createContext, runInContext } from 'node:vm'
 import WebSocket, { WebSocketServer, type RawData } from 'ws'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -96,6 +98,44 @@ describe('experimental Inspector real Worker', () => {
     inspector = undefined
     if (server !== undefined) await new Promise<void>((resolve) => { server!.close(() => { resolve() }) })
     server = undefined
+  })
+
+  it('continues serving queries after a rejected ingest upgrade resets its TCP connection', async (test) => {
+    inspector = await startInspector({ port: 0, captureFetch: false, startupTimeoutMs: test.task.timeout })
+    const { endpoint, source } = inspector
+    const url = new URL(endpoint.httpUrl)
+    await vi.waitFor(async () => {
+      await expect(source.request({ op: 'cordis-tree/get' })).resolves.toBeDefined()
+    }, { timeout: test.task.timeout })
+
+    const socket = createConnection({ host: url.hostname, port: Number(url.port), allowHalfOpen: true })
+    const closed = new Promise<void>((resolve) => { socket.once('close', () => { resolve() }) })
+    try {
+      const chunks: Buffer[] = []
+      socket.on('data', (chunk: Buffer) => { chunks.push(chunk) })
+      const rejected = once(socket, 'end', { signal: test.signal })
+      socket.write([
+        'GET /ingest HTTP/1.1',
+        `Host: ${url.host}`,
+        'Connection: Upgrade',
+        'Upgrade: websocket',
+        'Sec-WebSocket-Version: 13',
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+        '',
+        '',
+      ].join('\r\n'))
+      await rejected
+      expect(Buffer.concat(chunks).toString('utf8')).toMatch(/^HTTP\/1\.1 403 /)
+      socket.resetAndDestroy()
+      await closed
+
+      cdp = await TestCdpClient.connect(endpoint.webSocketDebuggerUrl)
+      expect((await cdp.call('Browser.getVersion')).result).toBeDefined()
+      await expect(source.request({ op: 'cordis-tree/get' })).resolves.toBeDefined()
+    } finally {
+      socket.destroy()
+      await closed
+    }
   })
 
   it('settles pending fixture calls when their WebSocket closes', async () => {

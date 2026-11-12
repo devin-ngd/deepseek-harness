@@ -117,6 +117,8 @@ await ctx.inspector.cordis.getTree()
 
 发布操作先验证无损 JSON，再调度发送，不等待 Worker。每个 source 的队列都有上限；溢出表现为 sequence gap，绝不延迟被观察的应用操作。`cordis.getTree()` 读取 Worker 最新的 detached semantic 快照，不创建 CDP 会话，也不启用 Runtime、Debugger 或 Sources。
 
+WebSocket 升级期间出现 TCP 重置时，只关闭该连接。Inspector Worker 意外退出时，Host 会记录故障、停止 fetch 采集并丢弃后续观察数据。已关闭的 Inspector source 拒绝查询。
+
 <a id="cordis-tree-inspection"></a>
 ## Cordis 树检查
 

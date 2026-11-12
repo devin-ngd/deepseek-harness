@@ -117,6 +117,8 @@ await ctx.inspector.cordis.getTree()
 
 Publishing validates lossless JSON and schedules delivery without waiting for the Worker. Each source has a bounded queue. Overflow is reported as a sequence gap and never delays the observed application operation. `cordis.getTree()` reads the Worker's latest detached semantic snapshot without creating a CDP session or enabling Runtime, Debugger, or Sources.
 
+A TCP reset during a WebSocket upgrade closes that connection. If the Inspector Worker exits unexpectedly, the Host logs the failure, stops fetch capture, and discards later observations. Queries through the closed Inspector source fail.
+
 <a id="cordis-tree-inspection"></a>
 ## Cordis tree inspection
 

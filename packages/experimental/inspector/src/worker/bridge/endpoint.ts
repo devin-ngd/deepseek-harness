@@ -258,7 +258,11 @@ export class InspectorEndpoint {
 
   private createServer(): Server {
     const server = createServer((request, response) => { this.handleHttp(request, response) })
-    server.on('upgrade', (request, socket, head) => { this.handleUpgrade(request, socket, head) })
+    server.on('upgrade', (request, socket, head) => {
+      // HTTP no longer handles errors on this socket, including rejected upgrades.
+      socket.on('error', () => { socket.destroy() })
+      this.handleUpgrade(request, socket, head)
+    })
     return server
   }
 
