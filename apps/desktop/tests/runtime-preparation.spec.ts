@@ -5,6 +5,7 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { downloadArtifact } from '@electron/get'
 
 const state = vi.hoisted(() => ({
   root: '',
@@ -22,7 +23,7 @@ vi.mock('../scripts/desktop-build-paths.mjs', async importOriginal => ({
     runtime: join(state.root, 'runtime'), electron: join(state.root, 'electron'), downloads: join(state.root, 'downloads'),
   }),
 }))
-vi.mock('@electron/get', () => ({ downloadArtifact: async () => 'electron.zip' }))
+vi.mock('@electron/get', () => ({ downloadArtifact: vi.fn(async () => 'electron.zip') }))
 vi.mock('extract-zip', () => ({ default: state.extractElectron }))
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
@@ -93,6 +94,10 @@ it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('prepares %s with one pnpm
     schemaVersion: 1, node: '24.18.1', pnpm: '11.7.0',
   })
   expect(state.preparePrimary).toHaveBeenCalledWith({ deferSmoke: windows })
+  const download = vi.mocked(downloadArtifact).mock.calls.at(-1)![0]
+  expect(download.checksums).toBeDefined()
+  expect(Object.keys(download.checksums!)).not.toHaveLength(0)
+  expect(download.unsafelyDisableChecksums).not.toBe(true)
   if (windows) expect(state.commandLink).not.toHaveBeenCalled()
   else expect(state.commandLink).toHaveBeenCalledWith(join(runtime, 'cli'), target === 'mac-arm64' ? 'arm64' : 'x64', '12.0')
 })
