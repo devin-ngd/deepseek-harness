@@ -1,6 +1,7 @@
 /** Maintained browser-safe event acceptance and rich authoring helpers; no Electron preload is imported. */
 export { assertSessionWireEvent } from '../../../packages/api/session-controller/src/client/session-wire-event.ts'
 export { authoredContent, authoredFences, authoredBlockId } from '../../../packages/experimental/rich-inline/src/shared/authored.ts'
+export { richParts } from '../../../packages/experimental/rich-inline/src/client/markers.ts'
 export { richMarkerIds, isRichValues, typedRichValuesValid, canonicalRichJson } from '@deepseek-ai/dsh-experimental-rich-inline/validate'
 export { SurfaceManager } from '@deepseek-ai/dsh-session/surface'
 export { SessionLogOffset, SessionSeq, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session/types'

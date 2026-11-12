@@ -30,6 +30,9 @@ const positive = z.number().int().positive().max(0x7fffffff), identifier = z.str
 const workspaceReapproval = 'The encrypted phone connection changed. Approve workspace access again after reconnecting.'
 const settings = z.object({ enabled: z.literal(true), desktopId: identifier, deviceId: identifier, identityAlias: alias, phoneIdentityAlias: alias, audience: z.string().max(253).regex(/^[a-z0-9.-]+$/), identityProtectionTimeoutMs: positive,
   connectionMode: z.enum(['paired', 'window']).default('paired'), reconnectMs: positive.default(5000),
+  historyPage: z.object({ maxMessages: positive.max(50), targetBytes: positive, openingMaxMessages: positive.max(50).optional(),
+    turnWindow: z.object({ minMessages: positive, minTurns: positive }).strict().optional() }).strict()
+    .refine(value => value.turnWindow === undefined || value.turnWindow.minMessages <= value.maxMessages).optional(),
   enrollmentTtlMs: positive.max(600000), connectionTtlMs: positive.max(1800000), challengeTtlMs: positive, maxChallenges: positive, maxCatalogRows: positive, maxPublicBytes: positive, routingTtlMs: positive, journalMode: z.enum(['create', 'reopen']),
   relay: z.object({ maxProofs: positive, maxQueuedBytes: positive, maxChallengeTtlMs: positive, maxRoomTtlMs: positive, handshakeMs: positive, e2e: z.object({ maxFrameBytes: positive, maxPlaintextBytes: positive, maxFrames: positive }).strict() }).strict(),
   wss: z.object({ host: z.string(), handshakeMs: positive, maxFrameBytes: positive, maxBufferedBytes: positive, maxControlFrames: positive }).strict(),
@@ -84,12 +87,15 @@ class DeviceCommand {
         enabled: true, desktopId: record.desktopId, profileId: 'desktop', relayEnabled: true,
         journalMode: this.options.journalMode === 'create' ? 'create-or-reopen' : 'reopen',
         snapshotMaxBytes: deviceSnapshotMaxBytes(this.options.relay.e2e, this.options.wss.maxFrameBytes),
+        ...(this.options.historyPage === undefined ? {} : { snapshotMaxMessages: this.options.historyPage.openingMaxMessages ?? this.options.historyPage.maxMessages }),
       }
       return { options, spec: Desktop.resolveOptions(options, Date.now) }
     })
     const trust = { pairId: route === undefined ? deviceRelayPairId(record) : id<'harmony-relay-pair'>(route.offer.routeId), epoch: route?.offer.routeEpoch ?? record.epoch, role: 'desktop' as const, audience: record.audience, credentialId: id<'harmony-device-credential'>(record.desktopCredentialId), expiresAt: route?.offer.expiresAt ?? Date.now() + this.options.routingTtlMs }
     const selection = route === undefined ? { paired: record } : { route }
-    await deviceCommandStep('relay-provider', () => prepared.context.provide('harmonyRelayLifecycle', this.relay = new DeviceBindingDesktopRelay(prepared.owner, provider, { ...selection, desktopId: record.desktopId, ...(prepared.workspace === undefined ? {} : { workspace: prepared.workspace, traceWorkspaceRequests: this.options.workspace?.traceRequests === true }), isRouteCurrent: async () => route === undefined ? JSON.stringify(await prepared.owner.publicRecord(this.authority)) === JSON.stringify(record) : JSON.stringify(await prepared.routes.current(this.authority)) === JSON.stringify(route), trust, policy: this.options.relay, limits: spec.limits, openPorts: () => openDesktopWssPorts(this.options.wss, trust, prepared.signer, record.phonePublicSpki) })))
+    const historyPage = this.options.historyPage === undefined ? undefined : { ...spec.snapshot, maxMessages: this.options.historyPage.maxMessages,
+      targetBytes: this.options.historyPage.targetBytes, ...(this.options.historyPage.turnWindow === undefined ? {} : { turnWindow: this.options.historyPage.turnWindow }) }
+    await deviceCommandStep('relay-provider', () => prepared.context.provide('harmonyRelayLifecycle', this.relay = new DeviceBindingDesktopRelay(prepared.owner, provider, { ...selection, desktopId: record.desktopId, ...(historyPage === undefined ? {} : { historyPage }), ...(prepared.workspace === undefined ? {} : { workspace: prepared.workspace, traceWorkspaceRequests: this.options.workspace?.traceRequests === true }), isRouteCurrent: async () => route === undefined ? JSON.stringify(await prepared.owner.publicRecord(this.authority)) === JSON.stringify(record) : JSON.stringify(await prepared.routes.current(this.authority)) === JSON.stringify(route), trust, policy: this.options.relay, limits: spec.limits, openPorts: () => openDesktopWssPorts(this.options.wss, trust, prepared.signer, record.phonePublicSpki) })))
     let stopProduct: (() => Promise<void>) | undefined
     await deviceCommandStep('product-activate', async () => { const product = prepared.context.plugin(Desktop, options); stopProduct = () => product.dispose(); await product; if (this.closed) throw new Error('device startup cancelled'); this.product = stopProduct }, [() => stopProduct?.(), () => this.clear()])
   }

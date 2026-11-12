@@ -5,7 +5,8 @@ import { fields } from './link-protocol.ts'
 import { object, string } from './domain.ts'
 import { TransportError, jsonPayload } from './wire.ts'
 import type { DeviceSessionRoute } from './mobile-device-product.ts'
-import { deviceSessionDirectory, type DeviceSessionAction } from './device-session-directory.ts'
+import type { DeviceSessionAction, DeviceSessionRow } from './device-session-directory.ts'
+import type { DeviceSessionHistory } from './device-history-cache.ts'
 import type { WorkspaceRequest } from './workspace-protocol.ts'
 interface Wait { readonly workspace: boolean; resolve(value: unknown): void; reject(error: Error): void; stop(): void }
 /** Existing native connection is shared; each selected Session has independent correlation ids and an owned subscriber. */
@@ -27,7 +28,7 @@ export class DeviceProductRpc {
       if (kind !== 'result' && kind !== 'error') throw new Error('device RPC unary response denied')
       this.pending.delete(packet.id); pending.stop()
       if (kind === 'error') {
-        const code = pending.workspace && packet.code === 'workspace-grant-required' ? packet.code : 'unknown-outcome'
+        const code = packet.code === 'history-too-large' || pending.workspace && packet.code === 'workspace-grant-required' ? packet.code : 'unknown-outcome'
         pending.reject(new TransportError(code))
       } else pending.resolve(packet.value)
       return
@@ -35,7 +36,7 @@ export class DeviceProductRpc {
     for (const [prefix, receive] of this.views) if (packet.id.startsWith(prefix)) { receive(raw); return }
   }
   /** @param value - fixed device or workspace request constructed by native code. @returns acknowledged public result. A missing workspace grant rejects before workspace dispatch. Timeout never retries the operation. */
-  call(value: { readonly method: 'metadata'; readonly argument: null } | { readonly method: 'creation-options' } | { readonly method: 'select'; readonly route: DeviceSessionRoute } | { readonly method: 'manage'; readonly action: DeviceSessionAction } | { readonly method: 'workspace'; readonly argument: WorkspaceRequest }, signal?: AbortSignal): Promise<unknown> {
+  call(value: { readonly method: 'metadata'; readonly argument: null } | { readonly method: 'creation-options' } | { readonly method: 'select'; readonly route: DeviceSessionRoute } | { readonly method: 'history'; readonly route: DeviceSessionRoute; readonly argument: { readonly beforeSeq: number; readonly throughSeq: number } } | { readonly method: 'manage'; readonly action: DeviceSessionAction } | { readonly method: 'workspace'; readonly argument: WorkspaceRequest }, signal?: AbortSignal): Promise<unknown> {
     const workspace = value.method === 'workspace', limit = workspace ? this.maxWorkspacePending : this.maxPending
     if (this.closed || [...this.pending.values()].filter(wait => wait.workspace === workspace).length >= limit) return Promise.reject(new TransportError('queue-full'))
     if (signal?.aborted) return Promise.reject(new TransportError('cancelled'))
@@ -57,31 +58,37 @@ export class DeviceProductRpc {
       else void this.network.request(id, JSON.stringify(value)).catch(error => { const pending = this.pending.get(id); if (pending === undefined) return; this.pending.delete(id); pending.stop(); reject(error) })
     })
   }
-  /** @param route - explicit immutable selected owner. @param received - original PhoneCore transport response sink. @returns a borrowed native connection whose close affects only its requests/followers, never another Session or the shared channel. */
-  view(route: DeviceSessionRoute, received: (raw: string) => void): ProductConnection {
+  /** @param route - desktop-acknowledged Session route. @param row - entry from the directory used for that selection. @param received - original PhoneCore transport response sink. @returns a borrowed native connection with local metadata scoped to the selected Session. */
+  view(route: DeviceSessionRoute, row: DeviceSessionRow, received: (raw: string) => void, history?: DeviceSessionHistory): ProductConnection {
     if (this.closed) throw new TransportError('closed')
-    const prefix = this.prefix + '-view-' + ++this.counter + ':', ids = new Map<string, { original: string; metadata: boolean }>(); let closed = false
+    if (row.sessionId !== route.sessionId || row.profileId !== route.profileId) throw new TransportError('scope-denied')
+    const metadata = {
+      desktopId: route.desktopId, profileId: route.profileId,
+      catalog: { projects: [], sessions: [{ sessionId: row.sessionId, title: string(row.title, 65536), projectId: row.projectId }] },
+    }
+    const prefix = this.prefix + '-view-' + ++this.counter + ':', ids = new Map<string, string>(); let closed = false
     this.views.set(prefix, raw => {
       if (closed) return
       const data = object(JSON.parse(raw)), id = typeof data.id === 'string' ? data.id : '', selected = ids.get(id)
       if (selected === undefined) return
-      let value = data.value
-      if (selected.metadata && data.kind === 'result') {
-        const sessions = deviceSessionDirectory(value, route.desktopId).sessions.filter(row => row.sessionId === route.sessionId).map(row => ({ sessionId: row.sessionId, title: string(row.title, 65536), projectId: row.projectId }))
-        if (sessions.length !== 1) throw new Error('selected device Session no longer visible')
-        value = { desktopId: route.desktopId, profileId: route.profileId, catalog: { projects: [], sessions } }
-      }
       if (data.kind === 'result' || data.kind === 'end' || data.kind === 'error') ids.delete(id)
-      received(JSON.stringify({ ...data, id: selected.original, ...(data.kind === 'result' || data.kind === 'frame' ? { value } : {}) }))
+      const packet = data.kind === 'frame' && history !== undefined ? { ...data, value: history.expand(jsonPayload(data.value)) } : data
+      received(JSON.stringify({ ...packet, id: selected }))
     })
     return {
       request: async (id, raw) => {
         if (closed || this.closed) throw new TransportError('closed')
         const value = fields(JSON.parse(raw), ['method', 'argument']); if (value.method !== 'metadata' && value.method !== 'request') throw new TransportError('scope-denied')
-        const key = prefix + id; if (ids.has(key)) throw new TransportError('invalid-packet'); ids.set(key, { original: id, metadata: value.method === 'metadata' })
-        try { await this.network.request(key, JSON.stringify(value.method === 'metadata' ? value : { ...value, route })) } catch (error) { ids.delete(key); throw error }
+        const key = prefix + id; if (ids.has(key)) throw new TransportError('invalid-packet')
+        if (value.method === 'metadata') {
+          if (value.argument !== null) throw new TransportError('invalid-packet')
+          received(JSON.stringify({ kind: 'result', id, value: metadata }))
+          return
+        }
+        ids.set(key, id)
+        try { await this.network.request(key, JSON.stringify({ ...value, route })) } catch (error) { ids.delete(key); throw error }
       },
-      follow: async (id, raw) => { if (closed || this.closed) throw new TransportError('closed'); const value = fields(JSON.parse(raw), ['argument', 'resume']), key = prefix + id; if (ids.has(key)) throw new TransportError('invalid-packet'); ids.set(key, { original: id, metadata: false }); try { await this.network.follow(key, JSON.stringify({ ...value, route })) } catch (error) { ids.delete(key); throw error } },
+      follow: async (id, raw) => { if (closed || this.closed) throw new TransportError('closed'); const value = fields(JSON.parse(raw), ['argument', 'resume']), key = prefix + id; if (ids.has(key)) throw new TransportError('invalid-packet'); ids.set(key, id); try { await this.network.follow(key, JSON.stringify({ ...value, route, ...(history === undefined ? {} : { historyHash: history.hint }) })) } catch (error) { ids.delete(key); throw error } },
       stop: async id => { const key = prefix + id; if (ids.delete(key)) await this.network.stop(key) },
       close: async () => { if (closed) return; closed = true; this.views.delete(prefix); const keys = [...ids.keys()]; ids.clear(); const results = await Promise.allSettled(keys.map(id => this.network.stop(id))); if (results.some(result => result.status === 'rejected')) throw new Error('device view wait cleanup failed') },
     }

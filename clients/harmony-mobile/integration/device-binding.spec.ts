@@ -3,7 +3,6 @@ import { it, expect, vi } from 'vitest'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
-import Gateway from '@deepseek-ai/dsh-api-gateway'
 import Authorization from '@deepseek-ai/dsh-authorization'
 import UserQuestions from '@deepseek-ai/dsh-user-questions'
 import * as DeviceCommand from '../desktop-plugin/src/device-binding-command.ts'
@@ -16,6 +15,7 @@ import { submitProductForm } from './product-browser.ts'
 import { NativeProductOwner, resetProductSdk, state, sdk, network, context } from '../tests/helpers/product-native-harness.mjs'
 import { NativeDeviceProductFacade } from '../src/native-device-product.ts'
 import { NativeDeviceCore } from '../src/native-device-bridge.ts'
+import type { DeviceHistoryStorage } from '../src/device-history-cache.ts'
 import { parseProductPolicy } from '../src/native-product-facade.ts'
 import { DeviceBindingDesktopRelay } from '../desktop-plugin/src/device-binding-relay.ts'
 import { deviceSnapshotMaxBytes } from '../desktop-plugin/src/session-window.ts'
@@ -31,6 +31,7 @@ import { nodeE2EPrimitives, p256CredentialId } from './p256-channel.ts'
 import { id } from '../src/protocol.ts'
 import { fields, MOBILE_LINK_PROTOCOL, parseCommand, text } from '../src/link-protocol.ts'
 import { PROFILE_RPC_CODEC } from '../src/profile-rpc-codec.ts'
+import { deviceFollowRequest } from '../src/device-carrier-protocol.ts'
 import { deviceBindingReplyBytes, deviceRelayPairId } from '../src/device-binding-protocol.ts'
 import { DeviceBindingOwner } from '../desktop-plugin/src/device-binding.ts'
 import { DeviceBindingClient } from '../src/device-binding-client.ts'
@@ -131,7 +132,7 @@ async function fixture(label: string, identity = { desktopId: 'normal-binding-de
   const world = join(parent, label); await mkdir(world)
   const ctx = await loadProfileServices(world, await readFile(new URL('./cordis.yml', import.meta.url), 'utf8'))
   ctx.provide('profileContext', { name: 'desktop', dir: world, patchPath: join(world, 'patch.yml'), cwd: world, installAnchor: world, home: world, startedBundles: [], overlays: [], telemetryDisabledEnv: undefined })
-  await ctx.plugin(Gateway); await ctx.plugin(MemoryCredentials)
+  await ctx.plugin(MemoryCredentials)
   const legacy = credentialKey('harmony-device', 'old-test-epoch-ten')
   await ctx.credentials.modifyRecord(legacy, async () => ({ kind: 'grant', payload: { protocol: 'fixture-old-grant', epoch: 10, revoked: true } }))
   const authority = {}, native = {}, source = fixtureSource(), storage = new CredentialDeviceBindingStorage(ctx, identity.desktopId, identity.deviceId)
@@ -784,6 +785,7 @@ it('paired startup reuses saved devices after retired windows and reconnects wit
   const f = await fixture('paired-startup'), sockets: WebSocket[] = [], audit: string[] = []
   let app: NativeDeviceProductFacade | undefined, relay: RelayApplication | undefined, stop: (() => Promise<void>) | undefined, routes: DeviceRouteOwner | undefined
   const follow = vi.spyOn(NativeDeviceCore.prototype, 'follow')
+  const historyPages = vi.spyOn(f.ctx.sessionController, 'page')
   try {
     const binding = await f.bind(), pairId = deviceRelayPairId(binding), published = await publicRouteFixture(f, binding)
     routes = routesFor(f, 'retired-personal-window')
@@ -795,7 +797,19 @@ it('paired startup reuses saved devices after retired windows and reconnects wit
     relay = await openRelayApplication(configuration, {}, Date.now, fixtureSource(), routeIo)
     if (relay === undefined) throw new Error('paired fixture relay missing')
     await relay.start()
-      const target = id<'SessionId'>('paired-existing-session'), other = id<'SessionId'>('paired-other-session'); await f.ctx.sessionController.create({ sessionId: target, cwd: f.world }); await f.ctx.sessionController.create({ sessionId: other, cwd: f.world })
+    const target = id<'SessionId'>('paired-existing-session'), other = id<'SessionId'>('paired-other-session'); await f.ctx.sessionController.create({ sessionId: target, cwd: f.world }); await f.ctx.sessionController.create({ sessionId: other, cwd: f.world })
+    const messages = Array.from({ length: 5 }, (_, index) => 'Archived briefing message ' + (index + 1))
+    for (const [index, text] of messages.entries()) {
+      f.ctx.sessions.get(target)!.append('assistant/message', {
+        turn: index + 1, step: 1, stream: [],
+        message: createAssistantMessage({ content: [{ type: 'text', text }], source: { provider: 'fixed', model: 'fixed' } }),
+      }, { surfaceOp: 'append' })
+    }
+    let cachedHistory: string | null = null
+    const historyStorage: DeviceHistoryStorage = {
+      maxBytes: 1024 * 1024, maxSessions: 2,
+      read: async () => cachedHistory, write: async raw => { cachedHistory = raw }, clear: async () => { cachedHistory = null },
+    }
     const base = JSON.parse(await readFile(new URL('../product.config.json', import.meta.url), 'utf8')), budgets = { ...base.relay, maxRoomTtlMs: 60000 }
     const scheduler = { after: (ms: number, callback: () => void) => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } }
     let agreement = 30, acquisitions = 0
@@ -803,13 +817,14 @@ it('paired startup reuses saved devices after retired windows and reconnects wit
       const ws = (path: string, protocol: string, headers: Record<string, string>) => { const socket = new WebSocket('ws://127.0.0.1:' + relay!.port() + path, protocol, { headers: { Host: binding.audience, ...headers }, perMessageDeflate: false }); socket.on('error', error => audit.push(role + ':socket-' + ('code' in error ? String(error.code) : error.name))); socket.once('upgrade', () => audit.push(role + path + ':101')); socket.once('unexpected-response', (_request, response) => { audit.push(role + path + ':' + response.statusCode); response.resume(); socket.terminate() }); sockets.push(socket); return socket }
       return { control: nodeRelaySocket(ws('/harmony/relay/control/v1', 'harmony-relay-control-v1', { 'X-DSH-Relay-Pair': pairId, 'X-DSH-Relay-Role': role }), 64, false), signer: role === 'desktop' ? desktopKey : phoneKey, primitives: nodeE2EPrimitives, remotePublicSpki: (role === 'desktop' ? phoneKey : desktopKey).publicSpki, scheduler, clock: Date.now, controlDiagnostic: (stage: ControlDiagnostic) => { audit.push(role + ':' + stage) }, diagnostic: (stage: E2EDiagnostic) => { audit.push(role + ':' + stage) }, agreement: async () => { const n = ++agreement; return { key: new ImportedP256Agreement(fixtureKey(n).pkcs8), nonce: Buffer.alloc(32, n) } }, data: async (lease: { receipt: { token: string; room: string } }) => nodeRelaySocket(ws('/harmony/relay/v1', 'dsh-relay-v1', { Authorization: 'Bearer ' + lease.receipt.token, 'X-DSH-Relay-Room': lease.receipt.room, 'X-DSH-Relay-Role': role }), 64) }
     }
-      const views: Array<{ connection: string; selected: string; readOnly: boolean; error: string; sessions: Array<{ sessionId: string }> }> = []
-    app = new NativeDeviceProductFacade(f.native, JSON.stringify({ ...base.core, enabled: true }), binding.identityAlias, binding.audience, Date.now() + 120000, budgets, { read: async () => JSON.stringify(binding), write: async () => { throw new Error('saved pairing must not be rewritten') }, close: async () => {} }, { signer: phoneKey, primitives: nodeE2EPrimitives }, scheduler, Date.now, async raw => { expect(JSON.parse(raw).schema).toBe('harmony-device-binding/1'); acquisitions++; const value = ports('phone'); return { ports: value, open: async () => {}, authenticated: () => {}, close: async () => value.control.terminate() } }, raw => views.push(JSON.parse(raw)), 50, undefined, true)
+    const views: Array<{ connection: string; selected: string; readOnly: boolean; error: string; sessions: Array<{ sessionId: string }>; messages?: Array<{ text: string }>; historyHasMore?: boolean }> = []
+    const visibleText = () => views.at(-1)?.messages?.map(row => row.text)
+    app = new NativeDeviceProductFacade(f.native, JSON.stringify({ ...base.core, enabled: true, pagedHistory: true }), binding.identityAlias, binding.audience, Date.now() + 120000, budgets, { read: async () => JSON.stringify(binding), write: async () => { throw new Error('saved pairing must not be rewritten') }, close: async () => {} }, { signer: phoneKey, primitives: nodeE2EPrimitives }, scheduler, Date.now, async raw => { expect(JSON.parse(raw).schema).toBe('harmony-device-binding/1'); acquisitions++; const value = ports('phone'); return { ports: value, open: async () => {}, authenticated: () => {}, close: async () => value.control.terminate() } }, raw => views.push(JSON.parse(raw)), 50, undefined, true, undefined, historyStorage)
     await app.boot(); expect(app.routeReady()).toBe(true)
-    const provider = new DeviceBindingProfileProvider(f.ctx, Date.now), options = { enabled: true, desktopId: binding.desktopId, profileId: 'desktop', journalMode: 'create' as const }; await f.ctx.plugin(Desktop, options)
-    const limits = Desktop.resolveOptions(options, Date.now).limits
+    const provider = new DeviceBindingProfileProvider(f.ctx, Date.now), options = { enabled: true, desktopId: binding.desktopId, profileId: 'desktop', journalMode: 'create' as const, snapshotMaxMessages: 2 }; await f.ctx.plugin(Desktop, options)
+    const spec = Desktop.resolveOptions(options, Date.now), limits = spec.limits
     let activeRelay: DeviceBindingDesktopRelay | undefined
-    const mount = () => { activeRelay = new DeviceBindingDesktopRelay(f.owner, provider, { paired: binding, desktopId: binding.desktopId, isRouteCurrent: async () => true, trust: { pairId, epoch: binding.epoch, role: 'desktop', audience: binding.audience, credentialId: id<'harmony-device-credential'>(binding.desktopCredentialId), expiresAt: Date.now() + 120000 }, policy: budgets, limits, openPorts: () => ports('desktop') }); return activeRelay.mount(f.ctx) }
+    const mount = () => { activeRelay = new DeviceBindingDesktopRelay(f.owner, provider, { paired: binding, desktopId: binding.desktopId, isRouteCurrent: async () => true, trust: { pairId, epoch: binding.epoch, role: 'desktop', audience: binding.audience, credentialId: id<'harmony-device-credential'>(binding.desktopCredentialId), expiresAt: Date.now() + 120000 }, policy: budgets, limits, historyPage: { ...spec.snapshot, maxMessages: 3, targetBytes: 131072, turnWindow: { minMessages: 2, minTurns: 1 } }, openPorts: () => ports('desktop') }); return activeRelay.mount(f.ctx) }
     stop = await mount(); await app.connect(true).catch(error => { throw new Error('paired wire: ' + audit.slice(-32).join(' > '), { cause: error }) })
     expect(views.at(-1)?.sessions.some(row => row.sessionId === target)).toBe(true)
     const readIds: string[] = []
@@ -819,21 +834,33 @@ it('paired startup reuses saved devices after retired windows and reconnects wit
       expect(views.at(-1)?.selected).toBe(selected); expect(views.at(-1)?.error).toBe('')
       await expect.poll(() => follow.mock.calls.length).toBeGreaterThan(readIds.length)
       const [, raw] = follow.mock.calls.at(-1)!
-      const value = fields(JSON.parse(raw), ['route', 'argument', 'resume'])
+      const value = deviceFollowRequest(JSON.parse(raw))
       const command = parseCommand(text(fields(value.argument, ['version', 'packet']).packet), limits)
       expect(command.payload).toMatchObject({ sessionId: selected })
       readIds.push(command.commandId)
     }
     expect(new Set(readIds).size).toBe(readIds.length)
+    await expect.poll(visibleText).toEqual(messages.slice(3))
+    await expect(app.loadOlder()).resolves.toBe('loaded')
+    expect(visibleText()).toEqual(messages)
+    expect(historyPages.mock.calls.some(([request]) => request.turnWindow?.minMessages === 2 && request.turnWindow.minTurns === 1)).toBe(true)
+    const readsBeforeOffline = historyPages.mock.calls.length
     const dataSocket = sockets.find(socket => socket.url.endsWith('/harmony/relay/v1'))
     if (dataSocket === undefined) throw new Error('paired data socket missing')
     dataSocket.terminate()
     await expect.poll(() => activeRelay?.terminalState, { timeout: 10000 }).toBe('closed')
-    await app.stopRoute(); await stop(); stop = await mount(); await app.connect(true).catch(error => { throw new Error('paired wire: ' + audit.slice(-32).join(' > '), { cause: error }) })
+    await app.stopRoute()
+    await app.select(target)
+    expect(views.at(-1)).toMatchObject({ connection: 'disconnected', readOnly: true, historyHasMore: true })
+    expect(visibleText()).toEqual(messages.slice(3))
+    await expect(app.loadOlder()).resolves.toBe('loaded')
+    expect(visibleText()).toEqual(messages)
+    expect(historyPages).toHaveBeenCalledTimes(readsBeforeOffline)
+    await stop(); stop = await mount(); await app.connect(true).catch(error => { throw new Error('paired wire: ' + audit.slice(-32).join(' > '), { cause: error }) })
     expect(views.at(-1)?.connection).toBe('connected'); expect(acquisitions).toBe(2)
     await expect.poll(() => views.at(-1)?.readOnly).toBe(false)
     expect(views.at(-1)?.selected).toBe(target)
     expect(await readFile(published.configuration.deviceRoutes.path)).toEqual(before)
     expect(await f.storage.read()).toBe(JSON.stringify(binding))
-  } finally { follow.mockRestore(); await app?.close(); await stop?.(); for (const socket of sockets) socket.terminate(); await relay?.close(); await routes?.close(); await f.close() }
+  } finally { historyPages.mockRestore(); follow.mockRestore(); await app?.close(); await stop?.(); for (const socket of sockets) socket.terminate(); await relay?.close(); await routes?.close(); await f.close() }
 })

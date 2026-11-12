@@ -1,7 +1,7 @@
 /** Dark native client: a fixed header with the error banner, one history Scroll and the conversation footer share the resized keyboard viewport; ArkWeb renders scoped rich blocks. */
 import { common } from '@kit.AbilityKit'
 import { util } from '@kit.ArkTS'
-import { KeyboardAvoidMode, LengthMetrics, SymbolGlyphModifier } from '@kit.ArkUI'
+import { FrameCallback, KeyboardAvoidMode, LengthMetrics, SymbolGlyphModifier } from '@kit.ArkUI'
 import { NativeProductOwner } from '../product/NativeProductOwner'
 import { NativeProductRichOwner } from '../product/NativeProductRichOwner'
 import { ProductRichSurface } from '../product/ProductRichSurface'
@@ -28,9 +28,16 @@ import { MessageView } from '../components/MessageView'
 
 /** Project section of the grouped list; `key` is '' for Sessions outside every project. */
 class SessionGroup { key: string = ''; projectId: string | null = null; title: string = ''; rows: ProductSession[] = []; latest: number = 0 }
+class HistoryFrame extends FrameCallback {
+  private readonly done: () => void
+  constructor(done: () => void) { super(); this.done = done }
+  onFrame(_frameTimeInNano: number): void { this.done() }
+  onIdle(_timeLeftInNano: number): void {}
+}
 interface CreateIntent { action: string; projectId: string | null; agentPreset?: string; model?: ProductModelSelection }
 interface CreationRecovery { projectId: string | null; knownSessions: Set<string> }
 interface SessionIntent { action: string; sessionId: string }
+interface MessageRowRevision { message: ProductMessage; revision: number }
 
 @Entry
 @Component
@@ -89,6 +96,17 @@ struct Index {
   @State private scopeEntry: boolean = false
   @State private logCheckState: string = ''
   @State private stickToBottom: boolean = true
+  @State private expandedProcesses: string[] = []
+  @State private historyRefreshing: boolean = false
+  @State private historyNotice: string = ''
+  @State private historyViewportHeight: number = 1
+  private historyRequest: number = 0
+  private openingSession: string = ''
+  private historyContentHeight: number = 0
+  private historyAnchorHeight: number = -1
+  private historyAnchorOffset: number = 0
+  private messageRowRevision: number = 0
+  private messageRows: Map<string, MessageRowRevision> = new Map()
   @State private dismissedError: string = ''
   private scroller: Scroller = new Scroller()
   private logDiagnostics: NativeDiagnostics = new NativeDiagnostics()
@@ -121,7 +139,34 @@ struct Index {
     if (!enabled || host !== this.connectionHost) this.networkApproved = false
     this.connectionEnabled = enabled; this.connectionHost = host
   }
+  private updateMessageRows(next: ProductView): void {
+    const rows = new Map<string, MessageRowRevision>()
+    const sameSession = next.selected === this.view.selected
+    for (const message of next.messages) {
+      const previous = sameSession ? this.messageRows.get(message.id) : undefined
+      if (previous !== undefined && previous.message.role === message.role && previous.message.text === message.text
+        && previous.message.processKey === message.processKey && previous.message.processText === message.processText
+        && previous.message.richPending === message.richPending) {
+        rows.set(message.id, previous)
+      } else {
+        rows.set(message.id, { message, revision: ++this.messageRowRevision })
+      }
+    }
+    this.messageRows = rows
+  }
   private receiveView(next: ProductView): void {
+    if (next.selected !== this.view.selected) this.expandedProcesses = []
+    else if (this.view.liveText.length > 0 && next.liveText.length === 0) {
+      this.expandedProcesses = this.expandedProcesses.filter((key: string) => key !== 'live')
+    }
+    if (next.selected !== this.view.selected || next.connectionGeneration !== this.view.connectionGeneration || next.connection !== this.view.connection && next.connection !== 'connected') {
+      this.resetHistoryPull()
+    } else if (this.historyRefreshing && this.view.messages.length > 0
+      && next.messages.findIndex((row: ProductMessage) => row.id === this.view.messages[0].id) > 0) {
+      this.historyAnchorHeight = this.historyContentHeight
+      this.historyAnchorOffset = this.scroller.currentOffset().yOffset
+      this.stickToBottom = false
+    }
     if ((this.page === 'workspace' || this.workspaceOpening) && (next.connection !== 'connected' || next.connectionGeneration !== this.view.connectionGeneration)) {
       this.workspaceOpening = false
       this.richCloseGeneration++
@@ -135,7 +180,15 @@ struct Index {
     if (next.error === '') this.dismissedError = ''
     if (next.connection !== 'connected') this.newSheet = false
     if (next.pairing !== 'paired') { this.creationRecovery = undefined; this.creationFailed = false }
+    const retiredPreview = this.view.historySyncing === true && next.selected === ''
+    this.updateMessageRows(next)
     this.view = next; this.refreshConnectionControls(); this.rich.setMount(this.view.richJson)
+    if (next.historySyncing === true && next.selected === this.openingSession && this.page === 'sessions') {
+      this.openingSession = ''
+      this.showPage('conversation')
+    } else if (retiredPreview && this.page === 'conversation') {
+      this.showPage('sessions')
+    }
   }
   private async savePairing(): Promise<void> {
     const approved = this.networkApproved, host = this.preview.audience
@@ -364,17 +417,97 @@ struct Index {
     await this.rich.foreground()
   }
   /** Each page starts at its top; a conversation then follows the newest message until the user scrolls away. */
-  private showPage(page: string): void { if (page !== this.page) this.scroller.scrollTo({ xOffset: 0, yOffset: 0 }); this.stickToBottom = page === 'conversation'; this.page = page }
+  private showPage(page: string): void { if (page !== this.page) { this.scroller.scrollTo({ xOffset: 0, yOffset: 0 }); this.resetHistoryPull() }; this.stickToBottom = page === 'conversation'; this.page = page }
+  private resetHistoryPull(): void {
+    this.historyRequest++
+    this.historyRefreshing = false
+    this.historyNotice = ''
+    this.historyAnchorHeight = -1
+  }
+  private canPullHistory(): boolean {
+    return this.page === 'conversation' && (this.view.connection === 'connected' || this.view.historyOffline === true) && this.view.historyHasMore === true
+      && this.historyNotice !== 'limit' && this.historyNotice !== 'empty'
+  }
+  private async pullHistory(): Promise<void> {
+    if (!this.canPullHistory() || this.historyRefreshing) return
+    const request = ++this.historyRequest
+    this.historyRefreshing = true
+    this.historyNotice = ''
+    try {
+      const outcome = await this.product.loadOlder()
+      if (outcome === 'loaded') {
+        await this.afterHistoryFrame()
+        if (request === this.historyRequest) {
+          this.stickToBottom = false
+          this.historyAnchorHeight = -1
+          this.scroller.scrollTo({ xOffset: 0, yOffset: 0 })
+          await this.afterHistoryFrame()
+        }
+      }
+      if (request === this.historyRequest && outcome !== 'loaded') this.historyNotice = outcome
+    } catch (error) {
+      void error
+      if (request === this.historyRequest) this.historyNotice = 'failed'
+    } finally {
+      if (request === this.historyRequest) this.historyRefreshing = false
+    }
+  }
+  private afterHistoryFrame(): Promise<void> {
+    return new Promise<void>((resolve: () => void) => {
+      this.getUIContext().postFrameCallback(new HistoryFrame(() => {
+        this.getUIContext().postFrameCallback(new HistoryFrame(resolve))
+      }))
+    })
+  }
+  private conversationContentArea(height: number): void {
+    this.historyContentHeight = height
+    if (this.page === 'conversation' && this.historyAnchorHeight >= 0 && height !== this.historyAnchorHeight) {
+      const offset = Math.max(0, this.historyAnchorOffset + height - this.historyAnchorHeight)
+      this.historyAnchorHeight = -1
+      this.scroller.scrollTo({ xOffset: 0, yOffset: offset })
+      return
+    }
+    this.followLatest()
+  }
   private followLatest(): void { if (this.page === 'conversation' && this.stickToBottom) this.scroller.scrollEdge(Edge.Bottom) }
   /** Reaching the end resumes following; only a finger drag away from the end stops it, so programmatic scrolling and its intermediate offsets never do. */
   private trackScroll(state: ScrollState): void {
     if (this.page !== 'conversation') return
+    if (this.historyRefreshing || this.historyAnchorHeight >= 0) return
     if (state === ScrollState.Scroll) this.dismissKeyboard()
     if (this.scroller.isAtEnd()) this.stickToBottom = true
     else if (state === ScrollState.Scroll) this.stickToBottom = false
   }
   private dismissKeyboard(): void { this.getUIContext().getFocusController().clearFocus() }
-  private async openSession(sessionId: string): Promise<void> { await this.product.select(sessionId); this.showPage('conversation') }
+  private async openSession(sessionId: string): Promise<void> {
+    this.openingSession = sessionId
+    this.expandedProcesses = []
+    try {
+      await this.rich.foreground()
+      await this.product.select(sessionId)
+      if (this.openingSession === sessionId) {
+        this.rich.setMount(this.view.richJson)
+        this.showPage('conversation')
+      }
+    } finally { this.openingSession = '' }
+  }
+  private toggleProcess(key: string): void {
+    this.stickToBottom = false
+    this.expandedProcesses = this.expandedProcesses.includes(key)
+      ? this.expandedProcesses.filter((open: string) => open !== key) : this.expandedProcesses.concat(key)
+  }
+
+  @Builder processDisclosure(key: string, text: string, live: boolean) {
+    Column({ space: 4 }) {
+      Button(this.expandedProcesses.includes(key) ? $r('app.string.product_process_collapse') : $r('app.string.product_process_expand'))
+        .id('product-process-toggle-' + key).secondaryAction().constraintSize({ minHeight: 44 })
+        .onClick(() => this.toggleProcess(key))
+      if (this.expandedProcesses.includes(key)) {
+        MessageView({ role: 'assistant', text: text, live: live }).id(live ? 'product-live-text' : 'product-process-content-' + key)
+      }
+    }.width('100%').alignItems(HorizontalAlign.Start)
+  }
+
   @Builder sessionRow(row: ProductSession, showProject: boolean) {
     Stack({ alignContent: Alignment.End }) {
       Button({ type: ButtonType.Normal, stateEffect: true }) {
@@ -403,7 +536,7 @@ struct Index {
           if (!this.manageable()) { SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(16).fontColor([$r('app.color.text_tertiary')]) }
         }.width('100%').padding({ left: 16, right: this.manageable() ? 52 : 12, top: 14, bottom: 14 })
       }.id('product-session-' + row.sessionId).width('100%').borderRadius(14).backgroundColor(row.sessionId === this.view.selected ? $r('app.color.surface_high') : $r('app.color.surface'))
-        .enabled(this.view.connection === 'connected' && !this.busy).onClick(() => this.run(() => this.openSession(row.sessionId)))
+        .enabled((this.view.connection === 'connected' || this.view.offlineAvailable === true) && !this.busy).onClick(() => this.run(() => this.openSession(row.sessionId)))
       if (this.manageable()) {
         Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.dot_grid_1x2')).fontSize(18).fontColor([$r('app.color.text_tertiary')]) }
           .id('product-session-more-' + row.sessionId).width(40).height(40).margin({ right: 6 }).backgroundColor(Color.Transparent).accessibilityText($r('app.string.session_more')).enabled(!this.busy).bindMenu(this.rowMenu(row))
@@ -495,7 +628,11 @@ struct Index {
             .id('product-chat-back').width(40).height(40).backgroundColor(Color.Transparent).accessibilityText($r('app.string.mvp_back')).onClick(() => { this.showPage('sessions') })
           Column({ space: 2 }) {
             Text(this.selectedTitle()).fontSize(17).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-            Row({ space: 6 }) { Row().width(6).height(6).borderRadius(3).backgroundColor(this.statusTone()); Text(this.statusLabel()).fontSize(12).fontColor($r('app.color.text_secondary')) }
+            Row({ space: 6 }) {
+              Row().width(6).height(6).borderRadius(3).backgroundColor(this.statusTone())
+              Text(this.view.historySyncing === true ? $r('app.string.product_history_syncing') : this.statusLabel())
+                .id(this.view.historySyncing === true ? 'product-history-syncing' : 'product-chat-connection').fontSize(12).fontColor($r('app.color.text_secondary'))
+            }
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
           if (this.workspace.supported() && this.product.deviceBindingMode() && this.view.connection === 'connected' && this.view.selected.length > 0) {
             Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.square_grid_2x2')).fontSize(20).fontColor([$r('app.color.text_primary')]) }
@@ -564,6 +701,7 @@ struct Index {
         }.padding(24).width('100%').backgroundColor($r('app.color.page_background')).align(Alignment.Center)
       }
     } else {
+    Refresh({ refreshing: this.historyRefreshing }) {
     Scroll(this.scroller) {
     Column({ space: 12 }) {
       if (this.page === 'sessions') {
@@ -593,7 +731,7 @@ struct Index {
             }
           }.card()
         }
-        if (this.view.connection === 'connected' && this.view.sessions.length > 0) {
+        if ((this.view.connection === 'connected' || this.view.offlineAvailable === true) && this.view.sessions.length > 0) {
           Row({ space: 8 }) {
             SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(18).fontColor([$r('app.color.text_tertiary')])
             TextInput({ text: this.query, placeholder: $r('app.string.search_sessions') }).id('product-session-search').layoutWeight(1).height(40).padding({ left: 0, right: 0 }).borderRadius(0).fontSize(15)
@@ -747,7 +885,7 @@ struct Index {
               Button($r('app.string.session_unarchive')).id('product-unarchive').secondaryAction().constraintSize({ minHeight: 36 }).height(36).fontSize(13).padding({ left: 16, right: 16 }).enabled(!this.busy).onClick(() => this.run(() => this.manageSession('unarchive', this.view.selected)))
             }
           }.width('100%').padding(10).backgroundColor($r('app.color.surface')).borderRadius(12).alignItems(HorizontalAlign.Start)
-        } else if (this.view.readOnly) {
+        } else if (this.view.readOnly && this.view.historySyncing !== true) {
           Row({ space: 8 }) { SymbolGlyph($r('sys.symbol.lock')).fontSize(16).fontColor([$r('app.color.text_secondary')]); Text($r('app.string.mvp_read_only')).fontSize(13).fontColor($r('app.color.text_secondary')).layoutWeight(1) }
             .width('100%').padding(10).backgroundColor($r('app.color.surface')).borderRadius(12)
         }
@@ -756,12 +894,40 @@ struct Index {
             .width('100%').padding(10).backgroundColor($r('app.color.surface')).borderRadius(12)
         }
         if (this.view.selected.length > 0 && this.view.messages.length === 0 && this.view.liveText.length === 0) { Text($r('app.string.conversation_empty')).bodyText().textAlign(TextAlign.Center).padding({ top: 40 }) }
-        ForEach(this.view.messages, (message: ProductMessage) => { MessageView({ role: message.role, text: message.text }) }, (message: ProductMessage) => message.id)
-        if (this.view.liveText.length > 0) { Column() { MessageView({ role: 'assistant', text: this.view.liveText, live: true }) }.id('product-live-text').width('100%') }
-        ProductRichSurface({ owner: this.rich }).height(this.view.richJson.length > 0 ? 240 : 1).visibility(this.view.richJson.length > 0 ? Visibility.Visible : Visibility.Hidden)
+        if (this.view.historyHasMore === true) {
+          Text(this.historyNotice === 'limit' ? $r('app.string.product_history_limit')
+            : this.historyNotice === 'failed' ? $r('app.string.product_history_retry')
+            : this.historyNotice === 'empty' ? $r('app.string.product_history_end') : $r('app.string.product_history_pull'))
+            .id('product-history-pull').detailText().width('100%').textAlign(TextAlign.Center)
+        }
+        if (this.view.historyCachedEnd === true) {
+          Text($r('app.string.product_history_cached_end')).id('product-history-cached-end').detailText().width('100%').textAlign(TextAlign.Center)
+        }
+        // An earlier page can change a row's process without changing the answer ID.
+        ForEach(this.view.messages, (message: ProductMessage) => {
+          Column({ space: 6 }) {
+            if (message.processKey !== undefined && message.processText !== undefined) {
+              this.processDisclosure(message.processKey, message.processText, false)
+            }
+            if (message.text.length > 0) {
+              MessageView({ role: message.role, text: message.text }).id('product-message-' + message.id)
+            } else if (message.richPending === true) {
+              Text($r('app.string.product_rich_workspace_hint')).detailText()
+            }
+          }.width('100%').alignItems(HorizontalAlign.Start)
+        }, (message: ProductMessage) => message.id + ':' + this.messageRows.get(message.id)?.revision)
+        if (this.view.liveText.length > 0) { this.processDisclosure('live', this.view.liveText, true) }
+        ProductRichSurface({ owner: this.rich, viewportHeight: this.view.richJson.length > 0 ? this.historyViewportHeight : 1 })
+          .visibility(this.view.richJson.length > 0 ? Visibility.Visible : Visibility.Hidden)
       }
-    }.padding({ left: 16, right: 16, top: 12, bottom: 20 }).width('100%').onAreaChange(() => this.followLatest())
-    }.id('product-page-scroll').scrollable(ScrollDirection.Vertical).align(Alignment.Top).width('100%').height('100%').onDidScroll((xOffset: number, yOffset: number, state: ScrollState) => this.trackScroll(state)).onClick(() => this.dismissKeyboard()).onAreaChange(() => this.followLatest())
+    }.padding({ left: 16, right: 16, top: 12, bottom: this.page === 'conversation' && this.view.richJson.length > 0 ? 0 : 20 }).width('100%').onAreaChange((_previous: Area, current: Area) => this.conversationContentArea(Number(current.height)))
+    }.id('product-page-scroll').scrollable(ScrollDirection.Vertical).align(Alignment.Top).width('100%').height('100%').onDidScroll((xOffset: number, yOffset: number, state: ScrollState) => this.trackScroll(state)).onClick(() => this.dismissKeyboard())
+      .onAreaChange((_previous: Area, current: Area) => {
+        const height = Math.max(1, Number(current.height))
+        if (Number.isFinite(height) && height !== this.historyViewportHeight) this.historyViewportHeight = height
+        this.followLatest()
+      })
+    }.width('100%').height('100%').pullToRefresh(this.canPullHistory()).onRefreshing(() => { void this.pullHistory() })
     }
       if (this.page === 'conversation' && !this.stickToBottom) {
         Button({ type: ButtonType.Circle, stateEffect: true }) { SymbolGlyph($r('sys.symbol.arrow_down')).fontSize(18).fontColor([$r('app.color.text_primary')]) }

@@ -7,7 +7,13 @@ import { canonicalRichJson, guestSdk, richThemeCss } from './upstream-domain.ts'
 /** Code version belongs to the trusted renderer, independently of publication renderRevision. */
 export const MOBILE_RENDERER_VERSION = 'mobile-rich-renderer/1'
 /** Trusted surface policy; no token, endpoint, Session selector or filesystem method reaches the guest. */
-export interface RendererPolicy { readonly rendererVersion: string; readonly packetBytes: number; readonly maxPackets: number }
+export interface RendererPolicy {
+  readonly rendererVersion: string
+  readonly packetBytes: number
+  readonly maxPackets: number
+  /** Apply standard guest resize events to the iframe so its owning document can scroll. */
+  readonly scrollInDocument?: boolean
+}
 /** Receiver registered against a native port identity; approval, host execution and file grants have no methods. */
 export interface NativeRichPort {
   /** @param raw - untrusted bounded guest packet. @param source - carrier identity supplied by native code, never a payload field. @returns scoped operation response. */
@@ -57,6 +63,12 @@ export class BrowserRichRenderer {
       void current.receive(encoded, event.source).then(async result => {
         if (this.gate !== current) return
         if (packet.type === 'ready') this.send('init', { snapshot })
+        if (packet.type === 'resize' && this.policy.scrollInDocument && 'payload' in packet && packet.payload !== null
+          && typeof packet.payload === 'object' && 'height' in packet.payload
+          && typeof packet.payload.height === 'number' && Number.isFinite(packet.payload.height)) {
+          // Match the standard Rich controller's inline cap and device-scale rounding.
+          this.frame.style.height = `${Math.max(24, Math.min(12000, Math.ceil(packet.payload.height) + 1))}px`
+        }
         if (['draft.save', 'action.invoke', 'action.status'].includes(String(packet.type))) {
           this.send('result', { requestId: packet.packetId, ...(packet.type === 'action.status' ? { result } : { receipt: result }) })
           const value = await this.owner.request('rich.snapshot', { mountId: mount.mountId })
@@ -88,6 +100,7 @@ export class BrowserRichRenderer {
     const gate = this.gate, mount = this.mount; this.gate = undefined
     if (this.listener !== undefined) window.removeEventListener('message', this.listener)
     this.listener = undefined; this.mount = undefined
+    if (this.policy.scrollInDocument) this.frame.style.removeProperty('height')
     if (gate !== undefined) await gate.close()
     else if (mount !== undefined) await this.owner.request('rich.dispose', { mountId: mount.mountId })
   }

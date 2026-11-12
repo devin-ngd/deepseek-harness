@@ -1,7 +1,7 @@
 /** In-memory public SDK substitutes for executing actual adapter logic; no OS/network/device calls are made. */
 import { createHash, randomUUID } from 'node:crypto'
-export const sdk = { files: new Map(), dirs: new Set(['/app']), fds: new Map(), calls: [], faults: new Map(), locks: new Map(), maxRead: Infinity, maxWrite: Infinity, statSize: null, resources: new Map(), resourceReads: 0, requests: [], api: 26 }
-export function resetSdk() { sdk.files.clear(); sdk.dirs = new Set(['/app']); sdk.fds.clear(); sdk.locks.clear(); sdk.calls = []; sdk.faults.clear(); sdk.maxRead = Infinity; sdk.maxWrite = Infinity; sdk.statSize = null; sdk.resources.clear(); sdk.resourceReads = 0; sdk.requests = []; sdk.api = 26 }
+export const sdk = { files: new Map(), dirs: new Set(['/app']), fds: new Map(), calls: [], faults: new Map(), locks: new Map(), maxRead: Infinity, maxWrite: Infinity, statSize: null, resources: new Map(), resourceReads: 0, requests: [], api: 26, ioGate: null }
+export function resetSdk() { sdk.files.clear(); sdk.dirs = new Set(['/app']); sdk.fds.clear(); sdk.locks.clear(); sdk.calls = []; sdk.faults.clear(); sdk.maxRead = Infinity; sdk.maxWrite = Infinity; sdk.statSize = null; sdk.resources.clear(); sdk.resourceReads = 0; sdk.requests = []; sdk.api = 26; sdk.ioGate = null }
 function operation(name) { sdk.calls.push(name); const count = sdk.faults.get(name) ?? 0; if (count > 0) { sdk.faults.set(name, count - 1); throw Object.assign(new Error(name), { code: 13900001 }) } }
 function missing() { return Object.assign(new Error('absent'), { code: 13900002 }) }
 export const fileIo = {
@@ -17,6 +17,9 @@ export const fileIo = {
   mkdirSync(path) { operation('mkdir'); if (sdk.dirs.has(path)) throw new Error('exists'); sdk.dirs.add(path) },
   rmdirSync(path) { operation('rmdir'); sdk.dirs.delete(path) },
   unlinkSync(path) { operation('unlink'); if (!sdk.files.delete(path)) throw missing() },
+}
+for (const name of ['open', 'close', 'mkdir', 'rmdir', 'unlink', 'stat', 'read', 'fsync', 'rename', 'write']) {
+  fileIo[name] = async (...args) => { if (sdk.ioGate !== null) await sdk.ioGate(name); return fileIo[name + 'Sync'](...args) }
 }
 export const util = {
   TextEncoder: class { encodeInto(text) { return new TextEncoder().encode(text) } },

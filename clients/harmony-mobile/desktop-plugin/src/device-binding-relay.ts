@@ -1,5 +1,6 @@
 /** Device-binding encrypted carrier over the existing relay/control implementation; no public listener or model is owned here. */
 import type { Context } from '@deepseek-ai/cordis'
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { PairedRelayEndpoint, validatePairedRelayPolicy, type PairedRelayPolicy, type PairedRelayPorts } from '../../src/paired-relay.ts'
 import type { EndpointRelayTrust } from '../../src/relay-control-client.ts'
@@ -9,7 +10,7 @@ import type { LinkConfig } from '../../src/link-protocol.ts'
 import { fields } from '../../src/link-protocol.ts'
 import { jsonPayload } from '../../src/wire.ts'
 import type { JsonValue } from '../../src/upstream.ts'
-import { carrierRequest } from '../../src/device-carrier-protocol.ts'
+import { carrierRequest, deviceFollowRequest, deviceHistoryCursorSchema, deviceOpeningHistory } from '../../src/device-carrier-protocol.ts'
 import { deviceConnectionTicketSchema, deviceRelayPairId, type DeviceBinding, type DeviceConnectionTicket } from '../../src/device-binding-protocol.ts'
 import { profileRpcCodec } from '../../src/profile-rpc-codec.ts'
 import { DeviceBoundProfileChannel, type DeviceBindingProfileProvider } from './device-binding-profile.ts'
@@ -19,7 +20,7 @@ import type { DesktopRelayLifecycle } from './relay-lifecycle.ts'
 import { verifyDeviceRoute, type DeviceRoute } from '../../src/device-route-protocol.ts'
 import { nodeE2EPrimitives } from '../../integration/p256-channel.ts'
 import { deviceCommandStep } from './device-command-step.ts'
-import { SessionWindowTooLarge } from './session-window.ts'
+import { SessionWindowTooLarge, type HistoryPagePolicy } from './session-window.ts'
 import { WorkspaceError } from './workspace-channel.ts'
 import type { WorkspacePageChunkTrace, WorkspaceWireHost, WorkspaceWireTrace } from './workspace-wire.ts'
 import { isWorkspaceSessionPage } from './workspace-page-diagnostic.ts'
@@ -35,7 +36,7 @@ export interface DeviceWorkspaceProvider {
 export interface WorkspaceGrantLease { readonly transport: DeviceTransportBinding; readonly expiresAt: number }
 
 /** Local routing lease and original crypto ports. `traceWorkspaceRequests` enables content-free timing on Host stdout. */
-export type DeviceBindingRelayPlan = { readonly desktopId: string; isRouteCurrent(): Promise<boolean>; readonly trust: EndpointRelayTrust; readonly policy: PairedRelayPolicy; readonly limits: LinkConfig; readonly workspace?: DeviceWorkspaceProvider; readonly traceWorkspaceRequests?: boolean; openPorts(): PairedRelayPorts } & ({ readonly route: DeviceRoute; readonly paired?: never } | { readonly paired: DeviceBinding; readonly route?: never })
+export type DeviceBindingRelayPlan = { readonly desktopId: string; isRouteCurrent(): Promise<boolean>; readonly trust: EndpointRelayTrust; readonly policy: PairedRelayPolicy; readonly limits: LinkConfig; readonly historyPage?: HistoryPagePolicy; readonly workspace?: DeviceWorkspaceProvider; readonly traceWorkspaceRequests?: boolean; openPorts(): PairedRelayPorts } & ({ readonly route: DeviceRoute; readonly paired?: never } | { readonly paired: DeviceBinding; readonly route?: never })
 const routeSchema = z.object({ desktopId: z.string().min(1).max(256), profileId: z.literal('desktop'), sessionId: z.string().min(1).max(256) }).strict()
 type WorkspaceStage = 'received' | 'result-ready' | 'sending' | 'socket-submitted'
 interface WorkspaceTrace { readonly seq: number; readonly started: number; operation: string; stage: WorkspaceStage }
@@ -131,6 +132,11 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
         } }
       }
       if (data.method === 'select') { const value = fields(candidate, ['method', 'route']), route = routeSchema.parse(value.route); await channel.select(route); return { value: jsonPayload({ selected: route }) } }
+      if (data.method === 'history' && this.plan.historyPage !== undefined) {
+        const value = fields(candidate, ['method', 'route', 'argument'])
+        const { beforeSeq, throughSeq } = deviceHistoryCursorSchema.parse(value.argument)
+        return { value: jsonPayload(await channel.history(routeSchema.parse(value.route), beforeSeq, throughSeq, this.plan.historyPage, signal)) }
+      }
       if (data.method === 'request') { const value = fields(candidate, ['method', 'route', 'argument']), route = routeSchema.parse(value.route); return { value: jsonPayload(await channel.request(route, argument(value.argument), signal)) } }
       throw new Error('device carrier method denied')
     }
@@ -194,15 +200,27 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
               } else endTrace('cancelled', 'cancelled')
             }
             else {
-              const value = fields(packet.value, ['route', 'argument', 'resume']), route: DeviceSessionRoute = routeSchema.parse(value.route)
-              for await (const frame of current.follow(route, argument(value.argument), value.resume, signal)) { await assertRoute(); if (signal.aborted || current !== channel) return; await outgoing.send(jsonPayload({ kind: 'frame', id: packet.id, value: frame })) }
+              const value = deviceFollowRequest(packet.value), route: DeviceSessionRoute = routeSchema.parse(value.route)
+              for await (const frame of current.follow(route, argument(value.argument), value.resume, signal)) {
+                await assertRoute()
+                if (signal.aborted || current !== channel) return
+                const opening = value.historyHash === undefined ? undefined : deviceOpeningHistory(jsonPayload(frame))
+                if (opening === undefined) {
+                  await outgoing.send(jsonPayload({ kind: 'frame', id: packet.id, value: frame }))
+                } else {
+                  const historyHash = createHash('sha256').update(JSON.stringify([opening.cursor, opening.records])).digest('base64url')
+                  const reused = historyHash === value.historyHash
+                  const body = reused ? { ...opening.frame, payload: { ...opening.payload, records: [] } } : frame
+                  await outgoing.send(jsonPayload({ kind: 'frame', id: packet.id, value: { historyHash, reused, frame: body } }))
+                }
+              }
               if (!signal.aborted) await outgoing.send({ kind: 'end', id: packet.id })
             }
           } catch (error) {
             endTrace(signal.aborted ? 'cancelled' : 'failed', error instanceof WorkspaceError ? error.code : workspaceDiagnosticFailure(error))
             if (!signal.aborted && !lifetime.signal.aborted && !requestBinding.signal.aborted) {
               const method = packet.kind === 'request' && packet.value !== null && typeof packet.value === 'object' && !Array.isArray(packet.value)
-                && typeof packet.value.method === 'string' && ['metadata', 'creation-options', 'select', 'manage', 'workspace', 'request'].includes(packet.value.method) ? packet.value.method : 'follow'
+                && typeof packet.value.method === 'string' && ['metadata', 'creation-options', 'select', 'history', 'manage', 'workspace', 'request'].includes(packet.value.method) ? packet.value.method : 'follow'
               ctx.logger('harmony-device').warn('Device %s failed: %s', method, error instanceof Error ? error.message.replace(/[\r\n]+/g, ' ').slice(0, 240) : 'non-Error failure')
               let code = 'unknown-outcome'
               if (error instanceof SessionWindowTooLarge) code = error.code

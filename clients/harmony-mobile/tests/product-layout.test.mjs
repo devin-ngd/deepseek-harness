@@ -21,7 +21,7 @@ test('a retained workspace Web cannot prevent controller detachment during close
 })
 
 test('scroll content cannot regain a viewport-sized height or a nested fixed catalogue viewport', () => {
-  assert.throws(() => auditProductLayout(ts, replace("}.padding({ left: 16, right: 16, top: 12, bottom: 20 }).width('100%')", "}.padding({ left: 16, right: 16, top: 12, bottom: 20 }).width('100%').height('100%')")), /intrinsic height/)
+  assert.throws(() => auditProductLayout(ts, replace(".width('100%').onAreaChange((_previous: Area, current: Area) => this.conversationContentArea", ".width('100%').height('100%').onAreaChange((_previous: Area, current: Area) => this.conversationContentArea")), /intrinsic height/)
   assert.throws(() => auditProductLayout(ts, replace("Column({ space: 10 }) {\n            Button($r('app.string.product_log_selfcheck'))", "Scroll() {\n            Button($r('app.string.product_log_selfcheck'))")), /independent scroll heights/)
 })
 

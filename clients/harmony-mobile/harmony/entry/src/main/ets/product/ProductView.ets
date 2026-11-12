@@ -3,7 +3,7 @@
 export interface ProductProject { projectId: string; title: string; sessionIds?: string[] }
 /** Device directories add list state; `updatedAt` is epoch milliseconds and 0 when unknown. Legacy publications omit the optional fields. */
 export interface ProductSession { sessionId: string; projectId: string | null; title: string; updatedAt?: number; running?: boolean; pinned?: boolean; archived?: boolean; blank?: boolean }
-export interface ProductMessage { id: string; role: string; text: string }
+export interface ProductMessage { id: string; role: string; text: string; processKey?: string; processText?: string; richPending?: boolean }
 /** Current choices supplied by the desktop for a new Session. */
 export interface ProductCreationPreset { id: string; name: string; isDefault: boolean }
 export interface ProductCreationModel { provider: string; model: string; label: string; efforts: string[] }
@@ -36,6 +36,11 @@ export class ProductView {
   task: string = 'idle'
   readOnly: boolean = true
   messages: ProductMessage[] = []
+  historyHasMore?: boolean
+  historySyncing?: boolean
+  historyOffline?: boolean
+  historyCachedEnd?: boolean
+  offlineAvailable?: boolean
   liveText: string = ''
   richJson: string = ''
 }

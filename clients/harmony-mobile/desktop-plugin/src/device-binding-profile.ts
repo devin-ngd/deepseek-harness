@@ -17,6 +17,7 @@ import { deviceRemotePolicy } from './device-policy.ts'
 import { invokeProfile, followProfile } from './transport.ts'
 import type { DeviceBindingOwner, DeviceBindingSessionPorts, DeviceSessionRow, DeviceProjectRow } from './device-binding.ts'
 import type { DeviceSessionRoute } from '../../src/mobile-device-product.ts'
+import { SessionWindowTooLarge, type HistoryPagePolicy } from './session-window.ts'
 
 /** @param ctx - actual desktop profile, never an arbitrary profile path. @returns dynamic visible catalogue without subagent Sessions, desktop projects without paths, and list management through the desktop's own Session and workspace services; none resumes an Agent or starts a model. */
 export function deviceProfileSessionPorts(ctx: Context): DeviceBindingSessionPorts {
@@ -158,7 +159,10 @@ export class DeviceBoundProfileChannel {
   select(route: DeviceSessionRoute): Promise<void> {
     const operation = this.tail.then(async () => {
       if (this.closed) throw new LinkError('closed')
-      if (this.route?.sessionId === route.sessionId && this.route.profileId === route.profileId && this.route.desktopId === route.desktopId && this.peer !== undefined && this.provider.current(this.peer) !== undefined) return
+      if (this.route?.sessionId === route.sessionId && this.route.profileId === route.profileId && this.route.desktopId === route.desktopId && this.peer !== undefined && this.provider.current(this.peer) !== undefined) {
+        await this.owner.run(this.transport, this.ticket, route.profileId, route.sessionId, 'session.sync', async () => {})
+        return
+      }
       const old = this.peer; this.peer = undefined; this.route = undefined; if (old !== undefined) await this.provider.retire(old)
       const peer = await this.provider.open(this.owner, this.transport, this.ticket, route)
       if (this.closed) { await this.provider.retire(peer); throw new LinkError('closed') }
@@ -167,10 +171,37 @@ export class DeviceBoundProfileChannel {
     this.tail = operation.then(() => {}, () => {}); return operation
   }
   private command(route: DeviceSessionRoute, argument: ProfileRpcArgument) {
-    if (this.closed || argument.version !== PROFILE_RPC_CODEC || this.peer === undefined || this.route?.sessionId !== route.sessionId || this.route.desktopId !== route.desktopId || route.profileId !== 'desktop') throw new LinkError('scope-denied')
+    const peer = this.selectedPeer(route)
+    if (argument.version !== PROFILE_RPC_CODEC) throw new LinkError('scope-denied')
     const command = parseCommand(argument.packet, this.limits)
     if (!deviceGrantOperations.some(operation => operation === command.operation) || command.desktopId !== this.ticket.desktopId || command.deviceId !== this.ticket.deviceId || command.grantEpoch !== this.ticket.epoch || 'sessionId' in command.payload && command.payload.sessionId !== route.sessionId) throw new LinkError('scope-denied')
-    return { peer: this.peer, command }
+    return { peer, command }
+  }
+  private selectedPeer(route: DeviceSessionRoute): PeerScope {
+    if (this.closed || this.peer === undefined || this.route?.sessionId !== route.sessionId || this.route.desktopId !== route.desktopId || route.profileId !== 'desktop') throw new LinkError('scope-denied')
+    return this.peer
+  }
+  /** Read older canonical records under the current Session's existing sync authorization. */
+  history(route: DeviceSessionRoute, beforeSeq: number, throughSeq: number, policy: HistoryPagePolicy, signal: AbortSignal) {
+    const peer = this.selectedPeer(route)
+    return this.owner.run(this.transport, this.ticket, route.profileId, route.sessionId, 'session.sync', async lifetime => {
+      const readSignal = AbortSignal.any([signal, lifetime, peer.signal])
+      const address = { kind: 'session' as const, sessionId: id<'SessionId'>(route.sessionId) }
+      let maxMessages = policy.maxMessages
+      while (true) {
+        readSignal.throwIfAborted()
+        const turnWindow = policy.turnWindow === undefined ? undefined : { ...policy.turnWindow, minMessages: Math.min(policy.turnWindow.minMessages, maxMessages) }
+        const { records, hasMore } = await this.ctx.sessionController.page({ address, beforeSeq, throughSeq, maxMessages,
+          ...(turnWindow === undefined ? {} : { turnWindow }) }, readSignal)
+        readSignal.throwIfAborted()
+        if (peer !== this.peer) throw new LinkError('scope-denied')
+        const page = { protocol: 'dsh-mobile-read/1', sessionId: route.sessionId, beforeSeq, throughSeq, records, hasMore }
+        const bytes = new TextEncoder().encode(JSON.stringify(page)).byteLength
+        if (records.length <= policy.maxRecords && bytes <= Math.min(policy.maxBytes, maxMessages === 1 ? policy.maxBytes : policy.targetBytes)) return page
+        if (maxMessages === 1) throw new SessionWindowTooLarge()
+        maxMessages = Math.max(1, Math.floor(maxMessages / 2))
+      }
+    })
   }
   /** @param route - immutable owner selected by the native view. @param argument - original strict mobile command envelope. @param signal - request wait lifetime. @returns original canonical result, with no retry or general Gateway access. */
   async request(route: DeviceSessionRoute, argument: ProfileRpcArgument, signal: AbortSignal): Promise<unknown> {

@@ -9,7 +9,7 @@ const file = ts.createSourceFile('Index.ets', source, ts.ScriptTarget.Latest, tr
 assert.equal(file.parseDiagnostics.length, 0)
 const page = file.statements.find(node => ts.isStructDeclaration(node) && node.name.text === 'Index')
 const names = ['rows', 'selectedTitle', 'openSession', 'receiveView', 'refreshConnectionControls', 'connectable', 'connecting', 'taskActive', 'receiptVisible', 'errorVisible', 'dismissError', 'errorMessage', 'showPage', 'followLatest', 'trackScroll', 'dismissKeyboard', 'canSend', 'composerHint', 'projectTitle', 'manageable', 'sessionTitle', 'running', 'listed', 'inFilter', 'counted', 'groups', 'projectChoices', 'projectCount', 'rowKey', 'toggleGroup', 'emptyLabel', 'age', 'selectedRow', 'selectedArchived', 'rowMenu', 'selectedMenu', 'manageSession', 'createSession', 'openCreation', 'presetOptions', 'modelOptions', 'effortOptions', 'openWorkspace', 'leaveWorkspace', 'workspaceBack', 'discardWorkspaceRich', 'onWorkspaceState']
-const methods = names.map(name => page.members.find(node => node.name?.getText(file) === name).getText(file)).join('\n')
+const methods = [...names, 'updateMessageRows', 'resetHistoryPull', 'toggleProcess', 'canPullHistory', 'pullHistory'].map(name => page.members.find(node => node.name?.getText(file) === name).getText(file)).join('\n')
 const groupClass = file.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'SessionGroup').getText(file)
 // `$r`, `Edge`, `ScrollState` and `SymbolGlyphModifier` are ArkUI globals; the stubs return resource names and tags so guards and mappings run under Node.
 const dtoSource = await readFile('harmony/entry/src/main/ets/product/ProductView.ets', 'utf8')
@@ -61,6 +61,7 @@ function fixture() {
   Object.assign(value, { page: page.members.find(node => node.name?.getText(file) === 'page').initializer.text, showSetup: false, showDiagnostics: false, busy: false, failed: false, listMode: 'recent', listFilter: 'active', query: '', collapsed: [], created: [], newSheet: false, networkApproved: false, connectionEnabled: true, connectionHost: 'relay.invalid', scopeEntry: false, routeSummary: '', routeReply: '', logCheckState: '', revokePending: false, identityPending: false, drafts: new Map(), draft: '', lastRequest: '', stickToBottom: true, dismissedError: '', rich: { setMount() {}, close: async () => {}, foreground: async () => {} },
     workspaceState: '', workspaceStartupFailure: '', workspaceRich: false, workspaceRichCloseFailed: false, workspaceViewGeneration: 0, workspaceOpening: false, richCloseGeneration: 0, workspace: { supported: () => false, close: async () => {}, open: async () => {}, viewGeneration: () => 1, selectedSession: () => '', richClose: async () => {}, richDiscard() {}, startupFailure: () => 'unclassified' },
     draftSessionId: '', creation: new ProductCreationOptions(), creationPreset: -1, creationModel: -1, creationEffort: -1,
+    historyRequest: 0, historyRefreshing: false, historyNotice: '', historyAnchorHeight: -1, openingSession: '', expandedProcesses: [], messageRows: new Map(), messageRowRevision: 0,
     creationLoading: false, creationUnavailable: false, creationFailed: false, creationProjectId: '', creationGeneration: 0,
     scroller: { scrollTo(position) { scrolls.push(['top', position.yOffset]) }, scrollEdge(edge) { scrolls.push(['edge', edge]) }, isAtEnd: () => focus.atEnd },
     getUIContext: () => ({ getFocusController: () => ({ clearFocus() { focus.cleared++ } }), getPromptAction: () => ({ showToast(options) { toasts.push(options.message) } }) }),
@@ -80,6 +81,43 @@ function directory(value) {
   ] })
   return () => value.rows().map(row => row.sessionId)
 }
+
+test('native task processes start folded and open independently within the selected chat', () => {
+  const { value } = fixture()
+  const initial = page.members.find(node => node.name?.getText(file) === 'expandedProcesses')
+  assert.equal(initial.initializer.getText(file), '[]')
+  value.receiveView({ ...value.view, selected: 'briefing' })
+  value.toggleProcess('turn-7')
+  value.toggleProcess('turn-8')
+  assert.deepEqual(value.expandedProcesses, ['turn-7', 'turn-8'])
+  assert.equal(value.stickToBottom, false)
+  value.toggleProcess('turn-7')
+  assert.deepEqual(value.expandedProcesses, ['turn-8'])
+  value.receiveView({ ...value.view, selected: 'other-chat' })
+  assert.deepEqual(value.expandedProcesses, [])
+})
+
+test('offline history remains available and the loading indicator waits for the updated frame', async () => {
+  const { value, scrolls } = fixture(), frame = Promise.withResolvers(), scrolled = Promise.withResolvers()
+  value.page = 'conversation'
+  Object.assign(value.view, { selected: 'briefing', connection: 'disconnected', historyOffline: true, historyHasMore: true })
+  value.product.loadOlder = async () => 'loaded'
+  let frames = 0
+  value.afterHistoryFrame = () => ++frames === 1 ? frame.promise : scrolled.promise
+  assert.equal(value.canPullHistory(), true)
+  const pending = value.pullHistory()
+  await Promise.resolve()
+  assert.equal(value.historyRefreshing, true)
+  value.receiveView({ ...value.view, messages: [{ id: 'older', role: 'assistant', text: 'older' }] })
+  assert.equal(value.historyRefreshing, true)
+  frame.resolve()
+  await Promise.resolve()
+  assert.equal(value.historyRefreshing, true)
+  assert.deepEqual(scrolls.at(-1), ['top', 0])
+  scrolled.resolve()
+  await pending
+  assert.equal(value.historyRefreshing, false)
+})
 function visibleIds(value) {
   const ids = []
   const visit = node => {
@@ -122,6 +160,21 @@ test('opening a real session enters conversation only after successful selection
   assert.deepEqual(scrolls, [['top', 0]]); assert.equal(value.stickToBottom, true)
   assert.ok(visibleIds(value).includes('product-composer')); assert.equal(visibleIds(value).includes('product-route-offer'), false)
 })
+test('reopening the same chat after leaving restores its rich mount and starts folded', async () => {
+  const { value } = fixture(), events = []
+  value.page = 'sessions'
+  value.view.selected = 'briefing'
+  value.view.richJson = 'retained-rich-mount'
+  value.expandedProcesses = ['turn-7']
+  value.rich.foreground = async () => { events.push('foreground') }
+  value.product.select = async id => { events.push(id) }
+  value.rich.setMount = mount => { events.push(mount) }
+  await value.openSession('briefing')
+  assert.deepEqual(events, ['foreground', 'briefing', 'retained-rich-mount'])
+  assert.deepEqual(value.expandedProcesses, [])
+  assert.equal(value.page, 'conversation')
+})
+
 test('returning to the list and switching sessions preserves each unsent draft', () => {
   const { value } = fixture(); value.page = 'conversation'; value.receiveView({ ...value.view, selected: 'a' }); value.draft = 'A draft'
   Function('return ' + byId('product-chat-back').onClick).call(value)(); assert.equal(value.page, 'sessions'); assert.equal(value.draft, 'A draft')

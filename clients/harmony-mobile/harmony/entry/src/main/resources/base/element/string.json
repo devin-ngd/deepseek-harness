@@ -1,6 +1,42 @@
 {
   "string": [
     {
+      "name": "product_process_expand",
+      "value": "展开执行过程"
+    },
+    {
+      "name": "product_process_collapse",
+      "value": "收起执行过程"
+    },
+    {
+      "name": "product_rich_workspace_hint",
+      "value": "这条富交互可在工作区查看"
+    },
+    {
+      "name": "product_history_pull",
+      "value": "下拉加载更早的消息"
+    },
+    {
+      "name": "product_history_syncing",
+      "value": "正在同步最新消息"
+    },
+    {
+      "name": "product_history_retry",
+      "value": "未能加载旧消息，下拉重试"
+    },
+    {
+      "name": "product_history_limit",
+      "value": "已达到手机历史读取上限，更早的消息可在电脑上查看"
+    },
+    {
+      "name": "product_history_end",
+      "value": "已到会话开头"
+    },
+    {
+      "name": "product_history_cached_end",
+      "value": "已显示全部本地缓存，连接电脑后可读取更早消息"
+    },
+    {
       "name": "error_history_too_large",
       "value": "这段会话内容超过手机读取上限，请在电脑查看。你仍可返回并打开其他会话。"
     },

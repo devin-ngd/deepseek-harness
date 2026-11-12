@@ -13,7 +13,7 @@ export async function productLayoutParser() {
 }
 
 // ForEach stays a call so its item callbacks parse as UI builders, matching the official parser configuration.
-const productPageComponents = ['Stack', 'Scroll', 'Column', 'Row', 'Flex', 'Text', 'TextInput', 'TextArea', 'Checkbox', 'Button', 'List', 'ListItem', 'SymbolGlyph', 'LoadingProgress', 'Circle', 'ProductRichSurface', 'WorkspaceSurface', 'WorkspaceRichSurface', 'TaskState', 'MessageView']
+const productPageComponents = ['Stack', 'Scroll', 'Refresh', 'Column', 'Row', 'Flex', 'Text', 'TextInput', 'TextArea', 'Checkbox', 'Button', 'List', 'ListItem', 'SymbolGlyph', 'LoadingProgress', 'Circle', 'ProductRichSurface', 'WorkspaceSurface', 'WorkspaceRichSurface', 'TaskState', 'MessageView']
 /** ETS parser options for the page: its components plus the official `@Extend`, `@Styles` and build-method settings the parser requires for those declarations. */
 export const productParseOptions = { ets: {
   components: productPageComponents,
@@ -107,7 +107,14 @@ export function auditProductLayout(ts, source) {
   assert.equal(component(ts, views.arguments[1].body.statements[0].expression, file).name, 'WorkspaceSurface', 'The workspace needs its separate trusted Web surface')
   assert.equal(views.arguments[2].getText(file), '(generation: number) => generation.toString()', 'Web component identity must follow its native owner generation')
   assert.ok(workspace.elseStatement && ts.isBlock(workspace.elseStatement), 'Native history must remain in the other page branch')
-  const scroll = component(ts, workspace.elseStatement.statements[0].expression, file)
+  const nativeContent = component(ts, workspace.elseStatement.statements[0].expression, file)
+  if (nativeContent.name === 'Refresh') {
+    assert.deepEqual(nativeContent.attributes.get('height'), ["'100%'"])
+    assert.deepEqual(nativeContent.attributes.get('pullToRefresh'), ['this.canPullHistory()'])
+    assert.equal(nativeContent.node.body.statements.length, 1, 'Pull-to-refresh must wrap only the existing scroll')
+  }
+  const scroll = nativeContent.name === 'Refresh'
+    ? component(ts, nativeContent.node.body.statements[0].expression, file) : nativeContent
   assert.equal(scroll.name, 'Scroll', 'Page content must retain one history viewport')
   assert.deepEqual(scroll.attributes.get('scrollable'), ['ScrollDirection.Vertical'])
   assert.deepEqual(scroll.attributes.get('height'), ["'100%'"], 'History must fill exactly its remaining viewport')

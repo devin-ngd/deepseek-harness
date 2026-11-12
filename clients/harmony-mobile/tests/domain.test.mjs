@@ -3,6 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { SemanticPhone } from '../.build/semantic-phone.js'
+import { nativeChatRows } from '../.build/native-chat-presentation.js'
 import { PhoneCore } from '../.build/phone-core.js'
 import { decodeAction, decodeRich, decodeDomain } from '../.build/domain.js'
 import { richFixture } from '../.build/fixtures.js'
@@ -16,6 +17,32 @@ const snapshot = events => ({ type: 'snapshot', header, cursor: events.at(-1)?.s
 const item = (payload, cursor = 0, kind = 'reset') => ({ protocol: 'dsh-mobile-wire/1', mode: 'fixed-replay', ...owner, instance: 'fixture-generation', relayCursor: cursor, kind, payload })
 const evt = (type, data, seq, extra = {}) => ({ type, data, seq, time: 1791634759000 + seq, ...extra })
 const assistant = (seq, content, messageId = 'demo-message', extra = {}) => evt('assistant/message', { turn: 1, step: 1, message: { id: messageId, role: 'assistant', content, source: { kind: 'llm' } }, stream: [] }, seq, { surfaceOp: 'append', ...extra })
+
+test('native chat preserves prose around a standard Rich marker as collapsed process text', () => {
+  const model = new SemanticPhone(owner, limits, 256)
+  const marker = '```rich-inline\n{"blockId":"briefing-block"}\n```'
+  const text = 'Collected observations.\n\n' + marker + '\n\nChecked all measurements.'
+  model.accept(item(snapshot([assistant(0, [{ type: 'text', text }])])))
+  assert.deepEqual(model.view.messages[0].rich.map(reference => reference.blockId), ['briefing-block'])
+  assert.deepEqual(nativeChatRows(model.view.messages, 'demo-message'), [{
+    id: 'demo-message', role: 'assistant', text: '', processKey: 'turn-1',
+    processText: 'Collected observations.\n\n\n\nChecked all measurements.',
+  }])
+})
+
+test('native chat adds a same-turn process disclosure when its earlier page arrives', () => {
+  const model = new SemanticPhone(owner, limits, 256)
+  const process = assistant(0, [{ type: 'text', text: 'Collected observations.' }], 'earlier-message')
+  const result = assistant(1, [{ type: 'text', text: '```rich-inline\n{"blockId":"briefing-block"}\n```' }])
+  model.accept(item({ ...snapshot([result]), hasMore: true }))
+  assert.deepEqual(nativeChatRows(model.view.messages, 'demo-message'), [{ id: 'demo-message', role: 'assistant', text: '' }])
+  assert.equal(model.history({ protocol: 'dsh-mobile-read/1', sessionId: owner.sessionId,
+    throughSeq: 1, beforeSeq: 1, hasMore: false, records: [{ type: 'event', event: process }] }), true)
+  assert.deepEqual(nativeChatRows(model.view.messages, 'demo-message'), [{
+    id: 'demo-message', role: 'assistant', text: '', processKey: 'turn-1', processText: 'Collected observations.',
+  }])
+  assert.equal(model.view.cursor, 1)
+})
 
 test('actual recorded Session projects messages, rich references, tool completion and cancelled turn', () => {
   const model = new SemanticPhone(owner, limits, 256)

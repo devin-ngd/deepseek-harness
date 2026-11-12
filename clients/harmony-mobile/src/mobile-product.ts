@@ -88,13 +88,67 @@ export class MobileProduct {
     this.following = (async () => { try { for await (const view of core.follow(controller.signal)) { void view; if (this.core !== core || this.closed) return; this.emit(); this.scheduleRich(core) } } catch (error) { if (!controller.signal.aborted && !this.closed) { this.error = error instanceof TransportError ? error.code : 'stream-unavailable'; this.emit() } } })(); this.emit() }); this.selectionTail = operation.then(() => {}, () => {}); await operation
   }
   private requireCore(): PhoneCore { if (this.core === undefined || this.closed) throw new Error('product selection required'); return this.core }
+  /** Fetch and prepend one page for the current read owner without moving the live cursor. */
+  async loadOlder(authority: object, fetchPage: (beforeSeq: number, throughSeq: number) => Promise<unknown>): Promise<boolean> {
+    this.allowed(authority)
+    const core = this.requireCore(), model = core.model
+    if (!model.view.hasMore) return false
+    const beforeSeq = model.firstSeq, throughSeq = model.view.cursor
+    const value = jsonPayload(await fetchPage(beforeSeq, throughSeq)), page = object(value)
+    this.allowed(authority)
+    if (this.core !== core || model.firstSeq !== beforeSeq) throw new TransportError('cancelled')
+    if (page.beforeSeq !== beforeSeq || page.throughSeq !== throughSeq) throw new TransportError('scope-denied')
+    const loaded = model.history(value)
+    if (loaded) {
+      this.emit()
+      this.scheduleRich(core)
+    }
+    return loaded
+  }
   /** @param authority - native user intent. @param requestId - stable intent identity. @param text - composer text. @returns original canonical receipt; uncertainty is displayed without automatic re-dispatch. */
   async submit(authority: object, requestId: string, text: string): Promise<JsonValue> { this.allowed(authority); try { return await this.requireCore().submit(requestId, text) } finally { this.emit() } }
   /** @param authority - native receipt lookup. @param requestId - original stable intent. @returns read-only reconciliation, never a submit retry. */
   async receipt(authority: object, requestId: string): Promise<JsonValue> { this.allowed(authority); const value = await this.requireCore().receipt(requestId); this.emit(); return value }
   /** @param authority - explicit native cancellation decision. @returns after canonical cancellation acknowledgment. */
   async cancel(authority: object): Promise<void> { this.allowed(authority); await this.requireCore().cancel(); this.emit() }
-  private scheduleRich(core: PhoneCore): void { const version = this.richVersion; this.richTail = this.richTail.then(async () => { const current = () => this.core === core && !this.closed && this.connection === 'connected' && version === this.richVersion; if (!current()) return; const reference = core.model.view.messages.flatMap(message => message.rich)[0]; if (reference === undefined) return; const old = this.richMount, next = old === null ? await core.mount(reference) : { ...old, snapshot: core.model.richSnapshot(await core.request('rich.snapshot', { mountId: old.mountId }), reference) }; if (!current()) { if (old === null && this.connection === 'connected' && !this.closed) await core.request('rich.dispose', { mountId: next.mountId }); return }; this.richMount = next; this.emit() }).catch(error => { void error; if (!this.closed && version === this.richVersion && this.core === core) { this.error = 'rich-unavailable'; this.emit() } }) }
+  /** @param authority - the native selection owner. @returns after refreshing an existing Rich mount, or immediately if no mount is active. */
+  async refreshMountedRich(authority: object): Promise<void> {
+    this.allowed(authority)
+    if (this.core === undefined || this.richMount === null || this.connection !== 'connected') return
+    this.scheduleRich(this.core)
+    await this.richTail
+  }
+  private scheduleRich(core: PhoneCore): void {
+    const version = this.richVersion
+    const current = () => this.core === core && !this.closed && this.connection === 'connected' && version === this.richVersion
+    this.richTail = this.richTail.then(async () => {
+      if (!current()) return
+      const reference = core.model.view.messages.flatMap(message => message.rich).at(-1)
+      const previous = this.richMount
+      if (previous !== null && (reference === undefined || previous.snapshot.scope.messageId !== reference.messageId
+          || previous.snapshot.scope.blockId !== reference.blockId)) {
+        this.richMount = null
+        this.emit()
+        await core.request('rich.dispose', { mountId: previous.mountId })
+        if (!current()) return
+      }
+      if (reference === undefined) return
+      const old = this.richMount
+      const next = old === null ? await core.mount(reference) : {
+        ...old, snapshot: core.model.richSnapshot(await core.request('rich.snapshot', { mountId: old.mountId }), reference),
+      }
+      if (!current()) {
+        if (old === null && this.connection === 'connected' && !this.closed) await core.request('rich.dispose', { mountId: next.mountId })
+        return
+      }
+      this.richMount = next
+      if (this.error === 'rich-unavailable') this.error = ''
+      this.emit()
+    }).catch(error => {
+      void error
+      if (current()) { this.error = 'rich-unavailable'; this.emit() }
+    })
+  }
   /** @param raw - untrusted Web message from the native-bound renderer port. @returns scoped reply; task/selection/credential/host operations have no entry. */
   async richRequest(raw: string): Promise<string> { if (new TextEncoder().encode(raw).length > this.policy.domain.maxBytes) throw new Error('rich packet capacity'); const packet = object(JSON.parse(raw)); if (this.failed || this.closed || Object.keys(packet).sort().join(',') !== 'id,kind,operation,payload' || packet.kind !== 'rich.request' || !['rich.snapshot', 'rich.saveDraft', 'rich.invoke', 'rich.status'].includes(String(packet.operation)) || this.richMount === null || this.connection !== 'connected') throw new Error('rich request denied'); const payload = object(packet.payload); if (payload.mountId !== this.richMount.mountId) throw new Error('rich scope denied'); const core = this.requireCore(), version = this.richVersion, mountId = this.richMount.mountId, idText = string(packet.id, 128), result = await core.request(packet.operation as MobileOperation, payload); if (this.closed || this.core !== core || version !== this.richVersion || this.richMount?.mountId !== mountId) throw new TransportError('stale-mount'); this.scheduleRich(core); return JSON.stringify(jsonPayload({ kind: 'rich.reply', id: idText, value: result })) }
   private async stopSelection(): Promise<void> { this.richVersion++; const controller = this.followAbort, following = this.following, core = this.core, mounted = this.richMount; this.core = undefined; this.followAbort = undefined; this.following = undefined; this.richMount = null; this.emit(); try { controller?.abort() } catch (error) { void error; this.failed = true }; const results = await Promise.allSettled([following, this.richTail, mounted !== null && this.connection === 'connected' && core !== undefined ? core.request('rich.dispose', { mountId: mounted.mountId }) : Promise.resolve()]); if (results.some(result => result.status === 'rejected')) { this.failed = true; throw new Error('product selection cleanup failed') } }

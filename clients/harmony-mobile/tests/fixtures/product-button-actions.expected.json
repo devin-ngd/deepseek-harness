@@ -18,6 +18,12 @@
     "onClick": "(() => this.run(() => this.createSession(row.projectId)))"
   },
   {
+    "id": "'product-process-toggle-' + key",
+    "resource": null,
+    "enabled": null,
+    "onClick": "(() => this.toggleProcess(key))"
+  },
+  {
     "id": "'product-scope-' + row.key",
     "resource": null,
     "enabled": "(!this.busy)",
@@ -26,7 +32,7 @@
   {
     "id": "'product-session-' + row.sessionId",
     "resource": null,
-    "enabled": "(this.view.connection === 'connected' && !this.busy)",
+    "enabled": "((this.view.connection === 'connected' || this.view.offlineAvailable === true) && !this.busy)",
     "onClick": "(() => this.run(() => this.openSession(row.sessionId)))"
   },
   {

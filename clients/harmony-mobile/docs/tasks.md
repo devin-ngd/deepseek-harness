@@ -1,5 +1,9 @@
 > 当前真机和桌面部署、现场结果与待验边界见[日常部署与真机边界](workspace-review.md#当前日常部署与真机边界)。
 
+- [x] 原生聊天历史分页异常修复已随 rc2.92 原位安装，原配对真机越过原失败页。[验证边界](acceptance.md)
+- [x] 桌面启用按轮分页，rc2.95 真机核对在线传输、缓存命中、断线重开简报及离线翻页。[部署与真机结果](../evidence/history-pagination-rc295-field.json)
+- [ ] 真机核对离线冷启动和加载时延。
+
 - [x] 双端原位更新 rc2.48 及配套 Harmony 包，复验原配对、原生聊天及新建页任务类型、主模型和思考强度。取消新建，手机正常退出并归还用户。[现场收据](../evidence/workspace-phone-rc248-closeout.json)
 - [x] 保留加密通道的工作区授权拒绝类别，原生显示授权指引并保留草稿。rc2.49 通过加密对照、实际模拟器拒绝和授权整轮，封存手机未签名包及桌面归档。[双端候选与对照](../evidence/workspace-grant-rc249-validation.json)
 - [x] 用 API 26 模拟器的 NetworkKit WSS 补测证书拒绝、TLS 1.3、控制文本和 512 KiB 二进制往返。验证实际 Origin 格式，恢复原测试包并清理转发。[WSS 原生对照](../evidence/workspace-native-wss-proof/validation.json)

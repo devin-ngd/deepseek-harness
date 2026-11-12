@@ -13,6 +13,7 @@ import { id } from './protocol.ts'
 import { verifyDeviceRoute, type DeviceRoute } from './device-route-protocol.ts'
 import type { ProductConnection } from './paired-product-transport.ts'
 import { deviceSessionActionSchema } from './device-session-directory.ts'
+import { deviceFollowRequest, deviceHistoryCursorSchema } from './device-carrier-protocol.ts'
 import { workspaceRequestSchema } from './workspace-protocol.ts'
 
 const route = z.object({ desktopId: z.string().min(1).max(256), profileId: z.literal('desktop'), sessionId: z.string().min(1).max(256) }).strict()
@@ -112,6 +113,11 @@ export class NativeDeviceCore implements ProductConnection {
     if (method === 'metadata') { const packet = fields(value, ['method', 'argument']); if (packet.argument !== null) throw new Error('native device metadata denied') }
     else if (method === 'select') this.selected(fields(value, ['method', 'route']).route)
     else if (method === 'request') this.selected(fields(value, ['method', 'route', 'argument']).route)
+    else if (method === 'history') {
+      const packet = fields(value, ['method', 'route', 'argument'])
+      this.selected(packet.route)
+      deviceHistoryCursorSchema.parse(packet.argument)
+    }
     else if (method === 'manage') deviceSessionActionSchema.parse(fields(value, ['method', 'action']).action)
     else if (method === 'creation-options') fields(value, ['method'])
     else if (method === 'workspace') workspaceRequestSchema.parse(fields(value, ['method', 'argument']).argument)
@@ -119,7 +125,7 @@ export class NativeDeviceCore implements ProductConnection {
     await endpoint.send(jsonPayload({ kind: 'request', id: text(idText), value }))
   }
   /** @param idText - native-owned subscriber id. @param raw - exact route/argument/resume JSON. @returns after encrypted subscription send. */
-  async follow(idText: string, raw: string): Promise<void> { if (new TextEncoder().encode(raw).length > this.policy.e2e.maxPlaintextBytes) throw new Error('native device packet capacity'); const endpoint = this.active(), value = fields(JSON.parse(raw), ['route', 'argument', 'resume']); this.selected(value.route); await endpoint.send(jsonPayload({ kind: 'follow', id: text(idText), value })) }
+  async follow(idText: string, raw: string): Promise<void> { if (new TextEncoder().encode(raw).length > this.policy.e2e.maxPlaintextBytes) throw new Error('native device packet capacity'); const endpoint = this.active(), value = deviceFollowRequest(JSON.parse(raw)); this.selected(value.route); await endpoint.send(jsonPayload({ kind: 'follow', id: text(idText), value })) }
   /** @param idText - existing subscriber/request wait. @returns after wait cancellation; a retired crypto binding has no remaining remote wait to stop. Channel cleanup remains owned by close; active send failures still reject. Accepted tasks are never cancelled implicitly. */
   async stop(idText: string): Promise<void> { if (!this.closed && this.receipt !== undefined && !this.binding.signal.aborted) await this.active().send({ kind: 'stop', id: text(idText) }) }
   /** Close this finite channel and proof client; original identity and persistent registration remain owned by native storage. */

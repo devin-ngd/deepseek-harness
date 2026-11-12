@@ -7,7 +7,7 @@ import type { WireItem, WireResume } from './wire.ts'
 import type { DomainLimits, DecodedEvent, LiveState, MessagePart } from './domain.ts'
 import { WireCursor, TransportError, jsonPayload } from './wire.ts'
 import { bounded, decodeDomain, decodeEvent, decodeRich, failureView, integer, boolean, object, parts, string, validateLimits } from './domain.ts'
-import { authoredContent, authoredFences, authoredBlockId, richMarkerIds, KNOWN_SESSION_EVENT_TYPES, MESSAGE_PROJECTION_EVENT_TYPES, SurfaceManager, SessionLogOffset, SESSION_FORMAT_VERSION, createRichSourceProjection, createRichToolSourceProjection, richProjectionHistoryStart, sha256, bytesToHex } from './upstream-domain.ts'
+import { authoredContent, authoredFences, authoredBlockId, richMarkerIds, richParts, KNOWN_SESSION_EVENT_TYPES, MESSAGE_PROJECTION_EVENT_TYPES, SurfaceManager, SessionLogOffset, SESSION_FORMAT_VERSION, createRichSourceProjection, createRichToolSourceProjection, richProjectionHistoryStart, sha256, bytesToHex } from './upstream-domain.ts'
 
 const richProjections = [createRichSourceProjection(text => bytesToHex(sha256(new TextEncoder().encode(text)))), createRichToolSourceProjection(text => bytesToHex(sha256(new TextEncoder().encode(text))))]
 const richProjectionTypes = new Set<string>(richProjections.map(projection => projection.type))
@@ -15,7 +15,7 @@ const richProjectionTypes = new Set<string>(richProjections.map(projection => pr
 /** Native-selected publication; generated HTML cannot replace it. */
 export interface RichReference { readonly sessionId: SessionId; readonly messageId: string; readonly blockId: string; readonly fallback: string }
 /** One display row retains durable message identity and rich references. */
-export interface MessageView { readonly id: string; readonly seq: number; readonly role: string; readonly parts: readonly MessagePart[]; readonly rich: readonly RichReference[] }
+export interface MessageView { readonly id: string; readonly seq: number; readonly role: string; readonly turn?: number; readonly parts: readonly MessagePart[]; readonly rich: readonly RichReference[] }
 /** Transport delivery, turn state, and rich actions are separate facts. */
 export interface PhoneView {
   readonly sessionId: SessionId; readonly desktopId: string; readonly cursor: number; readonly hasMore: boolean; readonly readOnly: boolean
@@ -219,10 +219,19 @@ export class SemanticPhone {
         }
         const remaining = part.text.slice(at), markers = richMarkerIds(remaining)
         for (const blockId of markers) rich.push({ sessionId: this.owner.sessionId, messageId: entry.messageId, blockId, fallback: 'rich-block-pending' })
-        if (remaining.trim() && markers.length === 0) rendered.push({ kind: 'text', text: remaining })
+        let text = remaining
+        if (markers.length > 0) {
+          const split = richParts(remaining)
+          // A marker accepted by the native reader must not reappear as prose.
+          text = split !== null && split.filter(item => item.kind === 'rich').length === markers.length
+            ? split.flatMap(item => item.kind === 'text' ? [item.text] : []).join('')
+            : ''
+        }
+        if (text.trim()) rendered.push({ kind: 'text', text })
       }
       const role = entry.role === 'user' && (object(data.source).kind !== 'user' || richDispatch(data, rendered, messages)) ? 'context' : entry.role ?? 'unsupported'
-      messages.push({ id: entry.messageId, seq: event.seq, role, parts: rendered, rich })
+      const turn = event.type === 'assistant/message' && typeof data.turn === 'number' ? data.turn : undefined
+      messages.push({ id: entry.messageId, seq: event.seq, role, ...(turn === undefined ? {} : { turn }), parts: rendered, rich })
     }
     if (this.admission === 'outcome_unknown') task = this.admission
     let liveText = ''

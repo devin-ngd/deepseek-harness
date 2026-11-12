@@ -13,8 +13,9 @@ import { NativePorts, NativePrimitives, NativeRelayBudgets } from '../paired/Pai
 export interface NativeDeviceCrypto { signer: { publicSpki: string; sign(bytes: Uint8Array): Promise<Uint8Array> }; primitives: NativePrimitives }
 export interface NativeDeviceNetwork { readonly ports: NativePorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
 export interface NativeDeviceForegroundSelection { binding: string | null; sessionId: string }
+export interface DeviceHistoryStorage { readonly maxBytes: number; readonly maxSessions: number; read(maxBytes: number): Promise<string | null>; write(raw: string): Promise<void>; clear(): Promise<void> }
 export declare class NativeDeviceProductFacade {
-  constructor(authority: object, policy: string, identityAlias: string, host: string, routingExpiresAt: number, relay: NativeRelayBudgets, storage: ProductStorage, crypto: NativeDeviceCrypto, scheduler: ProductScheduler, clock: () => number, acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, publish: (view: string) => void, catalogRefreshMs: number, routeStorage?: ProductStorage, pairedConnection?: boolean, foregroundSelection?: NativeDeviceForegroundSelection)
+  constructor(authority: object, policy: string, identityAlias: string, host: string, routingExpiresAt: number, relay: NativeRelayBudgets, storage: ProductStorage, crypto: NativeDeviceCrypto, scheduler: ProductScheduler, clock: () => number, acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, publish: (view: string) => void, catalogRefreshMs: number, routeStorage?: ProductStorage, pairedConnection?: boolean, foregroundSelection?: NativeDeviceForegroundSelection, historyStorage?: DeviceHistoryStorage)
   verifyStorageRecovery(expected: string): Promise<string>
   bootStatus(): Promise<void>
   static startupDiagnostic(error: Error, stage: string): string
@@ -35,6 +36,7 @@ export declare class NativeDeviceProductFacade {
   savedPairing(confirmed: boolean): Promise<string>
   connect(networkApproved: boolean): Promise<void>
   select(session: string): Promise<void>
+  loadOlder(): Promise<'loaded' | 'empty' | 'limit'>
   refresh(): Promise<void>
   manage(raw: string): Promise<string>
   creationOptions(): Promise<string>

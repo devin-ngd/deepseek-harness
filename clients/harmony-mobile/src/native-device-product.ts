@@ -7,7 +7,11 @@ import { DeviceBindingClient } from './device-binding-client.ts'
 import { deviceBindingSchema, deviceBindingOfferSchema, deviceRelayPairId, type DeviceBinding, type DeviceBindingOffer } from './device-binding-protocol.ts'
 import { DeviceBoundMobileProduct, type DeviceProductConnection, type DeviceMobileView } from './mobile-device-product.ts'
 import { DevicePhoneSession } from './device-phone-session.ts'
+import { nativeChatRows } from './native-chat-presentation.ts'
 import { DeviceProductRpc } from './device-product-rpc.ts'
+import { DeviceHistoryCache, deviceHistoryScope, type DeviceHistoryStorage, type DeviceSessionHistory } from './device-history-cache.ts'
+import { SemanticPhone } from './semantic-phone.ts'
+import { id } from './protocol.ts'
 import { NativeDeviceCore } from './native-device-bridge.ts'
 import { parseProductPolicy } from './native-product-facade.ts'
 import type { MobileProductPolicy, MobileProductView } from './mobile-product.ts'
@@ -16,7 +20,7 @@ import type { DeviceBindingStorage } from '../desktop-plugin/src/device-binding.
 import { sessionCreationOptionsSchema } from './session-creation.ts'
 import { workspaceRequestSchema, workspaceResponseSchema, type WorkspaceRequest } from './workspace-protocol.ts'
 import { workspaceDiagnosticFailure, workspaceDiagnosticOperation } from './workspace-diagnostic.ts'
-import { TransportError } from './wire.ts'
+import { jsonPayload, TransportError } from './wire.ts'
 import { readWorkspaceBytes } from './workspace-bytes.ts'
 import { deviceWorkspaceOrigin } from './workspace-origin.ts'
 import { prepareWorkspace } from './workspace-prepare.ts'
@@ -27,7 +31,7 @@ import { fields } from './link-protocol.ts'
 import { DeviceRouteOwner } from './device-route-owner.ts'
 import { ProductRouteStorage } from './product-route-storage.ts'
 import { deviceRouteSchema } from './device-route-protocol.ts'
-import { deviceSessionDirectory, deviceSessionActionSchema, deviceSessionManagedSchema } from './device-session-directory.ts'
+import { deviceSessionDirectory, deviceSessionActionSchema, deviceSessionManagedSchema, type DeviceSessionRow } from './device-session-directory.ts'
 
 /** Existing native owner acquires original-key crypto and verified WSS; open is separate so receipt validation precedes socket opening. */
 export interface NativeDeviceNetwork { readonly ports: PairedRelayPorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
@@ -37,7 +41,7 @@ export interface NativeDeviceCrypto { readonly signer: P256IdentitySigner; reado
 export interface NativeDeviceForegroundSelection { binding: string | null; sessionId: string }
 /** One actual native page composition. Default-disabled construction and boot acquire no network. */
 export class NativeDeviceProductFacade {
-  private readonly policy: MobileProductPolicy
+  private readonly policy: MobileProductPolicy & { readonly pagedHistory?: boolean | undefined }
   private readonly storage: DeviceBindingStorage
   private client: DeviceBindingClient | undefined
   private device: DeviceBoundMobileProduct | undefined
@@ -56,14 +60,23 @@ export class NativeDeviceProductFacade {
   private catalogError = ''
   private readonly routeStorage: ProductRouteStorage | undefined
   private readonly routes: DeviceRouteOwner | undefined
+  private readonly historyCache: DeviceHistoryCache | undefined
+  private bindingRecord: DeviceBinding | undefined
+  private cachedRows: readonly DeviceSessionRow[] = []
+  private offline: { readonly sessionId: string; readonly model: SemanticPhone; readonly history: DeviceSessionHistory; mountKey: string; mountId: string } | undefined
+  private offlineVersion = 0
+  private offlineMountSequence = 0
+  private offlineRestore: Promise<void> | undefined
   private startupFailure: DeviceStartupFailure | undefined
   private recoveryVerified = false
   private hasRoute = false
   private routeDeadline = 0
   private readonly routingLeaseMs: number
   /** @param authority - exact native UI owner. @param policyJson - existing default-disabled product/domain limits. @param identityAlias - original selected HUKS alias. @param host - approved existing relay host. @param routingExpiresAt - independent public relay directory deadline. @param relay - existing control/E2E capacities. @param publicStorage - separate app-private device public file. @param crypto - original native signer and maintained backend. @param scheduler - native timers. @param clock - trusted native clock. @param acquire - original native WSS acquisition, called only on connect. @param publish - sanitized original page DTO sink. @param foregroundSelection - in-memory selection shared with the next facade of the same native page. */
-  constructor(private readonly authority: object, policyJson: string, private readonly identityAlias: string, private readonly host: string, private readonly routingExpiresAt: number, private readonly relay: PairedRelayPolicy, private readonly publicStorage: ProductTrustStorage, private readonly crypto: NativeDeviceCrypto, private readonly scheduler: CleanupScheduler, private readonly clock: () => number, private readonly acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, private readonly publish: (view: string) => void, private readonly catalogRefreshMs: number, routeStorage?: ProductTrustStorage, private readonly pairedConnection = false, private readonly foregroundSelection: NativeDeviceForegroundSelection = { binding: null, sessionId: '' }) {
+  constructor(private readonly authority: object, policyJson: string, private readonly identityAlias: string, private readonly host: string, private readonly routingExpiresAt: number, private readonly relay: PairedRelayPolicy, private readonly publicStorage: ProductTrustStorage, private readonly crypto: NativeDeviceCrypto, private readonly scheduler: CleanupScheduler, private readonly clock: () => number, private readonly acquire: (registration: string, diagnostic?: (stage: string) => void) => Promise<NativeDeviceNetwork>, private readonly publish: (view: string) => void, private readonly catalogRefreshMs: number, routeStorage?: ProductTrustStorage, private readonly pairedConnection = false, private readonly foregroundSelection: NativeDeviceForegroundSelection = { binding: null, sessionId: '' }, historyStorage?: DeviceHistoryStorage) {
     this.policy = parseProductPolicy(policyJson)
+    if (historyStorage !== undefined) this.historyCache = new DeviceHistoryCache(historyStorage, async raw =>
+      crypto.primitives.encode(await crypto.primitives.hash(new TextEncoder().encode(raw))))
     if (this.policy.workspace !== undefined && (this.policy.workspace.maxPending + this.policy.transport.maxPending > relay.maxProofs
       || this.policy.workspace.maxPacketBytes > relay.e2e.maxPlaintextBytes)) throw new Error('native workspace exceeds device carrier capacity')
     this.routingLeaseMs = routingExpiresAt - clock()
@@ -96,10 +109,43 @@ export class NativeDeviceProductFacade {
   private empty(error = ''): void { this.publish(JSON.stringify({ pairing: error === '' ? 'unpaired' : 'blocked', connection: 'disconnected', error, projects: [], sessions: [], selected: '', task: 'idle', readOnly: true, messages: [], liveText: '', richJson: '' })) }
   private project(view: DeviceMobileView): void {
     if (view.state !== 'connected') this.stopCatalog()
-    const session = view.content === '' ? {} : JSON.parse(view.content)
-    this.publish(JSON.stringify({ ...session, pairing: 'paired', connectionDiagnostic: deviceConnectionDiagnosticText(view.diagnostic), connection: view.state === 'connected' ? 'connected' : view.state, error: view.error || this.catalogError || session.error || '', projects: view.projects, manageable: view.manageable, sessions: view.sessions, selected: view.selected?.sessionId ?? '', task: session.task ?? 'idle', readOnly: session.readOnly ?? true, messages: session.messages ?? [], liveText: session.liveText ?? '', richJson: session.richJson ?? '' }))
+    if (view.state === 'connected' && view.selected !== null && view.content !== '') this.offline = undefined
+    const offline = this.offline
+    const session = offline === undefined ? view.content === '' ? {} : JSON.parse(view.content) : this.offlineContent(offline)
+    const offlineAvailable = this.cachedRows.length > 0
+    this.publish(JSON.stringify({ ...session, pairing: 'paired', connectionDiagnostic: deviceConnectionDiagnosticText(view.diagnostic), connection: view.state === 'connected' ? 'connected' : view.state, error: view.error || this.catalogError || session.error || '', projects: view.state === 'connected' ? view.projects : [], manageable: view.state === 'connected' && view.manageable, sessions: view.state === 'connected' ? view.sessions : this.cachedRows, offlineAvailable, selected: offline?.sessionId ?? view.selected?.sessionId ?? '', task: session.task ?? 'idle', readOnly: session.readOnly ?? true, messages: session.messages ?? [], liveText: session.liveText ?? '', richJson: session.richJson ?? '' }))
+    if (view.state !== 'connected' && offline === undefined && this.offlineRestore === undefined && !this.closed && !this.revoked
+      && this.foregroundSelection.binding === this.cached && this.foregroundSelection.sessionId !== '') {
+      const pending = this.restoreOffline(this.foregroundSelection.sessionId).catch(error => { void error }).finally(() => { if (this.offlineRestore === pending) this.offlineRestore = undefined })
+      this.offlineRestore = pending
+    }
   }
-  private sessionView(view: MobileProductView): string { return JSON.stringify({ task: view.transcript?.task ?? 'idle', readOnly: view.transcript?.readOnly ?? true, error: view.error, messages: view.transcript?.messages.filter(message => message.role === 'user' || message.role === 'assistant').map(message => ({ id: message.id, role: message.role, text: message.parts.flatMap(part => part.kind === 'text' || part.kind === 'reasoning' ? [part.text] : []).join('\n') })) ?? [], liveText: view.transcript?.liveText ?? '', richJson: view.rich === null ? '' : JSON.stringify(view.rich) }) }
+  private offlineContent(offline: NonNullable<NativeDeviceProductFacade['offline']>): Record<string, unknown> {
+    const transcript = offline.model.view, snapshot = transcript.rich.at(-1)
+    const key = snapshot === undefined ? '' : JSON.stringify([snapshot.scope.messageId, snapshot.scope.blockId])
+    if (key !== offline.mountKey) { offline.mountKey = key; offline.mountId = 'offline-' + ++this.offlineMountSequence }
+    const rich = snapshot === undefined ? null : { mountId: id<'rich-inline-mount'>(offline.mountId), snapshot }
+    const localMore = transcript.hasMore && offline.history.older(offline.model.firstSeq, transcript.cursor, true) !== undefined
+    return { ...JSON.parse(this.sessionView({ transcript, error: '', rich })), historyOffline: true,
+      historyHasMore: localMore, historyCachedEnd: transcript.hasMore && !localMore }
+  }
+  private async restoreOffline(sessionId: string): Promise<void> {
+    const version = ++this.offlineVersion, binding = this.bindingRecord, device = this.device, cache = this.historyCache
+    if (binding === undefined || device === undefined || cache === undefined || !this.cachedRows.some(row => row.sessionId === sessionId)) throw new Error('offline Session unavailable')
+    const history = await cache.open(deviceHistoryScope(binding, sessionId))
+    if (this.closed || this.revoked || version !== this.offlineVersion || device.view.state === 'connected') throw new TransportError('cancelled')
+    const model = new SemanticPhone({ desktopId: id<'mobile-desktop'>(binding.desktopId), deviceId: id<'mobile-device'>(binding.deviceId), sessionId: id<'SessionId'>(sessionId) }, this.policy.domain, this.policy.duplicateCap)
+    if (!history.restore(model)) throw new Error('offline Session unavailable')
+    this.offline = { sessionId, model, history, mountKey: '', mountId: '' }
+    this.project(device.view)
+  }
+  private sessionView(view: Pick<MobileProductView, 'transcript' | 'error' | 'rich'>, historySyncing = false): string {
+    const transcript = view.transcript
+    return JSON.stringify({ task: historySyncing ? 'idle' : transcript?.task ?? 'idle', readOnly: historySyncing || transcript?.readOnly !== false, error: view.error,
+      messages: nativeChatRows(transcript?.messages.filter(message => message.role === 'user' || message.role === 'assistant') ?? [], view.rich?.snapshot.scope.messageId),
+      ...(this.policy.pagedHistory === true ? { historyHasMore: !historySyncing && transcript?.hasMore === true } : {}), historySyncing,
+      liveText: transcript?.liveText ?? '', richJson: view.rich === null ? '' : JSON.stringify(view.rich) })
+  }
   private install(_record: DeviceBinding, client: DeviceBindingClient): DeviceBoundMobileProduct {
     if (this.device !== undefined) throw new Error('native device product already installed')
     this.client = client
@@ -116,7 +162,7 @@ export class NativeDeviceProductFacade {
   async boot(): Promise<void> {
     this.local(this.authority)
     let stage: DeviceStartupStage = 'binding-read', verified = false
-    try { const raw = await this.storage.read(); if (raw === null) { this.empty(); return }; const value = deviceBindingSchema.parse(JSON.parse(raw)), client = this.makeClient(value), checked = await client.load(this.authority); this.local(this.authority); verified = true; const device = this.install(checked, client); stage = 'route-history-restore'; const route = this.pairedConnection ? null : await this.routes?.current(this.authority); this.local(this.authority); this.hasRoute = route != null; this.routeDeadline = route?.offer.expiresAt ?? 0; this.project(device.view) }
+    try { const raw = await this.storage.read(); if (raw === null) { this.empty(); return }; const value = deviceBindingSchema.parse(JSON.parse(raw)), client = this.makeClient(value), checked = await client.load(this.authority); this.local(this.authority); verified = true; this.bindingRecord = checked; const device = this.install(checked, client); stage = 'route-history-restore'; const route = this.pairedConnection ? null : await this.routes?.current(this.authority); this.local(this.authority); this.hasRoute = route != null; this.routeDeadline = route?.offer.expiresAt ?? 0; this.cachedRows = await this.historyCache?.sessions(checked) ?? []; this.local(this.authority); this.project(device.view) }
     catch (error) { const failure = deviceStartupFailure(error, stage, verified); this.startupFailure = failure; this.hasRoute = false; this.routeDeadline = 0; if (!this.closed) this.publish(JSON.stringify({ pairing: failure.bindingVerified ? 'paired' : 'blocked', connection: 'blocked', error: failure.bindingVerified ? 'device-route-history-unavailable' : 'device-binding-unavailable', startupDiagnostic: deviceStartupDiagnosticText(failure, stage), projects: [], sessions: [], selected: '', task: 'idle', readOnly: true, messages: [], liveText: '', richJson: '' })); throw failure }
   }
   private async connection(registration: DeviceBinding, proof: DeviceBindingClient, lifetime: AbortSignal): Promise<DeviceProductConnection> {
@@ -147,16 +193,48 @@ export class NativeDeviceProductFacade {
         authentication: 'native', ...(context === undefined ? {} : { route: context }), binding: network.binding,
         failure: fallback => network.connectionFailure(fallback, 'active-channel'),
         readyTicket: async () => JSON.parse(network.ticketJson()),
-        catalog: async () => deviceSessionDirectory(await calls.call({ method: 'metadata', argument: null }), registration.desktopId),
+        catalog: async () => {
+          const directory = deviceSessionDirectory(await calls.call({ method: 'metadata', argument: null }), registration.desktopId)
+          await this.historyCache?.rememberDirectory(registration, directory.sessions)
+          this.cachedRows = await this.historyCache?.sessions(registration) ?? []
+          if (this.offline !== undefined && !directory.sessions.some(row => row.sessionId === this.offline?.sessionId)) {
+            this.offlineVersion++
+            this.offline = undefined
+            this.foregroundSelection.sessionId = ''
+          }
+          return directory
+        },
         creationOptions: async () => sessionCreationOptionsSchema.parse(await calls.call({ method: 'creation-options' })),
         workspace: (argument, _ticket, signal) => calls.call({ method: 'workspace', argument }, signal),
         manage: async action => deviceSessionManagedSchema.parse(await calls.call({ method: 'manage', action })).sessionId,
-        select: async (route, ticket, publish, lifetime) => {
-        const result = fields(await calls.call({ method: 'select', route }), ['selected'])
+        select: async (route, ticket, publish, lifetime, row) => {
+        const history = await this.historyCache?.open(deviceHistoryScope(registration, route.sessionId))
+        history?.bindRow(row)
+        lifetime.throwIfAborted()
+        const preview = history?.preview(new SemanticPhone({ desktopId: id<'mobile-desktop'>(route.desktopId), deviceId: id<'mobile-device'>(registration.deviceId), sessionId: id<'SessionId'>(route.sessionId) }, this.policy.domain, this.policy.duplicateCap))
+        let previewPending = preview?.messages.some(message => message.role === 'user' || message.role === 'assistant') === true
+        if (previewPending && preview !== undefined) {
+          publish(this.sessionView({ transcript: preview, error: '', rich: null }, true))
+          console.info('DSH_DEVICE_HISTORY=opening-preview at=' + this.clock())
+        }
+        const result = fields(await calls.call({ method: 'select', route }, lifetime), ['selected'])
         if (JSON.stringify(result.selected) !== JSON.stringify(route)) throw new Error('native device selection acknowledgement denied')
         // The Host may reuse the peer and its command cache when reopening the same Session.
         const sessionPolicy = { ...this.policy, commandPrefix: 'device-' + network.binding.id + ':' + ++selectionGeneration }
-        const session = new DevicePhoneSession(route, registration, ticket, network.binding, proof, this.authority, sessionPolicy, calls, this.scheduler, this.clock, view => publish(this.sessionView(view)), context)
+        lifetime.throwIfAborted()
+        const session = new DevicePhoneSession(route, row, registration, ticket, network.binding, proof, this.authority, sessionPolicy, calls, this.scheduler, this.clock, view => {
+          if (previewPending) {
+            if (view.transcript?.connection !== 'connected' && view.error === '') return
+            previewPending = false
+            if (view.transcript?.connection === 'connected') console.info('DSH_DEVICE_HISTORY=opening-verified at=' + this.clock())
+          }
+          if (view.rich !== null) {
+            try { history?.rememberRich(jsonPayload(view.rich.snapshot), this.policy.domain.maxRichBlocks) }
+            catch (error) { void error; console.info('DSH_DEVICE_HISTORY=rich-cache-failed') }
+          }
+          if (history?.hint !== null && history?.hint !== undefined && this.device?.view.sessions.some(item => item.sessionId === row.sessionId)) this.cachedRows = [...this.cachedRows.filter(item => item.sessionId !== row.sessionId), { ...row, running: false }]
+          publish(this.sessionView(view))
+        }, context, history)
         try { await session.start(); if (lifetime.aborted) throw new Error('native device selection retired'); this.selected = session; return { richRequest: raw => session.richRequest(raw), close: async () => { if (this.selected === session) this.selected = undefined; await session.close() } } }
         catch (error) { await session.close(); throw error }
       }, close }
@@ -182,7 +260,7 @@ export class NativeDeviceProductFacade {
   /** @param raw - strict public device receipt. @returns pure public preview; activation still verifies the original identity and signature. */
   preview(raw: string): string { if (new TextEncoder().encode(raw).length > this.policy.trustMaxBytes) throw new Error('native device preview capacity'); return JSON.stringify(NativeDeviceProductFacade.previewObject(deviceBindingSchema.parse(JSON.parse(raw)))) }
   /** @param raw - signed confirmed receipt. @param compared - explicit native fingerprint/scope decision. @param networkApproved - native relay disclosure consent. @returns after original public receipt persistence only; no socket is opened. */
-  async pairWithConnection(raw: string, compared: boolean, networkApproved: boolean): Promise<void> { this.local(this.authority); if (!networkApproved) throw new Error('native device network disclosure not approved'); const value = deviceBindingSchema.parse(JSON.parse(raw)), client = this.client ?? this.makeClient(value); await client.accept(this.authority, raw, compared); this.local(this.authority); this.connectionApproved = true; if (this.device === undefined) this.project(this.install(await client.load(this.authority), client).view) }
+  async pairWithConnection(raw: string, compared: boolean, networkApproved: boolean): Promise<void> { this.local(this.authority); if (!networkApproved) throw new Error('native device network disclosure not approved'); const value = deviceBindingSchema.parse(JSON.parse(raw)), client = this.client ?? this.makeClient(value); await client.accept(this.authority, raw, compared); this.local(this.authority); this.connectionApproved = true; if (this.device === undefined) { const binding = await client.load(this.authority); this.bindingRecord = binding; this.project(this.install(binding, client).view) } }
   /** @param confirmed - explicit native saved-binding choice. @returns existing public receipt without changing identity or opening a connection. */
   async savedPairing(confirmed: boolean): Promise<string> { this.local(this.authority); if (!confirmed) throw new Error('native saved device decision required'); const raw = await this.storage.read(); if (raw === null) throw new Error('native device not bound'); return raw }
   /** @param networkApproved - current native page's explicit host decision, never inferred from a saved binding. @returns after a fresh channel proof and reopening the last selected Session when still visible. Only reads resume; no model message or mutation is replayed. */
@@ -193,7 +271,7 @@ export class NativeDeviceProductFacade {
     if (binding !== null && binding === this.cached && binding === this.foregroundSelection.binding
       && sessionId !== '' && sessionId === this.foregroundSelection.sessionId) {
       if (this.device.view.sessions.some(row => row.sessionId === sessionId)) await this.device.select(this.authority, sessionId)
-      else this.foregroundSelection.sessionId = ''
+      else { this.foregroundSelection.sessionId = ''; this.offline = undefined; this.project(this.device.view) }
     }
   }
   private scheduleCatalog(): void {
@@ -212,18 +290,60 @@ export class NativeDeviceProductFacade {
     this.local(this.authority)
     const device = this.device, binding = this.cached
     if (device === undefined) throw new Error('native device not bound')
+    if (device.view.state !== 'connected') {
+      await this.restoreOffline(sessionId)
+      if (this.closed || this.revoked || binding === null || binding !== this.cached || this.offline?.sessionId !== sessionId) throw new TransportError('cancelled')
+      this.foregroundSelection.binding = binding
+      this.foregroundSelection.sessionId = sessionId
+      return
+    }
+    this.offlineVersion++
+    this.offline = undefined
     await device.select(this.authority, sessionId)
     if (!this.closed && !this.revoked && binding !== null && binding === this.cached && device.view.selected?.sessionId === sessionId) {
       this.foregroundSelection.binding = binding
       this.foregroundSelection.sessionId = sessionId
     }
   }
+  /** Load one older page for the selected device Session. Size limits leave visible history intact. */
+  async loadOlder(): Promise<'loaded' | 'empty' | 'limit'> {
+    this.local(this.authority)
+    const offline = this.offline
+    if (offline !== undefined) {
+      const page = offline.history.older(offline.model.firstSeq, offline.model.view.cursor, true)
+      if (page === undefined) return 'empty'
+      try {
+        if (!offline.model.history(page)) return 'empty'
+        offline.history.restoreRich(offline.model)
+        if (this.offline !== offline || this.device === undefined) throw new TransportError('cancelled')
+        this.project(this.device.view)
+        return 'loaded'
+      } catch (error) {
+        if (error instanceof TransportError && ['history-too-large', 'domain-too-large', 'domain-window-full'].includes(error.code)) return 'limit'
+        throw error
+      }
+    }
+    const selected = this.selected
+    if (this.policy.pagedHistory !== true || selected === undefined || this.device?.view.selected?.sessionId !== selected.route.sessionId) throw new TransportError('scope-denied')
+    try { return await selected.loadOlder() ? 'loaded' : 'empty' }
+    catch (error) {
+      if (error instanceof TransportError && ['history-too-large', 'domain-too-large', 'domain-window-full'].includes(error.code)) return 'limit'
+      throw error
+    }
+  }
   /** @param raw - strict list-management intent JSON from the native page. @returns affected Session id after the desktop acknowledged it and the catalogue refreshed; selection is unchanged. */
   async manage(raw: string): Promise<string> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); return this.device.manage(this.authority, deviceSessionActionSchema.parse(JSON.parse(raw))) }
   /** @returns current desktop choices for the native new-task sheet. */
   async creationOptions(): Promise<string> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); return JSON.stringify(await this.device.creationOptions(this.authority)) }
-  /** Refresh the original native catalogue after returning from the standard workspace; no task is started. */
-  async refreshSessions(): Promise<void> { this.local(this.authority); if (this.device === undefined) throw new Error('native device not bound'); await this.device.refresh(this.authority) }
+  /** Refresh the native catalogue and its selected Session's inline Rich snapshot without replacing the selection. */
+  async refreshSessions(): Promise<void> {
+    this.local(this.authority)
+    const device = this.device, selected = this.selected
+    if (device === undefined) throw new Error('native device not bound')
+    const rich = selected !== undefined && device.view.selected?.sessionId === selected.route.sessionId
+      ? selected.refreshMountedRich() : undefined
+    await Promise.all([device.refresh(this.authority), rich])
+  }
   private async workspaceTask<T>(requestId: string, generation: number, execute: (device: DeviceBoundMobileProduct, signal: AbortSignal) => Promise<T>): Promise<T> {
     this.local(this.authority)
     if (this.device === undefined) throw new TransportError('scope-denied')
@@ -300,9 +420,9 @@ export class NativeDeviceProductFacade {
   /** @param raw - rejected rich envelope. @returns only its bounded correlation id and a refusal; no selection or Host operation occurs. */
   richRefusal(raw: string): string { const value = fields(JSON.parse(raw), ['kind', 'id', 'operation', 'payload']); if (value.kind !== 'rich.request' || typeof value.id !== 'string' || value.id.length > 128) throw new Error('native device rich refusal denied'); return JSON.stringify({ kind: 'rich.reply', id: value.id, error: true }) }
   /** @param raw - existing bounded rich SDK request. @returns scoped result from the original rich-inline owner, with no control/selection/credential entry. */
-  richRequest(raw: string): Promise<string> { if (this.device === undefined) return Promise.reject(new Error('native device not bound')); return this.device.richRequest(raw) }
+  richRequest(raw: string): Promise<string> { if (this.offline !== undefined) return Promise.resolve(this.richRefusal(raw)); if (this.device === undefined) return Promise.reject(new Error('native device not bound')); return this.device.richRequest(raw) }
   /** Store sticky phone-local revocation and disconnect; desktop and relay revocation still require their separate explicit acknowledgements. */
-  async revoke(): Promise<void> { this.local(this.authority); if (this.client === undefined) throw new Error('native device not bound'); this.revoked = true; this.hasRoute = false; this.foregroundSelection.binding = null; this.foregroundSelection.sessionId = ''; const results = await Promise.allSettled([this.client.revokeLocal(this.authority), this.routes?.retire(this.authority), this.device?.disconnect(this.authority)]); if (results.some(result => result.status === 'rejected')) throw new Error('native device local revocation outcome unknown'); this.empty('device-binding-locally-revoked') }
+  async revoke(): Promise<void> { this.local(this.authority); if (this.client === undefined) throw new Error('native device not bound'); this.revoked = true; this.offlineVersion++; this.offline = undefined; this.cachedRows = []; this.hasRoute = false; this.foregroundSelection.binding = null; this.foregroundSelection.sessionId = ''; const results = await Promise.allSettled([this.client.revokeLocal(this.authority), this.routes?.retire(this.authority), this.device?.disconnect(this.authority), this.historyCache?.clear()]); if (results.some(result => result.status === 'rejected')) throw new Error('native device local revocation outcome unknown'); this.empty('device-binding-locally-revoked') }
   /** Native foreground retirement closes network and per-Session resources, retaining public binding and original HUKS identity. */
-  async close(): Promise<void> { if (this.closed) return; this.closed = true; this.stopCatalog(); for (const request of this.workspaceRequests.values()) request.controller.abort(); await Promise.allSettled([...this.workspaceRequests.values()].map(request => request.operation)); const results = await Promise.allSettled([this.device?.close(), this.writeTail, this.publicRead, this.polling, this.routes?.close()]); this.client?.close(); const stores = await Promise.allSettled([this.publicStorage.close(), this.routeStorage?.close()]); if ([...results, ...stores].some(result => result.status === 'rejected')) throw new Error('native device product close failed') }
+  async close(): Promise<void> { if (this.closed) return; this.closed = true; this.offlineVersion++; this.offline = undefined; this.stopCatalog(); for (const request of this.workspaceRequests.values()) request.controller.abort(); await Promise.allSettled([...this.workspaceRequests.values()].map(request => request.operation)); const results = await Promise.allSettled([this.device?.close(), this.writeTail, this.publicRead, this.polling, this.offlineRestore, this.routes?.close()]); this.client?.close(); const stores = await Promise.allSettled([this.publicStorage.close(), this.routeStorage?.close(), this.historyCache?.close()]); if ([...results, ...stores].some(result => result.status === 'rejected')) throw new Error('native device product close failed') }
 }

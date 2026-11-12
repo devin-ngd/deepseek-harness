@@ -28,7 +28,7 @@ export interface DeviceProductSessionConnection {
   workspace?(request: WorkspaceRequest, ticket: DeviceConnectionTicket, signal?: AbortSignal): Promise<unknown>
   /** Optional list management; absent adapters, and desktops whose directory has no projects, reject management. @returns affected Session id. */
   manage?(action: DeviceSessionAction, ticket: DeviceConnectionTicket): Promise<string>
-  select(route: DeviceSessionRoute, ticket: DeviceConnectionTicket, publish: (value: string) => void, lifetime: AbortSignal): Promise<DeviceSessionSelection>
+  select(route: DeviceSessionRoute, ticket: DeviceConnectionTicket, publish: (value: string) => void, lifetime: AbortSignal, row: DeviceSessionRow): Promise<DeviceSessionSelection>
   close(): Promise<void>
 }
 /** A caller-owned proof is used by isolated/native adapters; native-proof connections have already verified the same signed ticket in their crypto owner. */
@@ -149,16 +149,27 @@ export class DeviceBoundMobileProduct {
     const result = this.tail.then(async () => {
       this.local(authority); const connection = this.connection, ticket = this.ticket
       if (connection === undefined || ticket === undefined) throw new Error('device mobile connection required')
-      this.current(connection, ticket); await this.refresh(authority)
-      if (!this.state.sessions.some(row => row.sessionId === sessionId)) throw new Error('device mobile Session not visible')
+      this.current(connection, ticket)
+      let row = this.state.sessions.find(candidate => candidate.sessionId === sessionId)
+      if (row === undefined) {
+        await this.refresh(authority)
+        row = this.state.sessions.find(candidate => candidate.sessionId === sessionId)
+      }
+      if (row === undefined) throw new Error('device mobile Session not visible')
       await this.retireSelection(); this.current(connection, ticket)
       if (selecting !== this.selecting || generation !== this.generation) throw new Error('device mobile selection retired')
       const route: DeviceSessionRoute = { desktopId: ticket.desktopId, profileId: 'desktop', sessionId }, controller = new AbortController()
       this.selectionLifetime = controller; this.state = { ...this.state, selected: route, content: '' }; this.emit()
-      const value = await connection.select(route, ticket, content => {
-        if (this.closed || controller.signal.aborted || selecting !== this.selecting || generation !== this.generation || this.state.selected?.sessionId !== route.sessionId || this.connection !== connection || this.ticket !== ticket || ticket.expiresAt <= this.clock()) return
-        this.state = { ...this.state, content }; this.emit()
-      }, controller.signal)
+      let value: DeviceSessionSelection
+      try {
+        value = await connection.select(route, ticket, content => {
+          if (this.closed || controller.signal.aborted || selecting !== this.selecting || generation !== this.generation || this.state.selected?.sessionId !== route.sessionId || this.connection !== connection || this.ticket !== ticket || ticket.expiresAt <= this.clock()) return
+          this.state = { ...this.state, content }; this.emit()
+        }, controller.signal, row)
+      } catch (error) {
+        if (this.selectionLifetime === controller) await this.retireSelection()
+        throw error
+      }
       if (this.closed || controller.signal.aborted || selecting !== this.selecting || generation !== this.generation || this.connection !== connection || this.ticket !== ticket) { await value.close(); throw new Error('device mobile selection retired') }
       this.selection = value
     })

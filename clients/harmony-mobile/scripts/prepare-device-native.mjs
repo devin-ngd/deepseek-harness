@@ -4,15 +4,19 @@ import {cp,readFile,writeFile,mkdir,readdir} from 'node:fs/promises'
 import {resolve,join,extname} from 'node:path'
 import {createRequire} from 'node:module'
 import {createHash} from 'node:crypto'
+import {parseArgs} from 'node:util'
 import {projectionTsconfig} from './projection-source.mjs'
-const args=process.argv.slice(2), version=args.length===2&&args[0]==='--version'?args[1]:'0.0.0-rc2.5'
-if(args.length!==0&&!(args.length===2&&args[0]==='--version')||!/^0\.0\.0-rc2\.[0-9]+$/.test(version))throw new Error('Select an explicit local rc.2 candidate version only')
+const {values}=parseArgs({options:{version:{type:'string',default:'0.0.0-rc2.5'},'paged-history':{type:'boolean'},'history-cache':{type:'boolean'}}})
+const version=values.version
+if(!/^0\.0\.0-rc2\.[0-9]+$/.test(version))throw new Error('Select an explicit local rc.2 candidate version only')
 const label=version.slice('0.0.0-'.length), source=resolve('harmony'), target=resolve('.build/native-controls-device-'+label.replaceAll('.','-'))
 await mkdir(target)
 for(const directory of ['AppScope','entry/src','hvigor']) await cp(join(source,directory),join(target,directory),{recursive:true,dereference:false,force:false,errorOnExist:true})
 for(const file of ['platform.json','build-profile.json5','hvigorfile.ts','oh-package.json5','entry/hvigorfile.ts','entry/build-profile.json5','entry/oh-package.json5']) {await mkdir(resolve(target,file,'..'),{recursive:true});await writeFile(join(target,file),await readFile(join(source,file)))}
 const appPath=join(target,'AppScope/app.json5'),app=JSON.parse(await readFile(appPath,'utf8'));app.app.bundleName='local.dsh.mobile.offlineproduct';app.app.versionName=version;app.app.versionCode=2;await writeFile(appPath,JSON.stringify(app,null,2)+'\n')
 const config=JSON.parse(await readFile('product.config.json','utf8')); if(config.enabled!==false||config.core.enabled!==false)throw new Error('source must remain disabled')
+if(values['paged-history'])config.core.pagedHistory=true
+if(values['history-cache'])config.deviceHistoryCache={maxBytes:12*1024*1024,maxSessions:8}
 Object.assign(config,{deviceBindingMode:true,deviceAutoConnect:true,deviceReconnectMs:5000,deviceRoutingTtlMs:86400000,deviceCatalogRefreshMs:5000})
 await writeFile(join(target,'entry/src/main/ets/product/ProductConfiguration.ets'),"/** Independent default-disabled device-mode candidate. */\nimport {NativeProductConfiguration} from './NativeProductOwner'\nexport const productConfiguration: NativeProductConfiguration = "+JSON.stringify({...config,core:undefined,corePolicyJson:JSON.stringify(config.core)},null,2)+'\n')
 

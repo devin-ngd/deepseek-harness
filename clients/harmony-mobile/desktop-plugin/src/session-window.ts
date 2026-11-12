@@ -37,6 +37,11 @@ export function deviceSnapshotMaxBytes(limits: E2ELimits, maxSocketFrameBytes: n
 
 /** Deployment limits include room for the carrier envelope outside the snapshot. */
 export interface SessionWindowPolicy { readonly maxMessages: number; readonly maxRecords: number; readonly maxBytes: number }
+/** Prefer short history pages while retaining the normal hard limit for a single message. */
+export interface HistoryPagePolicy extends SessionWindowPolicy {
+  readonly targetBytes: number
+  readonly turnWindow?: { readonly minMessages: number; readonly minTurns: number } | undefined
+}
 
 /** Even the smallest canonical window exceeds deployment limits; the carrier remains usable for other Sessions. */
 export class SessionWindowTooLarge extends Error {

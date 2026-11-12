@@ -59,6 +59,15 @@ test('native cache completes partial UTF-8 reads and writes before fsync and ren
   await cache.write(text); assert.equal(await cache.read(128), text)
   assert.ok(sdk.calls.indexOf('fsync') < sdk.calls.indexOf('rename')); assert.equal(sdk.fds.size, 0); assert.deepEqual([...sdk.dirs], ['/app'])
 })
+test('native cache leaves the old file readable while asynchronous persistence waits', async () => {
+  resetSdk(); const cache = new NativeCacheFile('/app', 128); await cache.write('previous')
+  const gate = Promise.withResolvers(), reached = Promise.withResolvers()
+  sdk.ioGate = async operation => { if (operation === 'fsync') { reached.resolve(); await gate.promise } }
+  const writing = cache.write('replacement')
+  try { await reached.promise; assert.equal(await cache.read(128), 'previous') }
+  finally { sdk.ioGate = null; gate.resolve(); await writing }
+  assert.equal(await cache.read(128), 'replacement')
+})
 test('native cache fsync and rename failure preserve the previous file and remove temporary files', async () => {
   for (const operation of ['fsync', 'rename']) {
     resetSdk(); const cache = new NativeCacheFile('/app', 128); await cache.write('previous')
