@@ -9,7 +9,6 @@ import { z } from 'zod'
 import { launchWebScaffold } from '../../../apps/web/tests/scaffold.ts'
 import { MemoryCredentials } from '../../../packages/credentials/authorization/tests/memory.ts'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
-import Gateway from '@deepseek-ai/dsh-api-gateway'
 import Authorization from '@deepseek-ai/dsh-authorization'
 import UserQuestions from '@deepseek-ai/dsh-user-questions'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -35,6 +34,7 @@ import { FixedIdentityProtection, fixedProtectedIdentity } from './fixed-identit
 import { id } from '../src/protocol.ts'
 import { loadProfileServices } from './profile-services.ts'
 import { WorkspaceMemoryRelay } from './workspace-memory-relay.ts'
+import { WorkspaceConsent } from '../desktop-plugin/src/workspace-consent.ts'
 
 it('device commands require fresh workspace approval after revocation and automatic recovery from room expiry', async () => {
   const world = process.env.DSH_HARMONY_WORKSPACE_WORLD; assert.ok(world)
@@ -54,7 +54,6 @@ it('device commands require fresh workspace approval after revocation and automa
     const ctx = await loadProfileServices(directory, modules ? configuration.replace('cordis:disabledCarrier', 'cordis:sharedCarrier') : configuration)
     cleanups.push(() => ctx.fiber.dispose())
     ctx.provide('profileContext', { name: 'desktop', dir: directory, patchPath: join(directory, 'patch.yml'), cwd: directory, home: directory, installAnchor: directory, startedBundles: [], overlays: [], telemetryDisabledEnv: undefined })
-    await ctx.plugin(Gateway)
     if (ctx.get('credentials') === undefined) await ctx.plugin(MemoryCredentials)
     await ctx.plugin(Authorization); await ctx.plugin(UserQuestions)
     if (modules) {
@@ -305,7 +304,29 @@ it('device commands require fresh workspace approval after revocation and automa
     await expect(recovered.workspaceClient.bootstrap(lifetime.signal)).rejects.toMatchObject({ code: 'workspace-grant-required' })
     await expect(recovered.product.call({ method: 'metadata', argument: null })).resolves.toMatchObject({ desktopId: binding.desktopId })
     expect(targetSession.snapshotEvents()).toEqual(targetBefore)
+    const questionsBeforeRemember = questions.length
+    expect((await output('workspace-remember')).publicResult).toEqual({ enabled: true, expiresAt: null })
+    expect(questions).toHaveLength(questionsBeforeRemember + 1)
+    await expect(recovered.workspaceClient.bootstrap(lifetime.signal)).resolves.toContainEqual(expect.objectContaining({ name: '__DSH_REMOTE_ACCESS__', value: expect.objectContaining({ owner: false }) }))
+    await recovered.core.close()
+    await vi.waitFor(() => expect(desktopPorts).toHaveBeenCalledTimes(3), { timeout: 8000 })
+    const remembered = await connectPhone('remembered-reconnect')
+    expect(remembered.core.binding.id).not.toBe(recovered.core.binding.id)
+    await expect(remembered.workspaceClient.bootstrap(lifetime.signal)).resolves.toContainEqual(expect.objectContaining({ name: '__DSH_REMOTE_ACCESS__', value: expect.objectContaining({ owner: false }) }))
+    expect(questions).toHaveLength(questionsBeforeRemember + 1)
     await stopPaired()
+    const restarted = ctx.plugin(DeviceCommand, options); disposeCommand = () => restarted.dispose(); await restarted
+    expect((await output('workspace-status')).publicResult).toEqual({ enabled: true, expiresAt: null })
+    expect((await output('workspace-stop')).publicResult).toEqual({ enabled: false, expiresAt: null })
+    await disposeCommand(); disposeCommand = undefined
+    const stopped = ctx.plugin(DeviceCommand, options); disposeCommand = () => stopped.dispose(); await stopped
+    expect((await output('workspace-status')).publicResult).toEqual({ enabled: false, expiresAt: null })
+    const consent = new WorkspaceConsent(ctx, binding.desktopId, binding.deviceId)
+    await consent.write((binding.signature.startsWith('A') ? 'B' : 'A') + binding.signature.slice(1))
+    expect((await output('workspace-status')).publicResult).toEqual({ enabled: false, expiresAt: null })
+    expect((await output('workspace-stop')).state).toBe('workspace-disabled')
+    await disposeCommand(); disposeCommand = undefined
+    expect(questions).toHaveLength(questionsBeforeRemember + 1)
     expect(calls).toBe(0); ctx.llm.assertZeroRealCalls()
 
     const { workspace: unusedWorkspace, ...bareOptions } = options; void unusedWorkspace

@@ -3,7 +3,7 @@ import type { CommandResult } from '@deepseek-ai/dsh-commands/types'
 import { deviceRouteSchema, type DeviceRouteOffer } from '../../src/device-route-protocol.ts'
 import { publicDeviceFeedback, publicWorkspaceFeedback } from './feedback.ts'
 
-export const controlCommands = ['status', 'route-status', 'route-start', 'route-confirm', 'connect', 'reconnect', 'stop', 'workspace-status', 'workspace-allow', 'workspace-stop'] as const
+export const controlCommands = ['status', 'route-status', 'route-start', 'route-confirm', 'connect', 'reconnect', 'stop', 'workspace-status', 'workspace-allow', 'workspace-remember', 'workspace-stop'] as const
 export type ControlCommand = typeof controlCommands[number]
 export type ControlFailure = 'rejected' | 'unknown' | 'invalidInput' | 'unavailable' | 'stale'
 type MutationScope = 'connection' | 'workspace'
@@ -53,6 +53,7 @@ export class ControlModel {
     if (this.savedConnectionReady || ['route-ready', 'transport-closed', 'transport-failed'].includes(this.value.publicState ?? '')) result.push('connect')
     if (this.value.publicState === 'transport-started') result.push('reconnect')
     if (this.value.workspaceState === 'workspace-disabled') result.push('workspace-allow')
+    if (this.value.workspaceState === 'workspace-disabled' || this.value.workspaceState === 'workspace-enabled' && this.value.workspaceExpiresAt !== null) result.push('workspace-remember')
     return result
   }
   private publish(patch: Partial<ControlSnapshot>): void {

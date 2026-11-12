@@ -23,6 +23,7 @@ import { deviceCommandStep } from './device-command-step.ts'
 import { nodeE2EPrimitives } from '../../integration/p256-channel.ts'
 import { AutomaticConnection } from '../../src/automatic-connection.ts'
 import { DeviceWorkspaceAccess } from './workspace-access.ts'
+import { WorkspaceConsent } from './workspace-consent.ts'
 import { WorkspaceError } from './workspace-channel.ts'
 import { deviceSnapshotMaxBytes } from './session-window.ts'
 
@@ -64,8 +65,10 @@ class DeviceCommand {
   private offered = false
   private closed = false
   private relay: DeviceBindingDesktopRelay | undefined
+  private readonly workspaceConsent: WorkspaceConsent | undefined
   private readonly automatic: AutomaticConnection | undefined
   constructor(private readonly ctx: Context, private readonly options: DeviceCommandOptions) {
+    if (options.workspace !== undefined) this.workspaceConsent = new WorkspaceConsent(ctx, options.desktopId, options.deviceId)
     if (options.connectionMode === 'paired') this.automatic = new AutomaticConnection({ available: () => !this.closed && !this.busy && !this.stopping && !this.offered, connected: () => this.product !== undefined && this.relay?.terminalState === undefined, connect: async () => { this.busy = true; try { await this.connectSaved() } finally { this.busy = false } }, disconnect: () => this.clear(), failed: () => this.ctx.logger('harmony-device').warn('Saved phone connection unavailable; retrying') }, { after: (ms, callback) => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } }, options.reconnectMs)
   }
   startAutomatic(): void { void this.automatic?.start().catch(error => { void error; this.ctx.logger('harmony-device').warn('Saved phone connection unavailable; retrying') }) }
@@ -117,7 +120,7 @@ class DeviceCommand {
         if (inner.get('clientModules') === undefined) throw new Error('standard workspace requires Client Modules')
         const { shell, ...workspaceLimits } = this.options.workspace
         workspace = new DeviceWorkspaceAccess(inner, this.authority, owner, { ...workspaceLimits, ...(shell === undefined ? {} : { shell }) }, Date.now,
-          { after: (ms, callback) => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } })
+          { after: (ms, callback) => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } }, this.workspaceConsent)
         inner.effect(() => () => workspace?.close())
       }
       selected = { context: inner, owner, routes, signer, storage, ...(workspace === undefined ? {} : { workspace }), dispose: () => fork.dispose() }
@@ -141,7 +144,7 @@ class DeviceCommand {
     const peer = this.ctx.invocation?.peer, agent = original.agent
     if (this.closed || this.stopping || this.busy && !stopConnection && !(stopWorkspace && this.workspaceApproval !== undefined) || this.ctx.get('profileContext')?.name !== 'desktop' || peer !== undefined && peer !== this.ctx.connection.browserPeer || this.ctx.agents.get(agent.id) !== agent || agent.session.header.origin === 'subagent') return { kind: 'error', text: 'Device binding requires a live root conversation in the local desktop profile.' }
     if (new TextEncoder().encode(raw).length > this.options.maxPublicBytes) return { kind: 'error', text: 'Public device input exceeds the configured capacity.' }
-    const approval = verb === 'workspace-allow' && raw === '' ? { controller: new AbortController(), completion: Promise.withResolvers<void>() } : undefined
+    const approval = (verb === 'workspace-allow' || verb === 'workspace-remember') && raw === '' ? { controller: new AbortController(), completion: Promise.withResolvers<void>() } : undefined
     const signals = [original.signal, this.lifetime.signal]
     if (approval !== undefined) signals.push(approval.controller.signal)
     const invocation = { ...original, signal: AbortSignal.any(signals) }, sessionId = agent.session.id
@@ -158,8 +161,9 @@ class DeviceCommand {
       invocation.signal.throwIfAborted()
       if (stopping) await this.cancelWorkspaceApproval()
       if (verb === 'status' && raw === '') { const store = this.prepared?.storage ?? new CredentialDeviceBindingStorage(this.ctx, this.options.desktopId, this.options.deviceId), value = await store.read(), record = value === null ? null : deviceBindingSchema.parse(JSON.parse(value)); return result(record?.revoked ? 'revoked' : this.product !== undefined ? this.relay?.terminalState === undefined ? 'transport-started' : 'transport-' + this.relay.terminalState : this.offered ? 'offered' : record === null ? 'not-bound' : 'bound') }
-      if (['workspace-status', 'workspace-allow', 'workspace-stop'].includes(verb) && raw === '') {
-        if (this.options.workspace === undefined) return { kind: 'error', text: 'Standard workspace is not enabled in this deployment.' }
+      if (['workspace-status', 'workspace-allow', 'workspace-remember', 'workspace-stop'].includes(verb) && raw === '') {
+        const consent = this.workspaceConsent
+        if (this.options.workspace === undefined || consent === undefined) return { kind: 'error', text: 'Standard workspace is not enabled in this deployment.' }
         let workspace = this.prepared?.workspace
         if (verb === 'workspace-allow') {
           const original = this.relay?.workspaceLease
@@ -169,7 +173,27 @@ class DeviceCommand {
           const lease = this.relay?.workspaceLease
           if (original !== undefined && lease !== original) return { kind: 'error', text: workspaceReapproval }
           await workspace.allow(this.authority, invocation.signal, lease)
-        } else if (stopWorkspace) await workspace?.revoke(this.authority)
+        } else if (verb === 'workspace-remember') {
+          const prepared = await this.prepare(), record = await prepared.owner.publicRecord(this.authority)
+          workspace = prepared.workspace
+          if (workspace === undefined || record === null || record.revoked) return { kind: 'error', text: 'Pair this phone before remembering workspace access.' }
+          if (await consent.read() !== record.signature) {
+            if (!await this.approve(invocation, 'Remember standard Web workspace access for this paired phone until you stop the grant or revoke the pairing? This includes desktop plugin settings, project paths and visible Sessions on each authenticated connection.')) return { kind: 'error', text: 'Workspace access was not approved.' }
+            const current = await prepared.owner.publicRecord(this.authority)
+            if (current === null || current.revoked || current.signature !== record.signature) return { kind: 'error', text: 'The phone pairing changed. Confirm access for the current phone.' }
+            await workspace.revoke(this.authority)
+            invocation.signal.throwIfAborted()
+            await consent.write(record.signature)
+          }
+          await workspace.restore(this.authority)
+        } else if (stopWorkspace) {
+          const [active, saved] = await Promise.allSettled([workspace?.revoke(this.authority), consent.write(undefined)])
+          if (saved.status === 'rejected') return { kind: 'error', text: 'Workspace access stopped in this process. The saved permission could not be confirmed cleared. Retry Stop workspace grant.' }
+          if (active.status === 'rejected') return { kind: 'error', text: 'The saved workspace permission was cleared, but workspace cleanup failed.' }
+        } else {
+          if (workspace === undefined && await consent.read() !== undefined) workspace = (await this.prepare()).workspace
+          await workspace?.restore(this.authority)
+        }
         const status = workspace?.status(this.authority) ?? { enabled: false, expiresAt: null }
         return result(status.enabled ? 'workspace-enabled' : 'workspace-disabled', status)
       }
@@ -199,7 +223,7 @@ class DeviceCommand {
         return result('transport-started')
       }
       if (verb === 'revoke' && raw === '') { if (!await this.approve(invocation, 'Durably revoke this device binding and all its current tickets? Publish the signed tombstone to the route journal separately before acknowledging relay revocation.')) return { kind: 'error', text: 'Device revocation was not approved.' }; const prepared = await this.prepare(); const retired = await Promise.allSettled([prepared.routes.retire(this.authority), prepared.owner.revoke(this.authority)]); if (retired.some(item => item.status === 'rejected')) { await this.clear(); throw new Error('device revocation outcome unknown') }; const record = await prepared.owner.publicRecord(this.authority); if (record === null) throw new Error('device tombstone unavailable'); await this.clear(); return result('revoked', record) }
-      return { kind: 'error', text: 'Use status, start, confirm, route-start, route-confirm, route-status, directory, connect, reconnect, stop, revoke, workspace-status, workspace-allow or workspace-stop.' }
+      return { kind: 'error', text: 'Use status, start, confirm, route-start, route-confirm, route-status, directory, connect, reconnect, stop, revoke, workspace-status, workspace-allow, workspace-remember or workspace-stop.' }
     } catch (error) {
       if (verb === 'workspace-allow' && error instanceof WorkspaceError && error.code === 'workspace-grant-required') return { kind: 'error', text: workspaceReapproval }
       return { kind: 'error', text: deviceCommandFailure(error, invocation.signal.aborted) }

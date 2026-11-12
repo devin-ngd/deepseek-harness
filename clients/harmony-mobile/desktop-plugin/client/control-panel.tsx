@@ -35,12 +35,13 @@ export function ControlPanel({ useControl, run, t }: ControlPanelProps) {
       <label>{t('reply')}<textarea aria-label={t('reply')} autoComplete="off" spellCheck={false} disabled={busy} value={reply} onChange={event => { setReply(event.target.value) }} /></label>
       <button type="button" data-harmony-action="route-confirm" disabled={!state.allowed.includes('route-confirm') || reply.trim() === ''} onClick={() => { void run('route-confirm', reply).then(ok => { if (ok) setReply('') }) }}>{t('route-confirm')}</button>
       <h4>{t('workspaceTitle')}</h4><p>{t('workspaceScope')}</p>
+      {state.workspaceState === 'workspace-enabled' && deadline === null && <p role="status">{t('workspaceRemembered')}</p>}
       {deadline !== null && <p role="status">{t('workspaceDeadline')} <time dateTime={deadline.toISOString()}>{deadline.toLocaleString()}</time>
         {state.workspaceState === 'workspace-expired' && <> {t('workspaceDeadlineReached')}</>}
       </p>}
       <div className={css.buttons}>
         {controlCommands.filter(command => command.startsWith('workspace-')).map(command => <button key={command} type="button" data-harmony-action={command} disabled={!state.allowed.includes(command)} onClick={event => {
-          if (command === 'workspace-allow') closeTopModal(event.currentTarget.ownerDocument)
+          if (command === 'workspace-allow' || command === 'workspace-remember') closeTopModal(event.currentTarget.ownerDocument)
           void run(command)
         }}>{t(command)}</button>)}
       </div>

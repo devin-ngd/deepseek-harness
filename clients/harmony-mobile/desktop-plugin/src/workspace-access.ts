@@ -14,6 +14,7 @@ import { WorkspaceWireHost, type WorkspaceWireLimits } from './workspace-wire.ts
 import type { DeviceWorkspaceProvider, WorkspaceGrantLease } from './device-binding-relay.ts'
 import { WorkspaceShell, type WorkspaceShellLimits } from './workspace-shell.ts'
 import { deviceWorkspaceOrigin } from '../../src/workspace-origin.ts'
+import type { WorkspaceConsent } from './workspace-consent.ts'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface PrincipalMap {
@@ -24,7 +25,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 interface Grant {
   readonly record: DeviceBinding
   readonly controller: AbortController
-  readonly expiresAt: number
+  readonly expiresAt: number | null
   readonly stop: () => void
   readonly lease?: WorkspaceGrantLease
 }
@@ -50,9 +51,10 @@ export class DeviceWorkspaceAccess implements DeviceWorkspaceProvider {
   private closed = false
   private decisions = 0
 
-  /** @param ctx - original desktop Context. @param authority - exact local consent capability. @param owner - original registration verifier. @param limits - opt-in finite capacities. @param clock - trusted expiry clock. @param scheduler - local grant expiry owner. */
+  /** @param ctx - original desktop Context. @param authority - exact local consent capability. @param owner - original registration verifier. @param limits - opt-in finite capacities. @param clock - trusted expiry clock. @param scheduler - local grant expiry owner. @param consent - optional desktop-local remembered consent. */
   constructor(private readonly ctx: Context, private readonly authority: object, private readonly owner: DeviceBindingOwner,
-    private readonly limits: DeviceWorkspaceLimits, private readonly clock: () => number, private readonly scheduler: CleanupScheduler) {
+    private readonly limits: DeviceWorkspaceLimits, private readonly clock: () => number, private readonly scheduler: CleanupScheduler,
+    private readonly consent?: WorkspaceConsent) {
     if (ctx.get('profileContext')?.name !== 'desktop' || !Number.isSafeInteger(limits.ttlMs) || limits.ttlMs <= 0 || limits.ttlMs > 1800000) throw new WorkspaceError('workspace-denied')
     this.stopPolicy = ctx.remoteAccess.registerPolicy('harmony-workspace', { bindings: principal => {
       for (const [peer, value] of this.peers) {
@@ -63,7 +65,7 @@ export class DeviceWorkspaceAccess implements DeviceWorkspaceProvider {
   }
 
   private active(grant: Grant): boolean {
-    return !this.closed && this.grant === grant && !grant.controller.signal.aborted && grant.expiresAt > this.clock()
+    return !this.closed && this.grant === grant && !grant.controller.signal.aborted && (grant.expiresAt === null || grant.expiresAt > this.clock())
       && grant.lease?.transport.signal.aborted !== true && this.ctx.get('profileContext')?.name === 'desktop'
   }
   private local(authority: object): void { if (this.closed || authority !== this.authority) throw new WorkspaceError('workspace-denied') }
@@ -94,6 +96,18 @@ export class DeviceWorkspaceAccess implements DeviceWorkspaceProvider {
     return expiresAt
   }
 
+  /** @param authority - desktop-local workspace owner. @returns after restoring consent for the exact current binding. */
+  async restore(authority: object): Promise<void> {
+    this.local(authority)
+    if (this.consent === undefined || this.status(authority).enabled) return
+    const generation = this.decisions, signature = await this.consent.read()
+    if (signature === undefined) return
+    const record = await this.owner.publicRecord(authority)
+    this.local(authority)
+    if (generation !== this.decisions || this.status(authority).enabled || record === null || record.revoked || record.signature !== signature) return
+    this.grant = { record, expiresAt: null, controller: new AbortController(), stop() {} }
+  }
+
   /** @param authority - local settings/status capability. @returns public readiness and expiry without a bearer grant. */
   status(authority: object): { readonly enabled: boolean; readonly expiresAt: number | null } {
     this.local(authority)
@@ -122,6 +136,7 @@ export class DeviceWorkspaceAccess implements DeviceWorkspaceProvider {
 
   /** @param transport - exact original encrypted device object. @param ticket - its original current receipt. @returns a generation-owned standard workspace under the independent local grant. An absent or expired grant rejects before creating a Peer. */
   async open(transport: DeviceTransportBinding, ticket: DeviceConnectionTicket): Promise<WorkspaceWireHost> {
+    if (this.consent !== undefined && !this.closed && (this.grant === undefined || !this.active(this.grant))) await this.restore(this.authority)
     const grant = this.grant
     if (grant === undefined || !this.active(grant)) throw new WorkspaceError('workspace-grant-required')
     if (grant.lease !== undefined && grant.lease.transport !== transport) throw new WorkspaceError('workspace-grant-required')
