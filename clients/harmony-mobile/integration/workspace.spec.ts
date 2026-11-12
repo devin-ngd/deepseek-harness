@@ -136,9 +136,16 @@ await writeFile(${JSON.stringify(removalReceipt)}, JSON.stringify({ name }), { f
     maxResponseBytes: 16 * 1024 * 1024, maxChunkBytes: 64 * 1024 })
   const requests: string[] = []
   const failures: string[] = []
+  const detailImageUrl = (destination: string) => {
+    const url = new URL('/api/plugin-manager/detail-file', 'https://workspace.dsh.invalid')
+    url.search = new URLSearchParams({ bundle: '@deepseek-ai/dsh-experimental-cot-translation-bundle', document: 'docs/DETAIL.md', path: destination }).toString()
+    return url
+  }
+  const preview = detailImageUrl('preview.svg')
   const page = await newEnglishPage(browser)
   const documentPort = await installWorkspaceDocument(page, transfer, allowedSession, requests, undefined, pluginTarget)
   try {
+    expect((await client.fetch(new Request(preview))).status).toBe(404)
     const boot = channel.bootstrap()
     expect(await client.bootstrap(controller.signal)).toEqual(boot)
     const manifest = await client.manifest(controller.signal)
@@ -223,7 +230,11 @@ await writeFile(${JSON.stringify(removalReceipt)}, JSON.stringify({ name }), { f
       { origin: 'https://workspace.dsh.invalid', maxRequestBytes: 1024, maxResponseBytes: 1024 })).toThrow('workspace-denied')
     await page.setViewportSize({ width: 390, height: 844 })
     page.on('pageerror', error => failures.push(error.message))
-    page.on('console', message => { if (message.type() === 'error') failures.push(message.text()) })
+    page.on('console', message => {
+      if (message.type() !== 'error') return
+      const text = message.text(), location = message.location().url
+      failures.push(location ? `${text} (${location})` : text)
+    })
     await page.route('**/*', async route => {
       const req = route.request(), url = new URL(req.url())
       if (url.origin !== 'https://workspace.dsh.invalid') return route.abort()
@@ -293,11 +304,21 @@ await writeFile(${JSON.stringify(removalReceipt)}, JSON.stringify({ name }), { f
     await panel.waitFor()
     const more = panel.getByRole('button', { name: 'More', exact: true })
     if (await more.isVisible()) await more.click()
-    await panel.locator('[data-plugin-package="@deepseek-ai/dsh-experimental-cot-translation-bundle"]').getByRole('button').first().click()
+    await panel.locator('[data-plugin-package="@deepseek-ai/dsh-experimental-cot-translation-bundle"]').getByRole('button').first().click({ noWaitAfter: true })
     }
     await page.getByText('Expanded reasoning is sent to the selected service.', { exact: false }).waitFor()
     await expect.poll(() => requests.some(path => path.endsWith('/cotTranslation/limits'))).toBe(true)
     await expect.poll(() => panel.getByLabel('Target language', { exact: true }).isEnabled()).toBe(true)
+    const previewImage = panel.locator('img[src*="/api/plugin-manager/detail-file"]').first()
+    await previewImage.scrollIntoViewIfNeeded()
+    await expect.poll(() => previewImage.evaluate(image => image instanceof HTMLImageElement && image.naturalWidth > 0)).toBe(true)
+    const previewResponse = await client.fetch(new Request(preview))
+    expect(previewResponse.status).toBe(200)
+    expect(previewResponse.headers.get('content-type')).toBe('image/svg+xml')
+    expect(previewResponse.headers.get('content-security-policy')).toContain('sandbox')
+    expect(previewResponse.headers.get('x-content-type-options')).toBe('nosniff')
+    expect((await client.fetch(new Request(detailImageUrl('../icon.svg')))).status).toBe(404)
+    expect((await client.fetch(new Request(detailImageUrl('../../outside.svg')))).status).toBe(404)
     timing.settingsReadyMs = performance.now() - timing.navigationStart; settingsTraffic = traffic()
     await panel.getByLabel('Target language', { exact: true }).fill('ja')
     const saving = performance.now()
@@ -484,9 +505,11 @@ await writeFile(${JSON.stringify(removalReceipt)}, JSON.stringify({ name }), { f
     await expect(pending).rejects.toMatchObject({ code: 'workspace-closed' })
     deferred.mockRestore()
     expect(() => channel.bootstrap()).toThrow()
+    await expect(channel.fetch(new Request(preview))).rejects.toMatchObject({ code: 'workspace-closed' })
     await expect(channel.fetch(new Request('https://workspace.dsh.invalid/api/session/list', { method: 'POST' }))).rejects.toThrow()
     await writeFile(join(world, 'observed.json'), JSON.stringify({ plugin: 'cot-translation-bundle', samePackage: true,
       principal: peer.principal.kind, owner: false, requests, revoked: true, realModels: 0, arkWeb: false,
+      detailImage: { rendered: true, deniedBeforeDocument: true, deniedUnreferenced: true, deniedTraversal: true, deniedAfterRevocation: true },
       routeFailures: { ...routeFailures, deniedHandlerCalls: 0, settingsUsableAfterDenial: true },
       routeIsolation: { validFixtureOwnerCookie: true, desktopShadowCalls: shadowCalls, deviceShadowCalls: 0,
         scopedGatewayWrite: true, unauthorizedSessionUnchanged: true },

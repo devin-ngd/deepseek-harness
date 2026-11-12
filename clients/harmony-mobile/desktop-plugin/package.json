@@ -76,6 +76,9 @@
     "node": ">=24.9.0"
   },
   "dependencies": {
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm": "^3.1.0",
+    "micromark-extension-gfm": "^3.0.0",
     "ws": "8.21.3"
   },
   "peerDependencies": {
@@ -84,6 +87,8 @@
     "@deepseek-ai/schemastery": "~3.19.0",
     "@deepseek-ai/dsh": "0.2.2-rc.1",
     "@deepseek-ai/dsh-app-boot": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-plugin-detail": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-plugin-manager": "0.2.2-rc.1",
     "@deepseek-ai/dsh-credentials": "0.2.2-rc.1",
     "@deepseek-ai/dsh-authorization": "0.2.2-rc.1",
     "@deepseek-ai/dsh-scope": "0.2.2-rc.1",

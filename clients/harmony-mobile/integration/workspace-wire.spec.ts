@@ -10,6 +10,7 @@ import { WorkspaceClient } from '../src/workspace-client.ts'
 import { workspaceBodySchema, workspaceResponseSchema, workspaceStreamSchema, workspaceShellManifestSchema } from '../src/workspace-protocol.ts'
 import { WorkspaceShell } from '../desktop-plugin/src/workspace-shell.ts'
 import { prepareWorkspace } from '../src/workspace-prepare.ts'
+import { readWorkspaceBytes } from '../src/workspace-bytes.ts'
 import { workspacePluginEvents } from '../desktop-plugin/src/workspace-plugin-events.ts'
 
 function fixture(overrides: Partial<WorkspaceWireLimits> = {}) {
@@ -80,6 +81,24 @@ it('preserves status and headers for responses without a Fetch body', async () =
     expect(response.headers.get('x-fixture')).toBe('bodyless')
     expect(response.body).toBeNull()
   }
+})
+
+it('releases a zero-byte workspace response without invoking the native decoder', async () => {
+  const f = fixture()
+  f.source.fetch = async () => new Response('', { status: 200, headers: { 'content-type': 'text/css' } })
+  const response = workspaceResponseSchema.parse(await f.wire.request({
+    operation: 'fetch', method: 'GET', url: 'https://workspace.dsh.invalid/assets/empty.css', headers: [],
+  }, f.signal))
+  const request = (value: unknown) => f.wire.request(value, f.signal)
+  const bytes = await readWorkspaceBytes(response.body, {
+    request, release: request,
+    decode(value) {
+      if (value.length === 0) throw new Error('native decoder requires a nonempty input')
+      return Uint8Array.from(Buffer.from(value, 'base64url'))
+    },
+  }, { maxBytes: 1024, maxChunkBytes: 1024 })
+  expect(bytes.byteLength).toBe(0)
+  await expect(request({ operation: 'read', id: response.body.id, offset: 0 })).rejects.toThrow()
 })
 
 it('classifies standard page replies without exposing fields or changing the forwarded bytes', async () => {

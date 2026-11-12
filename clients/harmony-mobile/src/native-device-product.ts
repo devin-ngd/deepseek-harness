@@ -396,15 +396,26 @@ export class NativeDeviceProductFacade {
     if (![maxBytes, maxChunkBytes].every(value => Number.isSafeInteger(value) && value > 0) || this.policy.workspace === undefined
       || maxBytes > this.policy.workspace.maxResponseBytes || maxChunkBytes > this.policy.workspace.maxChunkBytes) throw new Error('native workspace resource limits denied')
     const request = workspaceRequestSchema.parse({ operation: 'fetch', url, method: 'GET', headers: [] })
-    return this.workspaceTask(requestId, generation, async (device, signal) => {
-      const response = workspaceResponseSchema.parse(await device.workspace(this.authority, request, generation, signal))
-      const bytes = await readWorkspaceBytes(response.body, {
-        request: value => device.workspace(this.authority, value, generation, signal),
-        release: value => device.workspace(this.authority, value, generation),
-        decode: value => this.crypto.primitives.decode(value),
-      }, { maxBytes, maxChunkBytes })
-      return JSON.stringify({ status: response.status, headers: response.headers, body: this.crypto.primitives.encode(bytes) })
-    })
+    let operation: 'fetch' | 'read' = 'fetch'
+    try {
+      return await this.workspaceTask(requestId, generation, async (device, signal) => {
+        const response = workspaceResponseSchema.parse(await device.workspace(this.authority, request, generation, signal))
+        operation = 'read'
+        const bytes = await readWorkspaceBytes(response.body, {
+          request: value => device.workspace(this.authority, value, generation, signal),
+          release: value => device.workspace(this.authority, value, generation),
+          decode: value => this.crypto.primitives.decode(value),
+        }, { maxBytes, maxChunkBytes })
+        const body = bytes.byteLength === 0 ? '' : this.crypto.primitives.encode(bytes)
+        return JSON.stringify({ status: response.status, headers: response.headers, body })
+      })
+    } catch (error) {
+      if (/^https:\/\/[^/?#]+\/$/.test(url)) {
+        const failure = workspaceDiagnosticFailure(error)
+        if (failure !== 'cancelled') console.warn('DSH_WORKSPACE_RPC operation=' + operation + ' failure=' + failure)
+      }
+      throw error
+    }
   }
   /** @param requestId - exact native port request to retire. Accepted desktop mutations remain uncertain and are never retried. */
   cancelWorkspaceRequest(requestId: string): void { this.workspaceRequests.get(requestId)?.controller.abort() }

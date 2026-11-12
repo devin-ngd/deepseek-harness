@@ -10,6 +10,7 @@ import type { WorkspaceShell } from './workspace-shell.ts'
 import { createHash } from 'node:crypto'
 import { WORKSPACE_PLUGIN_EVENTS, WORKSPACE_ROUTE_HEADER, workspaceAllowsResponseBody } from '../../src/workspace-protocol.ts'
 import { workspacePluginEvents } from './workspace-plugin-events.ts'
+import { WorkspaceDetailImages } from './workspace-detail-images.ts'
 
 /** Carrier resource budgets resolved before a workspace is opened. */
 export interface WorkspaceLimits {
@@ -62,6 +63,7 @@ function routeUnavailable(method: string, status: number, reason: WorkspaceRoute
 export class WorkspaceChannel {
   private readonly lifetime = new AbortController()
   private readonly fetchHandler
+  private readonly detailImages: WorkspaceDetailImages
   private readonly origin: string
   /** Combined original device, Peer and workspace revocation lifetime. */
   readonly signal: AbortSignal
@@ -81,6 +83,7 @@ export class WorkspaceChannel {
     this.signal = AbortSignal.any([this.lifetime.signal, admission.signal, admission.peer.signal])
     this.origin = origin.origin
     this.fetchHandler = ctx.connection.createSharedFetchHandler('/api')
+    this.detailImages = new WorkspaceDetailImages(ctx, admission.peer, limits.maxResponseBytes)
     this.current()
   }
 
@@ -155,9 +158,12 @@ export class WorkspaceChannel {
     const body = request.body === null ? undefined : await this.read(request, this.limits.maxRequestBytes)
     this.current()
     const input = new Request(url, { method: request.method, headers: request.headers, ...(body === undefined ? {} : { body }), signal })
+    const detailImage = this.detailImages.matches(input)
     let response: Response
     if (url.pathname.startsWith('/plugins/')) {
       response = await this.ctx.clientModules.fetchBundle(input)
+    } else if (detailImage) {
+      response = await this.detailImages.fetch(input)
     } else if (scoped) {
       response = await this.fetchHandler.fetch(input, this.admission.peer)
     } else if (this.shell !== undefined) {
@@ -169,7 +175,11 @@ export class WorkspaceChannel {
     if (scoped) await this.admission.refresh?.()
     this.current()
     signal.throwIfAborted()
-    const unserved = scoped ? unservedReason(response.status, bytes) : undefined
+    if (detailImage && response.status === 200 && !this.detailImages.canDeliver(input)) {
+      return new Response(null, { status: 403 })
+    }
+    if (scoped && !detailImage) this.detailImages.record(input, body, response, bytes)
+    const unserved = scoped && !detailImage ? unservedReason(response.status, bytes) : undefined
     if (unserved !== undefined) return routeUnavailable(request.method, response.status, unserved)
     return new Response(workspaceAllowsResponseBody(request.method, response.status) ? bytes : null,
       { status: response.status, headers: response.headers })

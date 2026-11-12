@@ -18,7 +18,7 @@ export async function readWorkspaceBytes(candidate: unknown, ports: WorkspaceByt
     let offset = 0
     while (true) {
       const chunk = workspaceChunkSchema.parse(await ports.request({ operation: 'read', id: body.id, offset }))
-      const piece = ports.decode(chunk.body)
+      const piece = chunk.body.length === 0 ? new Uint8Array(0) : ports.decode(chunk.body)
       if (chunk.offset !== offset || piece.byteLength > limits.maxChunkBytes || piece.byteLength > body.bytes - offset
         || (!chunk.done && piece.byteLength === 0)) throw new Error('workspace transfer invalid')
       bytes.set(piece, offset); offset += piece.byteLength
