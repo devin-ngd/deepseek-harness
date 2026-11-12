@@ -47,6 +47,35 @@ test('canonical replacement rules shadow earlier display rows', () => {
   model.accept(item(snapshot([first, replacement])))
   assert.deepEqual(model.view.messages.map(message => message.parts[0].text), ['new'])
 })
+test('a partial history can display messages when a system replacement points before the window', () => {
+  const model = new SemanticPhone(owner, limits, 256)
+  const system = text => ({ id: 'system', role: 'system', content: [{ type: 'text', text }], source: { kind: 'system-prompt' } })
+  const first = evt('system/message', { turn: 1, step: 1, message: system('first') }, 0, { surfaceOp: 'append' })
+  const user = evt('user/message', { id: 'human', role: 'user', content: [{ type: 'text', text: 'question' }], source: { kind: 'user' } }, 1, { surfaceOp: 'append' })
+  const updated = evt('system/message', { turn: 1, step: 1, message: system('updated') }, 2, { surfaceOp: { op: 'replace', startSeq: 0, endSeq: 0 }, sourceEventSeqs: [0] })
+  const latest = evt('system/message', { turn: 1, step: 1, message: system('latest') }, 3, { surfaceOp: { op: 'replace', startSeq: 2, endSeq: 2 }, sourceEventSeqs: [2] })
+  const answer = assistant(4, [{ type: 'text', text: 'answer' }])
+  model.accept(item({ ...snapshot([user, updated, latest, answer]), hasMore: true }))
+  assert.deepEqual(model.view.messages.map(message => message.parts[0].text), ['question', 'answer'])
+  assert.equal(model.view.readOnly, false)
+  assert.deepEqual(model.cache().events[1].surfaceOp, { op: 'replace', startSeq: 0, endSeq: 0 })
+  assert.equal(model.history({ protocol: 'dsh-mobile-read/1', sessionId: owner.sessionId, throughSeq: 4, beforeSeq: 1,
+    hasMore: false, records: [{ type: 'event', event: first }] }), true)
+  assert.deepEqual(model.view.messages.map(message => message.parts[0].text), ['question', 'answer'])
+  assert.equal(model.view.hasMore, false)
+})
+test('a missing user replacement target still rejects a partial history', () => {
+  const model = new SemanticPhone(owner, limits, 256)
+  const user = evt('user/message', { id: 'human', role: 'user', content: [{ type: 'text', text: 'question' }], source: { kind: 'user' } }, 1,
+    { surfaceOp: { op: 'replace', startSeq: 0, endSeq: 0 }, sourceEventSeqs: [0] })
+  assert.throws(() => model.accept(item({ ...snapshot([user]), hasMore: true })), /start seq 0 not found/)
+})
+test('a system replacement without its declared source is not treated as a partial-window seed', () => {
+  const model = new SemanticPhone(owner, limits, 256)
+  const event = evt('system/message', { turn: 1, step: 1, message: { id: 'system', role: 'system', content: [{ type: 'text', text: 'prompt' }], source: { kind: 'system-prompt' } } }, 1,
+    { surfaceOp: { op: 'replace', startSeq: 0, endSeq: 0 } })
+  assert.throws(() => model.accept(item({ ...snapshot([event]), hasMore: true })), /start seq 0 not found/)
+})
 test('unknown events preserve dense cursors, required unknown degrades to read-only', () => {
   const model = new SemanticPhone(owner, limits, 256); model.accept(item(snapshot([])))
   model.accept(item({ type: 'event', event: evt('future/notice', 'opaque', 0, { ignorable: true }) }, 1, 'event'))

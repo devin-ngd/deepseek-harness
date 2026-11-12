@@ -178,7 +178,14 @@ export class SemanticPhone {
     let current = new Set<number>()
     if ((!readOnly || (offline || this.followFailure !== null) && state.version === SESSION_FORMAT_VERSION && unknown.length === 0 && !projectionMissing && !incompleteProjection) && state.events.length > 0) {
       // Only the maintained surface manager owns replacement/source rules. Complete display fields were admitted by decodeDomain.
-      const surface = new SurfaceManager(events, SessionLogOffset(events[0]!.seq), richProjections)
+      const base = events[0]!.seq
+      // A system prompt replaced before this window is not a displayed message; seed its first visible successor for the local fold.
+      const window = events.map(event => event.type === 'system/message' && state.hasMore && typeof event.surfaceOp === 'object'
+        && event.surfaceOp.op === 'replace' && Object.keys(event.surfaceOp).length === 3
+        && event.surfaceOp.startSeq === event.surfaceOp.endSeq && event.surfaceOp.startSeq < base
+        && event.sourceEventSeqs?.includes(event.surfaceOp.startSeq)
+        ? { ...event, surfaceOp: 'append' as const } : event)
+      const surface = new SurfaceManager(window, SessionLogOffset(base), richProjections)
       current = new Set(surface.nodes)
     } else current = new Set(state.events.filter(entry => entry.parts !== undefined).map(entry => entry.wire.seq))
     for (const entry of state.events) {
