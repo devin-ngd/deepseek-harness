@@ -73,6 +73,8 @@ function retryPolicyKey(policy: ResolvedRetryPolicy): string {
       policy.initialDelayMs,
       policy.maxDelayMs,
       policy.jitterRatio,
+      // Absent while unconfigured so existing durable keys keep their bytes.
+      ...(policy.unboundedCodes === undefined ? [] : [[...policy.unboundedCodes].sort()]),
     ])
 }
 
@@ -217,7 +219,9 @@ export async function apply(ctx: Context, config: Config = {}, internals: RetryI
     const retryState = llmRetryProjectionHandle.stateOf(agent.session)
     const previous = retryState[retryStateKey(provider, policyKey)]
     const previousRetry = previous?.retry ?? 0
-    if (policy.mode === 'normal' && previousRetry >= policy.maxRetries) return next()
+    // Unbounded codes stay on the same capped backoff past the maxRetries bound.
+    const unbounded = policy.mode === 'normal' && policy.unboundedCodes?.includes(failure.code) === true
+    if (policy.mode === 'normal' && !unbounded && previousRetry >= policy.maxRetries) return next()
     const retry = previousRetry + 1
     const retryId = previous?.retryId ?? RetryId(randomUUID())
     let delayMs: number
@@ -225,7 +229,7 @@ export async function apply(ctx: Context, config: Config = {}, internals: RetryI
       && Number.isFinite(failure.providerRetryAfterMs)
       && failure.providerRetryAfterMs > 0) {
       if (failure.providerRetryAfterMs > policy.maxDelayMs) {
-        if (policy.mode === 'normal') return next()
+        if (policy.mode === 'normal' && !unbounded) return next()
         delayMs = localDelay(policy, retry, random)
       } else {
         delayMs = failure.providerRetryAfterMs

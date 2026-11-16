@@ -41,6 +41,14 @@ export interface NormalRetryPolicyConfig {
   maxRetries?: number
   /** Stable failure codes eligible for this policy. */
   retryableCodes?: string[]
+  /**
+   * Retryable failure codes exempt from the `maxRetries` bound: matching
+   * failures retry with the same capped backoff until success, cancellation,
+   * or disposal. Entries must also appear in `retryableCodes`; an empty list
+   * clears the exemption. Intended for side-effect-free environmental failures
+   * such as TRANSPORT, where the request never reached the provider.
+   */
+  unboundedCodes?: string[]
   /** Local exponential-backoff and jitter configuration. */
   backoff?: BackoffConfig
 }
@@ -68,6 +76,8 @@ export interface ResolvedNormalRetryPolicy extends ResolvedRetryBackoff {
   readonly mode: 'normal'
   readonly maxRetries: number
   readonly retryableCodes: readonly string[]
+  /** Configured non-empty {@link NormalRetryPolicyConfig.unboundedCodes}; absent otherwise. */
+  readonly unboundedCodes?: readonly string[]
 }
 
 /** Fully resolved unbounded retry policy. */
@@ -88,6 +98,7 @@ const normalPolicySchema: z<NormalRetryPolicyConfig> = z.object({
   mode: z.const('normal').required(),
   maxRetries: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER).default(DEFAULT_MAX_RETRIES),
   retryableCodes: z.array(z.string()).default([...DEFAULT_RETRYABLE_CODES]),
+  unboundedCodes: z.array(z.string()),
   backoff: backoffSchema,
 })
 
@@ -103,12 +114,12 @@ export const RetryPolicySchema: z<RetryPolicyConfig> = z.union([
 ])
 
 const NORMAL_POLICY_KEYS: ReadonlySet<string> = new Set([
-  'mode', 'maxRetries', 'retryableCodes', 'backoff',
+  'mode', 'maxRetries', 'retryableCodes', 'unboundedCodes', 'backoff',
 ])
 // Layered configuration can retain normal-only fields after switching modes;
 // always mode ignores those inactive values while still rejecting unknown keys.
 const ALWAYS_POLICY_KEYS: ReadonlySet<string> = new Set([
-  'mode', 'maxRetries', 'retryableCodes', 'backoff',
+  'mode', 'maxRetries', 'retryableCodes', 'unboundedCodes', 'backoff',
 ])
 const BACKOFF_KEYS: ReadonlySet<string> = new Set(['initialDelayMs', 'maxDelayMs', 'jitterRatio'])
 
@@ -176,10 +187,26 @@ export function resolveRetryPolicy(
       if (new Set(retryableCodes).size !== retryableCodes.length) {
         throw new Error(`${path}.retryableCodes must not contain duplicates`)
       }
+      const unboundedCodes = config.unboundedCodes
+      if (unboundedCodes !== undefined && unboundedCodes.length > 0) {
+        if (unboundedCodes.some(code => typeof code !== 'string' || code.length === 0)) {
+          throw new Error(`${path}.unboundedCodes must contain only non-empty strings`)
+        }
+        if (new Set(unboundedCodes).size !== unboundedCodes.length) {
+          throw new Error(`${path}.unboundedCodes must not contain duplicates`)
+        }
+        const outside = unboundedCodes.filter(code => !retryableCodes.includes(code))
+        if (outside.length > 0) {
+          throw new Error(`${path}.unboundedCodes entries must also appear in retryableCodes: ${outside.map(code => JSON.stringify(code)).join(', ')}`)
+        }
+      }
       return Object.freeze({
         mode: 'normal',
         maxRetries,
         retryableCodes: Object.freeze([...retryableCodes]),
+        ...unboundedCodes === undefined || unboundedCodes.length === 0
+          ? {}
+          : { unboundedCodes: Object.freeze([...unboundedCodes]) },
         ...resolveBackoff(config.backoff, `${path}.backoff`),
       })
     }

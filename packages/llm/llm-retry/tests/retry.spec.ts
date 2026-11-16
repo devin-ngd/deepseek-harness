@@ -450,6 +450,99 @@ describe('provider-routed retry policy', () => {
     expect(adapter.requests).toHaveLength(2)
   })
 
+  it('retries an unbounded failure code past the maxRetries bound', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter([
+      new LlmError('down', 'TRANSPORT'),
+      new LlmError('down', 'TRANSPORT'),
+      new LlmError('down', 'TRANSPORT'),
+      new LlmError('down', 'TRANSPORT'),
+      textResponse('recovered'),
+    ])
+    ;({ ctx: context } = await harness(adapter, {
+      mock: normalConfig({
+        unboundedCodes: ['TRANSPORT'],
+        backoff: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+      }),
+    }))
+    const agent = await context.agentLoop.create(SessionId('retry-unbounded'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    const firstEvent = await first
+    expect(firstEvent.data.policyKey)
+      .toBe('["normal",2,["EMPTY_RESPONSE","RATE_LIMIT","SERVER","TIMEOUT","TRANSPORT"],1,1,0,["TRANSPORT"]]')
+
+    for (let retry = 2; retry <= 4; retry += 1) {
+      const scheduled = waitForRetry(context, agent, retry)
+      await vi.advanceTimersByTimeAsync(1)
+      expect((await scheduled).data.retry).toBe(retry)
+    }
+    expect(adapter.requests).toHaveLength(4)
+
+    const idle = waitForIdle(context, agent)
+    await vi.advanceTimersByTimeAsync(1)
+    await idle
+
+    expect(adapter.requests).toHaveLength(5)
+    expect(agent.session.deriveMessages().at(-1)).toMatchObject({ role: 'assistant' })
+  })
+
+  it('keeps the maxRetries bound for codes outside unboundedCodes', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter([
+      new LlmError('busy', 'SERVER'),
+      new LlmError('busy', 'SERVER'),
+    ])
+    ;({ ctx: context } = await harness(adapter, {
+      mock: normalConfig({
+        maxRetries: 1,
+        unboundedCodes: ['TRANSPORT'],
+        backoff: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+      }),
+    }))
+    const agent = await context.agentLoop.create(SessionId('retry-bounded-beside-unbounded'), { provider: 'mock', model: 'mock' })
+    const scheduled = waitForRetry(context, agent, 1)
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await scheduled
+    const idle = waitForIdle(context, agent)
+    await vi.advanceTimersByTimeAsync(1)
+    await idle
+
+    expect(adapter.requests).toHaveLength(2)
+    const events = agent.session.snapshotEvents()
+    expect(events.filter(event => event.type === 'llm/retry')).toHaveLength(1)
+    expect(events.at(-1)).toMatchObject({
+      type: 'turn/end',
+      data: { reason: { kind: 'error', error: { code: 'SERVER' } } },
+    })
+  })
+
+  it('applies local capped backoff to an over-cap Retry-After for an unbounded code', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter([
+      new LlmError('wait too long', 'TRANSPORT', { providerRetryAfterMs: 10_001 }),
+      textResponse('done'),
+    ])
+    ;({ ctx: context } = await harness(adapter, {
+      mock: normalConfig({
+        unboundedCodes: ['TRANSPORT'],
+        backoff: { initialDelayMs: 2, maxDelayMs: 4, jitterRatio: 0.5 },
+      }),
+    }, undefined, { random: () => 1 }))
+    const agent = await context.agentLoop.create(SessionId('retry-unbounded-over-cap'), { provider: 'mock', model: 'mock' })
+    const scheduled = waitForRetry(context, agent, 1)
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    expect((await scheduled).data.delayMs).toBe(3)
+    const idle = waitForIdle(context, agent)
+    await vi.advanceTimersByTimeAsync(3)
+    await idle
+
+    expect(adapter.requests).toHaveLength(2)
+  })
+
   it('delegates non-transient failures without scheduling a timer', async () => {
     vi.useFakeTimers()
     const adapter = new ScriptedAdapter([new LlmError('bad key', 'AUTH')])

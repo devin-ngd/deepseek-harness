@@ -47,7 +47,7 @@ Choose it when a composition runs the agent loop and wants durable request recov
 - name: '@deepseek-ai/dsh-llm-retry'
 ```
 
-Omission of `retryPolicy` uses normal mode: five retries for `EMPTY_RESPONSE`, `RATE_LIMIT`, `SERVER`, `TIMEOUT`, and `TRANSPORT`, with bounded exponential backoff from 500 ms to 10 seconds and 10 percent jitter. Normal mode can change its finite budget, eligible codes, and backoff; always mode asks downstream recovery first, then retries every model-request failure without an attempt limit, stopping only on success, cancellation, or plugin disposal.
+Omission of `retryPolicy` uses normal mode: five retries for `EMPTY_RESPONSE`, `RATE_LIMIT`, `SERVER`, `TIMEOUT`, and `TRANSPORT`, with bounded exponential backoff from 500 ms to 10 seconds and 10 percent jitter. Normal mode can change its finite budget, eligible codes, and backoff; its `unboundedCodes` list exempts named eligible codes from the attempt limit, so side-effect-free environmental failures such as `TRANSPORT` keep retrying on the same capped backoff until success, cancellation, or disposal. Always mode asks downstream recovery first, then retries every model-request failure without an attempt limit, stopping only on success, cancellation, or plugin disposal.
 
 ### What you can observe
 
@@ -55,7 +55,7 @@ Each scheduled retry is durable before its wait: the plugin appends a non-surfac
 
 ### Failures and recovery
 
-A failure before any final adapter is selected has no provider policy and delegates downstream unchanged. In normal mode, a failure code outside the eligible set, or an exhausted budget, delegates; in always mode, an over-cap provider delay uses the configured local backoff so the policy cannot terminate on that instruction. Nothing here is model-visible: no retry event, delay, provider error, or failed partial output reaches the model or derived messages.
+A failure before any final adapter is selected has no provider policy and delegates downstream unchanged. In normal mode, a failure code outside the eligible set, or an exhausted budget for a code outside `unboundedCodes`, delegates; in always mode, or for a normal-mode unbounded code, an over-cap provider delay uses the configured local backoff so the policy cannot terminate on that instruction. Nothing here is model-visible: no retry event, delay, provider error, or failed partial output reaches the model or derived messages.
 
 -----
 

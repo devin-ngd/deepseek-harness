@@ -69,7 +69,9 @@ function ModelRetryItem({ node, active, t }: {
   // retry node. Host event time and Date.now() may belong to different clocks.
   const deadline = useMemo(() => Date.now() + node.delayMs, [node.delayMs, node.seq])
   const scheduledSeconds = retrySeconds(node.delayMs)
-  const maximum = node.mode === 'normal' ? node.maxRetries : '∞'
+  // A normal-policy retry count past maxRetries means the provider route
+  // exempts this failure code from the bound (unboundedCodes): render no cap.
+  const maximum = node.mode === 'always' || node.retry > node.maxRetries ? '∞' : node.maxRetries
   const [countdown, setCountdown] = useState<RetryCountdown>(() => ({
     deadline,
     seconds: retrySeconds(deadline - Date.now()),

@@ -49,6 +49,22 @@ describe('provider retry policy', () => {
     })
   })
 
+  it('resolves a detached frozen unboundedCodes list', () => {
+    const unboundedCodes = ['TRANSPORT']
+    const policy = resolveRetryPolicy({ mode: 'normal', unboundedCodes }, 'provider.retryPolicy')
+    unboundedCodes.push('LATE')
+
+    if (policy.mode !== 'normal') throw new Error('expected normal policy')
+    expect(policy.unboundedCodes).toEqual(['TRANSPORT'])
+    expect(Object.isFrozen(policy.unboundedCodes)).toBe(true)
+  })
+
+  it('treats an omitted or empty unboundedCodes list as no exemption', () => {
+    const empty = resolveRetryPolicy({ mode: 'normal', unboundedCodes: [] }, 'provider.retryPolicy')
+    if (empty.mode !== 'normal') throw new Error('expected normal policy')
+    expect(empty.unboundedCodes).toBeUndefined()
+  })
+
   it('resolves always mode with default backoff', () => {
     expect(resolveRetryPolicy({ mode: 'always' }, 'provider.retryPolicy')).toEqual({
       mode: 'always',
@@ -88,6 +104,10 @@ describe('provider retry policy', () => {
     [{ mode: 'normal', retryableCodes: ['SERVER', 'SERVER'] }, /duplicates/],
     [{ mode: 'normal', retryableCodes: [''] }, /non-empty strings/],
     [{ mode: 'normal', retryableCodes: [429] }, /non-empty strings/],
+    [{ mode: 'normal', unboundedCodes: ['TRANSPORT', 'TRANSPORT'] }, /unboundedCodes must not contain duplicates/],
+    [{ mode: 'normal', unboundedCodes: [''] }, /unboundedCodes must contain only non-empty strings/],
+    [{ mode: 'normal', unboundedCodes: ['QUOTA'] }, /unboundedCodes entries must also appear in retryableCodes: "QUOTA"/],
+    [{ mode: 'normal', retryableCodes: ['SERVER'], unboundedCodes: ['TRANSPORT'] }, /unboundedCodes entries must also appear in retryableCodes: "TRANSPORT"/],
     [{ mode: 'normal', maxRetires: 1 }, /unknown key "maxRetires"/],
     [{ mode: 'always', backoff: { initialDelay: 1 } }, /unknown key "initialDelay"/],
     [{ mode: 'sometimes' }, /mode must be "normal" or "always"/],

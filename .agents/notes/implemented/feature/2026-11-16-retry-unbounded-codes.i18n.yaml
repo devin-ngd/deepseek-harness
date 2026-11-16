@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-16-retry-unbounded-codes.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-16-retry-unbounded-codes.md
+/agent-note-per-code-unbounded-retries-in-normal-retry-policy:
+  en: 33be8b73753023b2
+  zh: d1eb5010d30a7d2a
+/agent-note-per-code-unbounded-retries-in-normal-retry-policy/problem:
+  en: 40853cb84ddac960
+  zh: cfeeedf469fcb467
+/agent-note-per-code-unbounded-retries-in-normal-retry-policy/decision:
+  en: 5b8b216487eff9b3
+  zh: 20fd9a12b19a541f
+/agent-note-per-code-unbounded-retries-in-normal-retry-policy/alternatives-considered:
+  en: add4c52e0f9d0f1d
+  zh: 6bf1175bcab5b8ff
+/agent-note-per-code-unbounded-retries-in-normal-retry-policy/consequences:
+  en: 1d677cf5223e4228
+  zh: d7c611fbcb8592e1

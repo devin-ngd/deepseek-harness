@@ -47,7 +47,7 @@ kind: "package-reference"
 - name: '@deepseek-ai/dsh-llm-retry'
 ```
 
-省略 `retryPolicy` 时使用 normal mode：对 `EMPTY_RESPONSE`、`RATE_LIMIT`、`SERVER`、`TIMEOUT` 与 `TRANSPORT` 最多重试五次，退避从 500 毫秒到 10 秒、带 10% 抖动。normal mode 可以更改其有界预算、合格 code 与退避；always mode 先询问下游恢复，然后无尝试上限地重试每个模型请求失败，只在成功、取消或插件释放时停止。
+省略 `retryPolicy` 时使用 normal mode：对 `EMPTY_RESPONSE`、`RATE_LIMIT`、`SERVER`、`TIMEOUT` 与 `TRANSPORT` 最多重试五次，退避从 500 毫秒到 10 秒、带 10% 抖动。normal mode 可以更改其有界预算、合格 code 与退避；其 `unboundedCodes` 列表让指定的合格 code 免受次数上限约束，使 `TRANSPORT` 这类无副作用的环境故障按同一有上限退避持续重试，直到成功、取消或插件释放。always mode 先询问下游恢复，然后无尝试上限地重试每个模型请求失败，只在成功、取消或插件释放时停止。
 
 ### 你可以观察到什么
 
@@ -55,7 +55,7 @@ kind: "package-reference"
 
 ### 失败与恢复
 
-在任何最终适配器被选中之前发生的失败没有提供方策略，原样委派下游。normal mode 中，不在合格集合内的失败 code 或已耗尽的预算会委派；always mode 中，超上限的提供方延迟使用配置的本地退避，因此策略不会因该指令终止。这里没有任何模型可见内容：重试事件、延迟、提供方错误或失败的部分输出都不会到达模型或派生消息。
+在任何最终适配器被选中之前发生的失败没有提供方策略，原样委派下游。normal mode 中，不在合格集合内的失败 code，或不在 `unboundedCodes` 内且预算已耗尽的失败，会委派下游；always mode 中，或 normal mode 的无上限 code，超上限的提供方延迟使用配置的本地退避，因此策略不会因该指令终止。这里没有任何模型可见内容：重试事件、延迟、提供方错误或失败的部分输出都不会到达模型或派生消息。
 
 -----
 

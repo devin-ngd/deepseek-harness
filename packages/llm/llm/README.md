@@ -124,7 +124,7 @@ The service is built on one separation: **the logical contract is provider-neutr
 | [`src/assembler.ts`](src/assembler.ts) | `BlockAssembler`: incremental chunk-to-block assembly |
 | [`src/assistant-stream.ts`](src/assistant-stream.ts) | Compact timed Assistant stream accumulation, strict validation, exact expansion, and record-level readers |
 | [`src/call-config.ts`](src/call-config.ts) | Call-config validation, adapter-default materialization, and request freezing |
-| [`src/retry-policy.ts`](src/retry-policy.ts) | Provider-owned retry policy resolution (normal and always modes) |
+| [`src/retry-policy.ts`](src/retry-policy.ts) | Provider-owned retry policy resolution (normal and always modes, with normal-mode `unboundedCodes` exemptions) |
 | [`src/error.ts`](src/error.ts) | `HarnessError`/`LlmError` taxonomy and provider-neutral failure codes |
 | [`src/content.ts`](src/content.ts) | Shared file and image helpers: content walks, file projection, image offload accounting, and offloaded-image projection |
 | [`src/api-key.ts`](src/api-key.ts) | Credential format check shared by every adapter |

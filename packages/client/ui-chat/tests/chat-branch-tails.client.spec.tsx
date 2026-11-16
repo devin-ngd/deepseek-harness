@@ -1010,6 +1010,29 @@ describe('MessageItem arms', () => {
       />,
     )
     expect(view.getByRole('status').textContent).toBe('模型请求重试已取消（1/2） · 4s')
+
+    // A normal-policy attempt counted past maxRetries is unbounded by provider
+    // route configuration (unboundedCodes): the cap display reads ∞.
+    view.rerender(
+      <MessageItem t={t} node={{
+        kind: 'model-retry',
+        retryId: RETRY_ID,
+        seq: 9,
+        time: 12_100,
+        retryState: 'started',
+        turn: 5,
+        step: 0,
+        provider: 'mock',
+        mode: 'normal',
+        policyKey: 'mock-unbounded',
+        retry: 3,
+        maxRetries: 2,
+        delayMs: 3_500.4,
+        failure: { code: 'TRANSPORT', message: '免除上限' },
+      }}
+      />,
+    )
+    expect(view.getByRole('status').textContent).toBe('已重试模型请求（3/∞） · 4s')
   })
 
 })
