@@ -38,7 +38,7 @@ description: "在本地或 Windows／macOS Actions 中生成 Desktop 安装包�
 
 ## 发布版本
 
-每次 Desktop 打包前，第一步都要与当前用户确认完整版本号。检查所选部署环境、dsh 基础版本、保留的发布记录和已发布对象，再提出准确版本供用户确认。用户确认前不得启动打包；仅选择部署环境不代表用户已认可版本号。
+用户要求打包本机测试版时，自动确定完整版本号并直接打包，无需单独确认版本。用 `--build-version auto` 取得下一个可用版本号。用户已指定完整版本号时，显式传入该值。
 
 记录当前 dsh 版本作为基础版本。production Desktop 使用完全相同的版本，包括其中的 `alpha`、`beta` 或 `rc` 标识。test 发布保留完整的预发布基础版本并追加 `.YYYYMMDD.index`；稳定基础版本则追加 `-test.YYYYMMDD.index`。
 
@@ -53,10 +53,10 @@ description: "在本地或 Windows／macOS Actions 中生成 Desktop 安装包�
 
 版本模式 `build-number` 追加 UTC 日期、工作流运行编号和尝试次数（`.YYYYMMDD.run.attempt`，稳定基础版本使用 `-test`）。例如 `0.2.1-alpha.1.20261008.42.2`。这些编号不是预留的发布序号。
 
-把确认后的版本通过 `--build-version` 传给打包命令，该值同时决定产物文件名、更新 feed 与上传校验。清单保留产品版本，因此 test 打包不再改写发布家族，也不留下需要还原的改动：
+打包命令以解析后的 `--build-version` 作为产物文件名、更新 feed 和上传校验的版本。源码清单保留产品版本。打包本机 Windows 测试版的命令如下。
 
 ```sh
-pnpm --dir apps/desktop run package:win:x64 --build-version 0.1.6-alpha.1.20260916.1
+pnpm --dir apps/desktop run package:win:x64 --build-version auto
 ```
 
 `--build-version auto` 会给出当天的下一个序号：读取目标 bucket 中已发布的对象，未配置 bucket 或列举未能在期限内完成时回退到本目标的本地输出目录。上传前请确认它打印的版本号；run script 会自行透传 `--`，打包入口两种写法都接受。

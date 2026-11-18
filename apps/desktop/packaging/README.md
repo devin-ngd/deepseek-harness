@@ -38,7 +38,7 @@ Set `DSH_DESKTOP_PACKAGE_CACHE_DIR` to an absolute build-cache directory for reu
 
 ## Release versions
 
-Before each Desktop packaging run, first confirm the complete version string with the current user. Check the selected deployment, dsh base version, retained release records, and published objects, then propose the exact version for approval. Do not start packaging until the user confirms that version; the deployment setting alone does not authorize a version choice.
+For a requested local test package, select the complete version automatically and start packaging without a separate version confirmation. Use `--build-version auto` for the next available build number. If the user supplies a complete version, pass it explicitly.
 
 Record the current dsh version as the base. A production Desktop release uses that exact version, including any `alpha`, `beta`, or `rc` identifiers. A test release preserves the complete prerelease base and appends `.YYYYMMDD.index`; a stable base uses `-test.YYYYMMDD.index` instead.
 
@@ -53,10 +53,10 @@ Use the actual creation date in Asia/Shanghai. For each base and date, start the
 
 Version mode `build-number` appends the UTC date, workflow run number and attempt (`.YYYYMMDD.run.attempt`, with `-test` for a stable base). For example, `0.2.1-alpha.1.20261008.42.2`. These numbers are not reserved release sequence numbers.
 
-Pass the confirmed version to the packaging command as `--build-version`, which reaches the artifact names, the update feed, and the upload validation as one value. The manifests keep the product version, so a test build no longer rewrites the release family and leaves nothing to revert:
+The packaging command uses the resolved `--build-version` for artifact names, the update feed and upload validation. The source manifests keep the product version. To package a local Windows test build:
 
 ```sh
-pnpm --dir apps/desktop run package:win:x64 --build-version 0.1.6-alpha.1.20260916.1
+pnpm --dir apps/desktop run package:win:x64 --build-version auto
 ```
 
 `--build-version auto` proposes the next index for today, reading the published objects in the destination bucket and falling back to this target's local output directory when no bucket is configured or the listing cannot finish within its deadline. Confirm the proposal it prints before an upload; a run script forwards `--` on its own, and the packaging entry accepts it either way.
