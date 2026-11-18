@@ -21,6 +21,7 @@ import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '../desktop-plugin/src/device-policy.ts'
 import { installLlmReplay } from '@deepseek-ai/dsh-llm-replay'
 import { id } from '../src/protocol.ts'
+import { browserEntryUrl } from './browser-entry-url.ts'
 
 /** Wait for actual profile services before examining its standard module registry. */
 export const inject = ['appReady', 'appExit', 'llm', 'clientModules', 'profileContext', 'connection', 'webServer', 'sessionController', 'agents', 'sessionPersistence', 'workspaceRegistry', 'pluginManager', 'pluginPackages', 'typertGateway', 'remoteAccess']
@@ -121,7 +122,7 @@ export function apply(ctx: Context): void {
             const apiPath = '/api/dsh-skills-manager/sidebar-entry'
             const apiResponse = await ctx.connection.createSharedFetchHandler('/api').fetch(new Request('https://workspace.dsh.invalid' + apiPath), peer)
             const origin = ctx.webServer.getOrigin()
-            const minted = await fetch(ctx.connection.authenticatedUrl(origin + '/'), { redirect: 'manual' })
+            const minted = await fetch(browserEntryUrl(ctx, origin + '/'), { redirect: 'manual' })
             const cookie = minted.headers.getSetCookie().map(row => row.split(';')[0]).join('; ')
             const ownerResponse = await fetch(origin + apiPath, { headers: { cookie } })
             thirdParty.apiProbe = { path: apiPath, deviceStatus: apiResponse.status, ownerLoopbackStatus: ownerResponse.status, ownerLoopbackBody: (await ownerResponse.text()).slice(0, 200) }
@@ -154,7 +155,7 @@ export function apply(ctx: Context): void {
         if (browserCase !== undefined) {
           if (browserCase !== 'rail') assert.equal(thirdParty?.name, 'dsh-theme-brick')
           const origin = ctx.webServer.getOrigin()
-          await writeFile(join(world, 'published-browser.json'), JSON.stringify({ origin, url: ctx.connection.authenticatedUrl(origin + '/'), ...browserTarget }), { flag: 'wx' })
+          await writeFile(join(world, 'published-browser.json'), JSON.stringify({ origin, url: browserEntryUrl(ctx, origin + '/'), ...browserTarget }), { flag: 'wx' })
           await writeFile(join(world, 'published-browser.ready'), '', { flag: 'wx' })
           const deadline = Date.now() + 75000
           let brickChanges = 0

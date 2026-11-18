@@ -27,20 +27,20 @@ id: 2026-10-03-rich-inline-format-attribution
 baseline: false
 changes:
   - root: "event:agent/inbox/spliced"
-    previous: "2026-10-27-retry-control-input"
-    after: "22677bfa6ac8f0cc4ef872a2c011376ee362b7987c756501ed395a915baa06d6"
+    previous: "2026-11-05-timeline-priority-notice"
+    after: "6b71255f4888df3b38e0361aa3a33274f7ed69ae4e296d2a7e9b4f96c0268536"
     decision: same-version
   - root: "event:developer/message"
-    previous: "2026-10-27-retry-control-input"
-    after: "48b0bcad187955b249b78475619835d82fe929bef9c08862ef3af98446a6365e"
+    previous: "2026-11-05-timeline-priority-notice"
+    after: "31a1731ac8010511e9c17f794404399d95cbac63b4c2e025be32c2a285feb91a"
     decision: same-version
   - root: "event:session/title-llm-request"
-    previous: "2026-10-27-retry-control-input"
-    after: "47755e72890708060cb50817b1c572c04c7baeff99095c7c12b64f0e32b1a54d"
+    previous: "2026-11-05-timeline-priority-notice"
+    after: "b6abe4f84f25021c62f767d34cb1da2d3c971933239fcf2aa38aa78f124f0007"
     decision: same-version
   - root: "event:user/message"
-    previous: "2026-10-27-retry-control-input"
-    after: "0266ce3326fc9596621fb35a5054c136cdab5c180fd997ef81a6962ea9640546"
+    previous: "2026-11-05-timeline-priority-notice"
+    after: "bd0965134bbc6c171c84741aa3b38b7c2d8a0300ff482115671455f52e5bc342"
     decision: same-version
 ```
 

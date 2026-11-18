@@ -3389,7 +3389,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'registerExclusion(exclude: SessionLogUploadExclusion): () => Promise<void>',
-        description: 'Exclude matching requests before reading or preparing their log contribution. Any matching rule suppresses both the field and its acceptance callback. With no matching rules, normal upload eligibility applies. A throwing rule fails this contribution; the request-extension registry omits it and reports the error.',
+        description: 'Exclude matching requests before reading or preparing their log contribution. Any matching rule suppresses both the field and its acceptance callback. With no matching rules, normal upload eligibility applies. Pending events may be uploaded by a later request, so this is not an event privacy filter. A throwing rule fails this contribution; the request-extension registry omits it and reports the error.',
         parameters: [{ name: 'exclude', description: 'synchronous, side-effect-free predicate; `true` skips this upload.' }],
         returns: 'effect disposer that removes this registration when called or when the caller unloads.',
       },

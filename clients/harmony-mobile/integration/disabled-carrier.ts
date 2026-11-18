@@ -1,6 +1,6 @@
 /** External HTTP carrier fixture: registration works, every transport/auth operation refuses, no socket or token is created. */
 import type { Context } from '@deepseek-ai/cordis'
-import { Peer } from '@deepseek-ai/dsh-client-connection'
+import { ConnectionAuthentication, Peer } from '@deepseek-ai/dsh-client-connection'
 import type { HostConnectionHandle, ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 
 /** Fixture plugin name. */
@@ -12,14 +12,13 @@ export const name = 'harmony-disabled-network-carrier'
  */
 export function apply(ctx: Context): void {
   const browserPeer = new Peer(ctx, { principal: { kind: 'owner' } }), routes = new Set<ConnectionFetchRoute>()
+  const authentication = new ConnectionAuthentication(ctx)
   const disabled = (): never => { throw new Error('HARMONY_FIXTURE_NETWORK_DISABLED') }
   const connection: HostConnectionHandle = {
-    browserPeer, createPeer: options => new Peer(ctx, options), allowsRemoteAuthorities: false,
+    browserPeer, authentication, createPeer: options => new Peer(ctx, options), allowsRemoteAuthorities: false,
     rpc: { handle: () => async () => {}, intercept: () => async () => {} },
     fetch: { register: route => { routes.add(route); return async () => { routes.delete(route) } } },
-    createSharedFetchHandler: disabled, requestRejection: () => 403, admit: () => ({ rejection: 403 }),
-    admitConnection: () => ({ rejection: 403 }),
-    authorizeIndex: () => false, authenticatedUrl: disabled,
+    createSharedFetchHandler: disabled, admit: () => ({ rejection: 403 }),
   }
   ctx.provide('connection', connection)
 }

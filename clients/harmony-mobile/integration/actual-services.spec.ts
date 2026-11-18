@@ -18,7 +18,7 @@ it('activates actual SessionController, RichInline and JSONL persistence behind 
   const ctx = await sourceComposition(world)
   try {
     expect(ctx.llm.getOfflineReplayCounts().realCalls).toBe(0)
-    expect(ctx.connection.requestRejection({ headers: {} })).toBe(403)
+    expect(ctx.connection.admit({ headers: {} })).toEqual({ rejection: 403 })
   } finally { await ctx.fiber.dispose() }
 })
 

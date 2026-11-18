@@ -15,6 +15,7 @@ import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { installLlmReplay } from '@deepseek-ai/dsh-llm-replay'
 import { id } from '../src/protocol.ts'
+import { browserEntryUrl } from './browser-entry-url.ts'
 import { installWorkspaceDevflowReplay } from './workspace-devflow-replay.ts'
 import { installWorkspaceRichReplay } from './workspace-rich-replay.ts'
 import { authoredBlockId } from '../../../packages/experimental/rich-inline/src/shared/authored.ts'
@@ -176,7 +177,7 @@ async function checkInstalledRouteBoundary(ctx: Context, client: WorkspaceClient
     try {
       const desktopOrigin = new URL(ctx.webServer.getOrigin())
       assert.equal(desktopOrigin.protocol, 'http:'); assert.equal(desktopOrigin.hostname, '127.0.0.1')
-      const authenticated = new URL(ctx.connection.authenticatedUrl(desktopOrigin.href))
+      const authenticated = new URL(browserEntryUrl(ctx, desktopOrigin.href))
       assert.equal(authenticated.origin, desktopOrigin.origin)
       const owner = await fetch(authenticated, { redirect: 'manual', signal: AbortSignal.timeout(5000) })
       const cookie = owner.headers.getSetCookie().map(row => row.split(';')[0]).join('; ')
