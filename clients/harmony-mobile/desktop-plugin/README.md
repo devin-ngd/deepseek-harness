@@ -83,7 +83,7 @@ Synthetic current-source Gateway/plugin tests and actual ETS owners with SDK sub
 
 ## Harmony command feedback
 
-The passive feedback component displays reviewed public results and safe errors in the original retained Session; missing Sessions receive no fallback notification. Source controls appear under Settings → Built-in plugins → Phone connection, with no panel above the conversation input. Without a retained Session, settings show guidance and create no Session. Controls use the formal command API and preserve Host validation; actions that need confirmation close settings so the conversation can show the normal confirmation. Reopen the tab to inspect the result. Mounting grants no authority and dispatches no command. See the [earlier control-panel qualification and limits](../docs/control-panel-rc2.16.md) and [feedback qualification](../docs/rc2-alignment.md).
+The passive feedback component displays reviewed public results and safe errors in the original retained Session; missing Sessions receive no fallback notification. Source controls appear under Settings → Phone connection, with no panel above the conversation input. Without a retained Session, settings show guidance and create no Session. Controls use the formal command API and preserve Host validation; actions that need confirmation close settings so the conversation can show the normal confirmation. Reopen Phone connection to inspect the result. Mounting grants no authority and dispatches no command. See the [earlier control-panel qualification and limits](../docs/control-panel-rc2.16.md) and [feedback qualification](../docs/rc2-alignment.md).
 
 ## Device routing windows
 

@@ -1,4 +1,4 @@
-/** Materialize retained interpreters with byte-identical current shared sources under the lab. */
+/** Materialize retained interpreters with compatible shared sources under the lab. */
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile, mkdtemp, rename, rm } from 'node:fs/promises'
@@ -14,7 +14,14 @@ export async function prepareProjectionInputs(project, root, spec) {
   assert.equal(spec.entry, rich + '/shared/message-projections.ts')
   for (const name of shared) {
     const file = rich + '/shared/' + name
-    assert.equal(hash(await readFile(resolve(spec.checkout, file))), hash(await readFile(resolve(root, file))), 'Retained projection dependency differs from rc.2: ' + file)
+    const retained = await readFile(resolve(spec.checkout, file))
+    const expected = name === 'types.ts'
+      ? retained.toString('utf8').replace(
+        "import type { MessageId } from '@deepseek-ai/dsh-llm/brand'",
+        "import type { MessageId } from '@deepseek-ai/dsh-llm/types'",
+      )
+      : retained
+    assert.equal(hash(expected), hash(await readFile(resolve(root, file))), 'Retained projection dependency differs: ' + file)
   }
   const inputs = await Promise.all([
     ...interpreters.map(name => ({ path: 'shared/' + name, source: resolve(spec.checkout, rich, 'shared', name) })),

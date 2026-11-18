@@ -6,7 +6,7 @@ import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import { NativeToolExecutor } from '@deepseek-ai/dsh-tool-executor-native'
-import { LlmAdapter, LlmError, OfflineReplayCounter, ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter, HarnessError, OfflineReplayCounter, ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { id, type SessionId } from '../../src/protocol.ts'
@@ -16,7 +16,7 @@ const settings = z.object({ enabled: z.literal(true), profileId: identifier, pre
   responseLimit: z.number().int().min(1).max(3), ttlMs: z.number().int().positive().max(1800000), paceMs: z.number().int().nonnegative().max(1000), maxTokens: z.number().int().positive(), contextWindow: z.number().int().positive() }).strict()
 type Settings = z.infer<typeof settings>
 /** Stable failure for a closed, exhausted, foreign or invalid synthetic request; never retries another provider. */
-export class MobileTestError extends LlmError {
+export class MobileTestError extends HarnessError {
   /** @param code - exact rejected test operation. */
   constructor(code: 'scope' | 'closed' | 'exhausted' | 'submission' | 'session-used' | 'tool' | 'rich-disabled') { super(code === 'rich-disabled' ? 'Enable this test preset in rich-inline activePresets before running the link check.' : 'Mobile link test refused: ' + code, 'HARMONY_TEST_' + code.toUpperCase().replaceAll('-', '_')) }
 }

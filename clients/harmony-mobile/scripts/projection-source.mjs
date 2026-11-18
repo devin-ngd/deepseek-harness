@@ -31,6 +31,7 @@ export async function projectionPaths(project, root) {
   const installed = JSON.parse(await readFile(resolve(sha, '../package.json'), 'utf8'))
   assert.equal(installed.version, spec.digestVersion)
   paths.ws = [installedWebSocket(root).types]
+  paths['mdast-util-from-markdown'] = [join(dirname(require.resolve('mdast-util-from-markdown')), 'index')]
   const playwrightManifest = require.resolve('playwright/package.json', { paths: [join(root, 'node_modules/.pnpm')] })
   const playwright = JSON.parse(await readFile(playwrightManifest, 'utf8'))
   paths.playwright = [resolve(playwrightManifest, '..', playwright.exports['.'].types)]

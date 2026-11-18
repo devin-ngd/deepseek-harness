@@ -36,7 +36,7 @@ const en: Record<ControlLocaleKey, string> = {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { 'harmony-controls': ControlLocaleKey }
   interface SlotMap {
-    /** Session-bound controls inside the Harmony plugin settings tab. */
+    /** Session-bound controls inside the Harmony settings section. */
     'harmony.controls': { kind: 'single'; scope: 'session' }
   }
 }
@@ -52,9 +52,9 @@ export function registerControlPanel(ctx: Context): void {
   const models = new Set<ControlModel>()
   ctx.effect(() => () => { for (const model of models) model.dispose(); models.clear() })
   const t = ctx.locale.bind('harmony-controls')
-  ctx.effect(() => ctx.slots.inject('settings.plugins.tab', function* () {
+  ctx.effect(() => ctx.slots.inject('settings.section', function* () {
     yield ctx.slots.register({
-      name: 'settings.plugins.tab', id: 'harmony-phone', order: 40,
+      name: 'settings.section', id: 'harmony-phone', order: 40,
       label: () => t('tab'), locale: 'harmony-controls',
       children: { 'harmony.controls': { kind: 'single', scope: 'session' } },
     }, ControlSettings)

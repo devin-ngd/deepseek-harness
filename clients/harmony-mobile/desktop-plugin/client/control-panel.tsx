@@ -6,7 +6,7 @@ import type { ControlInjection } from './control-panel-entry.ts'
 import { controlCommands, type ControlSnapshot } from './control-model.ts'
 import css from './control-panel.module.css'
 
-type ControlSettingsProps = PropsRuntime<'settings.plugins.tab'> & PropsLocale<'harmony-controls'> & PropsRenderSlots<'harmony.controls'>
+type ControlSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'harmony-controls'> & PropsRenderSlots<'harmony.controls'>
 type ControlPanelProps = PropsRuntime<'harmony.controls'> & PropsLocale<'harmony-controls'> & InjectFace<ControlInjection>
 
 /** @param props - settings navigation and the current retained Session binding. @returns controls or guidance without creating a Session. */

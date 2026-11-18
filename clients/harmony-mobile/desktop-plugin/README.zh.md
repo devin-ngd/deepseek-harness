@@ -83,7 +83,7 @@ rc2.30 的 `/device` 组件默认使用 `connectionMode: paired`，自动等待�
 
 ## Harmony 命令反馈
 
-被动反馈组件在原 retained Session 中显示经过审查的公开结果和安全错误；缺少 Session 时不会发送替代通知。源码中的控制入口位于“设置 → 内置插件 → 手机连接”，聊天输入框上方不显示面板。没有 retained Session 时，设置页提示先打开会话，不创建 Session。控制使用正式命令 API 并保留 Host 校验；需要确认的操作会关闭设置，让会话显示原有确认界面，重新打开标签页可查看结果。挂载不授予权限，也不发送命令。见[早期控制面板验收与限制](../docs/control-panel-rc2.16.md)和[反馈验收](../docs/rc2-alignment.md)。
+被动反馈组件在原 retained Session 中显示经过审查的公开结果和安全错误；缺少 Session 时不会发送替代通知。源码中的控制入口位于“设置 → 手机连接”，聊天输入框上方不显示面板。没有 retained Session 时，设置页提示先打开会话，不创建 Session。控制使用正式命令 API 并保留 Host 校验；需要确认的操作会关闭设置，让会话显示原有确认界面，重新打开「手机连接」可查看结果。挂载不授予权限，也不发送命令。见[早期控制面板验收与限制](../docs/control-panel-rc2.16.md)和[反馈验收](../docs/rc2-alignment.md)。
 
 ## 设备路由窗口
 

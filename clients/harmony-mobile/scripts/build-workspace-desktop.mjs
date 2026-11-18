@@ -45,7 +45,7 @@ if (config.error) throw new Error(ts.flattenDiagnosticMessageText(config.error.m
 const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, resolve('.build'))
 const declarations = join(world, 'declarations'), drive = resolve(root).slice(0, 3)
 const program = ts.createProgram({ rootNames: entries.map(entry => resolve('desktop-plugin/src/' + entry + '.ts')),
-  options: { ...parsed.options, noEmit: false, declaration: true, emitDeclarationOnly: true, declarationMap: false, sourceMap: false, rootDir: drive, outDir: declarations }, projectReferences: parsed.projectReferences })
+  options: { ...parsed.options, noEmit: false, declaration: true, emitDeclarationOnly: true, declarationMap: false, sourceMap: false, rootDir: drive, outDir: declarations }, projectReferences: [...parsed.projectReferences, ...['loader', 'include', 'group'].map(name => ({ path: join(root, 'vendor', name) }))] })
 const diagnostics = ts.getPreEmitDiagnostics(program)
 if (diagnostics.length) throw new Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, { getCurrentDirectory: () => client, getCanonicalFileName: value => value, getNewLine: () => '\n' }))
 assert.equal(program.emit(undefined, (path, text) => { if (resolve(path).startsWith(declarations)) ts.sys.writeFile(path, text) }, undefined, true).emitSkipped, false)
