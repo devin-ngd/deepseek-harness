@@ -10,9 +10,9 @@
  * See `docs/i18n/README.md` for the owning contract.
  */
 
-import { existsSync, globSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { basename, join, resolve, sep } from 'node:path'
-import { gitIndexPaths, readGitIndexBlob } from './translation-pairing-git.ts'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
+import { gitIndexPaths, gitWorktreePaths, readGitIndexBlob } from './translation-pairing-git.ts'
 import {
   computeTranslationPairingRecord,
   parseTranslationPairingRecord,
@@ -29,7 +29,6 @@ import {
   requiresSourceLanguageSwitcher,
   isTranslationPairingManifestExcluded,
   isTranslationScopeFile,
-  TRANSLATION_SCOPE_GLOB_EXCLUDES,
   translationPairSourcePredicate,
   translationStructureDiff,
   translationStructureSignature,
@@ -72,14 +71,6 @@ function repositoryFileExists(file: string): boolean {
   return indexMode ? indexFiles?.has(file) === true : readRepositoryFile(file) !== undefined
 }
 
-/** Discover source Markdown and pairing sidecars before applying the corpus predicate. */
-const SCOPE_PATTERNS = [
-  '**/*.md',
-  '**/*.i18n.yaml',
-  '.agents/notes/**/*.md',
-  '.agents/notes/**/*.i18n.yaml',
-]
-
 const manifestContent = readRepositoryFile('scripts/translation-pairing.manifest.json')
 if (manifestContent === undefined) {
   throw new Error('scripts/translation-pairing.manifest.json is missing from the selected content plane')
@@ -115,10 +106,8 @@ if (request.scope === 'pairs') {
     if (!indexMode && !repositoryFileExists(anchor)) files.add(anchor)
   }
 } else {
-  // One call shares a single directory walk across every pattern.
-  for (const match of globSync(SCOPE_PATTERNS, { cwd: root, exclude: TRANSLATION_SCOPE_GLOB_EXCLUDES })) {
-    const normalized = match.split(sep).join('/')
-    if (isTranslationScopeFile(normalized)) files.add(normalized)
+  for (const file of indexFiles ?? gitWorktreePaths(root)) {
+    if (/\.(?:md|i18n\.yaml)$/u.test(file) && isTranslationScopeFile(file) && repositoryFileExists(file)) files.add(file)
   }
 }
 const translations = [...files].filter(f => f.endsWith('.zh.md')).sort()

@@ -38,6 +38,16 @@ export function gitIndexPaths(root: string): Set<string> {
 }
 
 /**
+ * List tracked and nonignored new paths for a working-tree corpus check.
+ * @param root - Repository root used as Git's working directory.
+ * @returns Repository-relative paths, including tracked files under ignored directories.
+ */
+export function gitWorktreePaths(root: string): Set<string> {
+  return new Set(runGit(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+    'listing Git working-tree paths').toString('utf8').split('\0').filter(Boolean))
+}
+
+/**
  * Read one path from the Git index without consulting working-tree bytes.
  *
  * @param root - Repository root.
