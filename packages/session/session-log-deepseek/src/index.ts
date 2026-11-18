@@ -67,8 +67,6 @@ interface AcceptanceFold {
 }
 
 const acceptanceFolds = new WeakMap<Session, AcceptanceFold>()
-/** Event each Session's upload was last reported blocked at; a block is logged once. */
-const blockedWarnings = new WeakMap<Session, SessionSeqType>()
 
 /** Translate logical Session metadata to raw external request fields. */
 function wireHeader(session: Session): DeepSeekSessionLogWireHeader {
@@ -189,6 +187,7 @@ export class SessionLogDeepSeekService extends Service {
   static inject = inject
 
   private readonly exclusions = new Set<{ readonly exclude: SessionLogUploadExclusion }>()
+  private readonly blockedWarnings = new WeakMap<Session, SessionSeqType>()
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'sessionLogDeepSeek')
@@ -233,8 +232,8 @@ export class SessionLogDeepSeekService extends Service {
         const last = events.length === 0 ? undefined : pending[events.length - 1]
         if (last === undefined) {
           const first = pending[0]
-          if (first !== undefined && blockedWarnings.get(session) !== first.seq) {
-            blockedWarnings.set(session, first.seq)
+          if (first !== undefined && this.blockedWarnings.get(session) !== first.seq) {
+            this.blockedWarnings.set(session, first.seq)
             const seq = String(first.seq)
             ctx.logger.warn(Number.isFinite(candidateBytes)
               ? `session-log-deepseek: event ${seq} of session "${session.id}" needs a ${String(candidateBytes)}-byte`
@@ -265,7 +264,8 @@ export class SessionLogDeepSeekService extends Service {
   /**
    * Exclude matching requests before reading or preparing their log contribution.
    * Any matching rule suppresses both the field and its acceptance callback. With
-   * no matching rules, normal upload eligibility applies. A throwing rule fails
+   * no matching rules, normal upload eligibility applies. Pending events may be
+   * uploaded by a later request, so this is not an event privacy filter. A throwing rule fails
    * this contribution; the request-extension registry omits it and reports the error.
    * @param exclude - synchronous, side-effect-free predicate; `true` skips this upload.
    * @returns effect disposer that removes this registration when called or when the caller unloads.

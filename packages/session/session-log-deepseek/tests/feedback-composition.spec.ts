@@ -180,6 +180,51 @@ it('drains a Session log above the configured maxBytes across consecutive routed
   }
 })
 
+it('retains a blocked suffix until a larger limit permits its complete upload', async () => {
+  const { ctx, server } = await boot({ enabled: true, maxBytes: 4096 }, { sequence: ['success'], repeatLast: true })
+  const session = ctx.sessions.create(brandString<SessionId>('blocked-upload'))
+  const handle = await ctx.sessionPersistence.create(session.header)
+  try {
+    session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'first' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
+    const messages = session.deriveMessages()
+    const request = async () => {
+      const chunks = []
+      for await (const chunk of ctx.llm.stream({ provider: 'deepseek-official', model: 'deepseek-v4-flash', sessionId: session.id, messages })) chunks.push(chunk)
+      expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'stop' } })
+    }
+    await request()
+    const first = (server.requests[0]!.body as { dsh_session_log: DeepSeekSessionLogExtension }).dsh_session_log
+    expect(first).toMatchObject({ afterSeq: -1, throughSeq: 0 })
+    expect(SessionLogDeepSeek.acceptedThrough(session)).toBe(0)
+
+    session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'x'.repeat(5000) }], source: { kind: 'user' } }), { surfaceOp: 'append' })
+    session.append('turn/start', { turn: 1 })
+    await request()
+    const beforeBlock = (server.requests[1]!.body as { dsh_session_log: DeepSeekSessionLogExtension }).dsh_session_log
+    expect(beforeBlock).toMatchObject({ afterSeq: 0, throughSeq: 1 })
+    expect(beforeBlock.events.map(event => event.seq)).toEqual([1])
+    expect(SessionLogDeepSeek.acceptedThrough(session)).toBe(1)
+    const pending = session.snapshotEvents().slice(2)
+    await request()
+    expect(server.requests[2]!.body).not.toHaveProperty('dsh_session_log')
+    expect(SessionLogDeepSeek.acceptedThrough(session)).toBe(1)
+
+    const entry = [...ctx.loader.entries()].find(item => item.options.name === '@deepseek-ai/dsh-session-log-deepseek')!
+    await entry.update({ config: { enabled: true, maxBytes: 8192 } })
+    await ctx.loader.await()
+    await request()
+    const resumed = (server.requests[3]!.body as { dsh_session_log: DeepSeekSessionLogExtension }).dsh_session_log
+    expect(resumed).toMatchObject({ afterSeq: 1, throughSeq: 4 })
+    expect(resumed.events).toEqual(pending)
+    expect(resumed.events.map(event => event.seq)).toEqual([2, 3, 4])
+    expect(SessionLogDeepSeek.acceptedThrough(session)).toBe(4)
+    await ctx.sessions.flush(session)
+    expect((await handle.read()).events).toEqual(session.snapshotEvents())
+  } finally {
+    await handle.close()
+  }
+})
+
 
 it('changes API log upload on the next request without replacing the plugin fiber', async () => {
   const { ctx, server } = await boot({ enabled: true }, { sequence: ['success'], repeatLast: true })
