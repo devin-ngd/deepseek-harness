@@ -37,7 +37,7 @@ web GUI 让操作者通过 OS 选择器或应用内浏览器选择工作区目�
 
 ### 行携带什么
 
-`DirectoryEntry` 行暴露绝对 `path` 与宿主判定的 `hidden` 标志（POSIX 上为点前缀约定），展示策略留在客户端；客户端绝不自行拼接路径段。`DirectoryListing.crumbs` 是从文件系统根到被列举目录的祖先链——每个 crumb 都是跳转目标，根 crumb 以完整路径标注。
+`DirectoryEntry` 行暴露绝对 `path` 与宿主判定的 `hidden` 标志（POSIX 上为点前缀约定），展示策略留在客户端；客户端绝不自行拼接路径段。`DirectoryListing.crumbs` 是从文件系统根到被列举目录的祖先链——每个 crumb 都是跳转目标，根 crumb 以完整路径标注。 浏览提供方应将 `DirectoryListing.separator` 设为宿主路径分隔符（`/` 或 `\`）；旧提供方省略时客户端会从 `home` 推断，若 POSIX 主目录含反斜杠则可能误判。
 
 -----
 

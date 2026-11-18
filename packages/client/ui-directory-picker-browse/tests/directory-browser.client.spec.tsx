@@ -1104,11 +1104,37 @@ describe('DirectoryBrowser', () => {
     expect(document.activeElement?.getAttribute('aria-current')).toBe('true')
   })
 
+  it('treats backslashes in a POSIX home as name characters', async () => {
+    const home = '/home/a\\team'
+    const listing: DirectoryListing = {
+      path: home,
+      home,
+      separator: '/',
+      crumbs: [{ name: '/', path: '/', hidden: false }, { name: 'a\\team', path: home, hidden: false }],
+      entries: [
+        { name: 'work\\docs', path: `${home}/work\\docs`, hidden: false },
+        { name: 'other', path: `${home}/other`, hidden: false },
+      ],
+      truncated: false,
+    }
+    const listDirectory = vi.fn(async () => listing)
+    mount({ listDirectory })
+    await waitFor(() => { expect(screen.getAllByRole('listitem')).toHaveLength(2) })
+    fireEvent.click(screen.getByRole('button', { name: 'browser.editPath' }))
+    const input = screen.getByLabelText<HTMLInputElement>('browser.editPath')
+    expect(input.value).toBe(`${home}/`)
+    fireEvent.change(input, { target: { value: `${home}/work\\d` } })
+    expect(screen.getByRole('listitem').textContent).toBe('work\\docs')
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 400) }) })
+    expect(listDirectory).toHaveBeenCalledTimes(1)
+  })
+
   it('seeds and filters with backslashes on a Windows-rooted listing', async () => {
     const ROOT = 'C:\\'
     const windowsListing: DirectoryListing = {
       path: ROOT,
-      home: ROOT,
+      home: 'C:/Users/u',
+      separator: '\\',
       crumbs: [{ name: 'C:\\', path: ROOT, hidden: false }],
       entries: [
         { name: 'Program Files', path: `${ROOT}Program Files`, hidden: false },

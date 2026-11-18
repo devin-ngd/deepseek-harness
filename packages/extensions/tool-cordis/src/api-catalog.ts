@@ -7177,7 +7177,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DirectoryListing',
-    declaration: 'export interface DirectoryListing {\n    path: string;\n    home: string;\n    crumbs: DirectoryEntry[];\n    entries: DirectoryEntry[];\n    truncated: boolean;\n}',
+    declaration: 'export interface DirectoryListing {\n    path: string;\n    home: string;\n    separator?: \'/\' | \'\\\\\';\n    crumbs: DirectoryEntry[];\n    entries: DirectoryEntry[];\n    truncated: boolean;\n}',
   },
   {
     name: 'DirectoryPickerBrowseCapability',

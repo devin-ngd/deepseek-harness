@@ -113,6 +113,15 @@ describe('directoryPicker browse Remotes', () => {
     expect(await picker.createDirectory('/home/user', 'fresh')).toBe('/home/user/fresh')
   })
 
+  it('preserves the provider separator in listings', async () => {
+    const picker = await harness({
+      kind: 'browse',
+      list: async (path, signal) => ({ ...await BROWSE_STUB.list(path, signal), separator: '/' }),
+      createDirectory: BROWSE_STUB.createDirectory,
+    })
+    expect((await picker.list(undefined, new AbortController().signal)).separator).toBe('/')
+  })
+
   it('maps the seam\'s typed failures and folds unknown throws to internal', async () => {
     const picker = await harness(BROWSE_STUB)
     expect(await refused(picker.list('/denied', new AbortController().signal)))

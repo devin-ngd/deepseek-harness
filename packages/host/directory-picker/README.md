@@ -37,7 +37,7 @@ The [native backend](../directory-picker-native/README.md) is the right choice w
 
 ### What rows carry
 
-`DirectoryEntry` rows expose the absolute `path` and a host-owned `hidden` flag (dot-prefixed on POSIX) so display policy stays client-side; clients never join path segments themselves. `DirectoryListing.crumbs` is the ancestor chain from the filesystem root to the listed directory — every crumb is a jump target, and the root crumb is labeled by its full path.
+`DirectoryEntry` rows expose the absolute `path` and a host-owned `hidden` flag (dot-prefixed on POSIX) so display policy stays client-side; clients never join path segments themselves. `DirectoryListing.crumbs` is the ancestor chain from the filesystem root to the listed directory — every crumb is a jump target, and the root crumb is labeled by its full path. Browse providers should set `DirectoryListing.separator` to the host path separator (`/` or `\`); clients infer it from `home` when older providers omit it, which can misidentify a POSIX home containing a backslash.
 
 -----
 
