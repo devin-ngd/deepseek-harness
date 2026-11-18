@@ -231,12 +231,10 @@ export class MessageFeedbackService extends TypertRemoteService {
     const live = this.ctx.sessions.get(sessionId)
     if (live !== undefined) {
       // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-      return operation(live.snapshotEvents(), async (event) => {
-        if (event !== undefined) {
-          live.append(event.type, event.data)
-        }
-        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-        const last = live.snapshotEvents().at(-1)
+      const events = live.snapshotEvents()
+      return operation(events, async (event) => {
+        // The mutation operations choose their append or no-op before their first await.
+        const last = event === undefined ? events.at(-1) : live.append(event.type, event.data)
         if (!(await this.ctx.sessions.flush(live))) {
           throw new Error(
             `message-feedback: no durability listener participated for live session '${sessionId}'`,
