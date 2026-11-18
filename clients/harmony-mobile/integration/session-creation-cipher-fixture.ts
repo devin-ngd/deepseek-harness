@@ -5,7 +5,8 @@ import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Context } from '@deepseek-ai/cordis'
-import { CommandId } from '@deepseek-ai/dsh-commands/brand'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CommandId } from '@deepseek-ai/dsh-commands/types'
 import { installLlmReplay } from '@deepseek-ai/dsh-llm-replay'
 import { createAssistantMessage, createUserMessage, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { z } from 'zod'
@@ -104,7 +105,7 @@ export async function runCreationCipherEmulator(ctx: Context, world: string, cli
         session.append('turn/end', { turn, reason: { kind: 'completed' } })
       }
       for (let index = 1; index <= handoffReceiptCount; index++) {
-        const commandId = CommandId('synthetic-handoff-grant-' + index)
+        const commandId = brandString<CommandId>('synthetic-handoff-grant-' + index)
         session.append('command/run', { commandId, name: 'harmony-device', source: { kind: 'user' } })
         session.append('command/done', { commandId, kind: 'success', text: handoffReceiptText(index) })
       }

@@ -9,7 +9,8 @@ import { z } from 'zod'
 import WebSocket from 'ws'
 import DynamicCordisRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import SessionTitle from '@deepseek-ai/dsh-session-title'
-import { CommandId } from '@deepseek-ai/dsh-commands/brand'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CommandId } from '@deepseek-ai/dsh-commands/types'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, SessionSeq } from '@deepseek-ai/dsh-session'
 import { TYPERT as SESSION_TYPERT } from '../../../packages/api/session-controller/lib/typert.host.js'
@@ -401,7 +402,7 @@ async function seedPagedBriefing(ctx: Context, world: string, fieldSize = false)
   const trailingReceipts = 24
   const prompt = (turn: number) => `合成任务 ${turn}`
   const appendReceipt = (key: string, text: string) => {
-    const commandId = CommandId(key)
+    const commandId = brandString<CommandId>(key)
     session.append('command/run', { commandId, name: 'harmony-device', source: { kind: 'user' } })
     session.append('command/done', { commandId, kind: 'success', text })
   }
@@ -1010,7 +1011,7 @@ it('requires a new workspace grant after losing a close response and rejects a c
       await reconnected.call({ method: 'workspace', argument: { operation: 'close' } })
       const trailingCommandReceipts = 24
       for (let index = 1; index <= trailingCommandReceipts; index++) {
-        const commandId = CommandId('synthetic-grant-receipt-' + index)
+        const commandId = brandString<CommandId>('synthetic-grant-receipt-' + index)
         stored.append('command/run', { commandId, name: 'harmony-device', source: { kind: 'user' } })
         stored.append('command/done', { commandId, kind: 'success', text: 'Synthetic workspace grant receipt ' + index })
       }
