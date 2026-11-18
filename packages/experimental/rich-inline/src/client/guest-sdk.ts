@@ -1,13 +1,36 @@
 /** Browser-only SDK installed before generated code in a disposable isolated guest. */
 
+/** Protocol bound for reported guest height; hosts treat taller documents as invalid. */
+export const GUEST_HEIGHT_MAX = 12000
+
+/**
+ * Viewport-bounded guest height: taller content keeps a viewport-sized native surface and
+ * scrolls inside the guest instead. Native guest surfaces several viewports tall are evicted
+ * and re-rastered while the conversation scrolls, which flashes the guest background.
+ * @param viewportHeight - host window inner height in CSS pixels.
+ * @returns height cap in CSS pixels between 320 and 1400.
+ */
+export function guestHeightCap(viewportHeight: number): number {
+  return Math.max(320, Math.min(1400, Math.round(viewportHeight) - 220))
+}
+
+/**
+ * Current guest height cap for this host; non-browser hosts keep the protocol bound.
+ * @returns height cap in CSS pixels.
+ */
+export function currentGuestHeightCap(): number {
+  return typeof window === 'undefined' ? GUEST_HEIGHT_MAX : guestHeightCap(window.innerHeight)
+}
+
 /**
  * Create the SDK bootstrap; the native preload owns the actual channel identity.
  * @param mountId - fresh host mount identity.
  * @param renderRevision - committed executable revision.
  * @param guestPacketBytes - trusted native budget for untrusted outgoing envelopes.
+ * @param heightCap - reported height bound; taller content scrolls inside the guest.
  * @returns JavaScript source with no host credentials, path access or conversation history.
  */
-export function guestSdk(mountId: string, renderRevision: number, guestPacketBytes = 128 * 1024): string {
+export function guestSdk(mountId: string, renderRevision: number, guestPacketBytes = 128 * 1024, heightCap = GUEST_HEIGHT_MAX): string {
   return `(() => {
     'use strict';
     const bridge = window.richGuest;
@@ -15,6 +38,7 @@ export function guestSdk(mountId: string, renderRevision: number, guestPacketByt
     const mountId = ${JSON.stringify(mountId)};
     const renderRevision = ${renderRevision};
     const guestPacketBytes = ${guestPacketBytes};
+    let heightCap = ${heightCap};
     const clone = value => JSON.parse(JSON.stringify(value));
     let seq = 0, inboundSeq = 0, snapshot = null, stopped = false, timer = null, submitting = null, activePayload = null;
     let saveQueue = Promise.resolve(), submittedValues = null;
@@ -65,6 +89,10 @@ export function guestSdk(mountId: string, renderRevision: number, guestPacketByt
       if (envelope.type === 'theme') {
         document.documentElement.style.colorScheme = body.theme?.mode || 'light dark';
         for (const [name, value] of Object.entries(body.theme?.tokens || {})) document.documentElement.style.setProperty(name, value);
+      }
+      if (envelope.type === 'viewport') {
+        const next = Number(body.heightCap);
+        if (Number.isFinite(next)) { heightCap = Math.max(24, Math.min(12000, Math.round(next))); resize(); }
       }
       if (envelope.type === 'prepare.update') {
         document.body.inert = true;
@@ -140,8 +168,8 @@ export function guestSdk(mountId: string, renderRevision: number, guestPacketByt
       if (remaining > 0) { if (!resizeTimer) resizeTimer = setTimeout(() => { resizeTimer = null; lastResize = -Infinity; resize(); }, remaining); return; }
       lastResize = performance.now();
       const raw = Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height));
-      if ((raw > 12000) !== tall) { tall = !tall; setTimeout(() => { if (!stopped) document.documentElement.style.overflowY = tall ? 'auto' : 'hidden'; }, 0); }
-      const height = Math.max(24, Math.min(12000, raw));
+      if ((raw > heightCap) !== tall) { tall = !tall; setTimeout(() => { if (!stopped) document.documentElement.style.overflowY = tall ? 'auto' : 'hidden'; }, 0); }
+      const height = Math.max(24, Math.min(heightCap, raw));
       if (lastHeight < 0 || Math.abs(height - lastHeight) > 1) { lastHeight = height; packet('resize', { height }); }
     };
     new ResizeObserver(resize).observe(root);

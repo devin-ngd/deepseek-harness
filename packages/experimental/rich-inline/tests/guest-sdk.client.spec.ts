@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
 import type { DOMWindow } from 'jsdom'
-import { guestSdk } from '../src/client/guest-sdk.ts'
+import { guestHeightCap, guestSdk } from '../src/client/guest-sdk.ts'
 
 interface Packet {
   protocol: string
@@ -31,7 +31,7 @@ function freezeBridgeData(value: unknown): void {
   Object.freeze(value)
 }
 
-function guest(fields: Record<string, string> = {}, dirty: string[] = [], packetBytes = 131072) {
+function guest(fields: Record<string, string> = {}, dirty: string[] = [], packetBytes = 131072, heightCap?: number) {
   const dom = new JSDOM('<!doctype html><html><body><form><input name="name"><button>Send</button></form></body></html>', {
     url: 'https://guest.invalid/', runScripts: 'outside-only',
   })
@@ -60,7 +60,7 @@ function guest(fields: Record<string, string> = {}, dirty: string[] = [], packet
     receipt: { accepted: true, code: 'ACCEPTED', draftRevision: revision,
       actionId: packet.payload.actionId ?? null, state },
   }) }
-  dom.window.eval(guestSdk('mount-one', 1, packetBytes))
+  dom.window.eval(guestSdk('mount-one', 1, packetBytes, heightCap))
   const sdk = (dom.window as DOMWindow & { rich: Sdk }).rich
   deliver('init', { snapshot: {
     protocol: 'lumina-rich/1', scope: { sessionId: 'session-one', messageId: 'message-one', blockId: 'block-one', renderRevision: 1 },
@@ -339,6 +339,45 @@ describe('real guest SDK input and action lifecycle', () => {
     g.triggerResize()
     await vi.advanceTimersByTimeAsync(120)
     expect(root.style.overflowY).toBe('hidden')
+  })
+  it('caps reported height at a viewport-sized bound and scrolls taller content inside the guest', async () => {
+    const g = guest({}, [], 131072, 900)
+    const root = g.dom.window.document.documentElement
+    let currentHeight = 3109
+    Object.defineProperty(g.dom.window.document.body, 'scrollHeight', { get: () => currentHeight, configurable: true })
+    g.triggerResize()
+    await vi.advanceTimersByTimeAsync(120)
+    expect(root.style.overflowY).toBe('auto')
+    expect(g.packets('resize').at(-1)).toMatchObject({ payload: { height: 900 } })
+    currentHeight = 640
+    g.triggerResize()
+    await vi.advanceTimersByTimeAsync(120)
+    expect(root.style.overflowY).toBe('hidden')
+    expect(g.packets('resize').at(-1)).toMatchObject({ payload: { height: 640 } })
+  })
+  it('bounds the viewport height cap between 320px and 1400px', () => {
+    expect(guestHeightCap(0)).toBe(320)
+    expect(guestHeightCap(900)).toBe(680)
+    expect(guestHeightCap(1339)).toBe(1119)
+    expect(guestHeightCap(4000)).toBe(1400)
+  })
+  it('re-caps a mounted guest when the host reports a new viewport height', async () => {
+    const g = guest()
+    const root = g.dom.window.document.documentElement
+    let currentHeight = 12400
+    Object.defineProperty(g.dom.window.document.body, 'scrollHeight', { get: () => currentHeight, configurable: true })
+    g.triggerResize()
+    await vi.advanceTimersByTimeAsync(120)
+    expect(g.packets('resize').at(-1)).toMatchObject({ payload: { height: 12000 } })
+    expect(root.style.overflowY).toBe('auto')
+    g.deliver('viewport', { heightCap: 900 })
+    await vi.advanceTimersByTimeAsync(150)
+    expect(g.packets('resize').at(-1)).toMatchObject({ payload: { height: 900 } })
+    currentHeight = 640
+    g.triggerResize()
+    await vi.advanceTimersByTimeAsync(120)
+    expect(root.style.overflowY).toBe('hidden')
+    expect(g.packets('resize').at(-1)).toMatchObject({ payload: { height: 640 } })
   })
   it('changes overflow only after the resize callback returns so Chrome sees no layout loop', async () => {
     const g = guest()

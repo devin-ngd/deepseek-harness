@@ -6,7 +6,7 @@ import { RICH_CYBER_CSS, RICH_DARK_CSS, RICH_THEMES, richThemeCss } from '../src
 import type { RichAppearance } from '../src/shared/theme.ts'
 
 beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }))
-afterEach(() => vi.useRealTimers())
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 function harness(appearance: RichAppearance = { theme: 'cyber', accent: 'auto' }) {
   let receive: (value: Record<string, unknown>) => void = () => {}
   const native: NativeRichBridge = {
@@ -17,6 +17,20 @@ function harness(appearance: RichAppearance = { theme: 'cyber', accent: 'auto' }
   const preview = new RichPreview(native, appearance)
   return { preview, native, emit: (packet: Record<string, unknown>) => { receive(packet) } }
 }
+it('uses the latest viewport when a resize finishes before preview readiness', async () => {
+  let resize = () => {}
+  const window = {
+    innerHeight: 800,
+    addEventListener: (_: string, callback: () => void) => { resize = callback },
+    removeEventListener: () => {},
+  }
+  vi.stubGlobal('window', window)
+  const h = harness(); await h.preview.open()
+  window.innerHeight = 1200; resize(); await vi.advanceTimersByTimeAsync(400)
+  h.emit({ type: 'preview.ready' })
+  expect(h.native.send).toHaveBeenCalledWith('preview-lease', { type: 'viewport', heightCap: 980 })
+  await h.preview.close()
+})
 it('coalesces many appends and sends only new HTML/CSS without generated JS', async () => {
   const h = harness(); await h.preview.open(); h.emit({ type: 'preview.ready' })
   const source = JSON.stringify({ key: 'test', html: '<p>Hi</p>', css: 'p{color:red}', js: 'window.evilRan=true' })
@@ -61,4 +75,14 @@ it('streams every built-in theme with the same sheet as final rendering', async 
     expect(vi.mocked(h.native.acquire).mock.calls[0]?.[0].css).toBe(richThemeCss({ theme, accent: 'auto' }))
     await h.preview.close()
   }
+})
+
+it('bakes a viewport height cap into the preview SDK so taller inert content scrolls inside', async () => {
+  const h = harness(); await h.preview.open()
+  const sdk = vi.mocked(h.native.acquire).mock.calls[0]?.[0].sdk
+  expect(typeof sdk === 'string' && sdk.includes('let heightCap =')).toBe(true)
+  expect(sdk).toContain('overflowY')
+  expect(sdk).toContain('Math.min(heightCap, content)')
+  expect(sdk).toContain("packet.type === 'viewport'")
+  await h.preview.close()
 })

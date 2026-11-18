@@ -8,7 +8,7 @@ import type {
   RichReceipt, RichRegisterFileRequest, RichSaveDraftRequest, RichSnapshot, RichRenderRequest, RichRenderReceipt,
   RichPollRequest, RichPollValue,
 } from '../shared/types.ts'
-import { guestSdk } from './guest-sdk.ts'
+import { currentGuestHeightCap, GUEST_HEIGHT_MAX, guestSdk } from './guest-sdk.ts'
 import { parseActionRequest, parseInvokeRequest, parseSaveDraftRequest } from '../shared/validate.ts'
 import type { NativeRichBridge, RichCopyLabels, RichReservation } from './native.ts'
 import type { RichAppearance } from '../shared/theme.ts'
@@ -69,6 +69,7 @@ export class RichBlockController {
   private readonly listeners = new Set<() => void>()
   private mountId: RichMountId | null = null
   private stopNative: (() => void) | null = null
+  private stopViewport: (() => void) | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
   private generation = 0
   private guestSeq = 0
@@ -167,7 +168,8 @@ export class RichBlockController {
     const limits = this.native.limits
     if (![limits.documentBytes, limits.sdkBytes, limits.guestPacketBytes, limits.hostPacketBytes]
       .every(value => Number.isSafeInteger(value) && value > 0)) throw new Error('RICH_NATIVE_LIMITS_INVALID')
-    const sdk = guestSdk(mountId, manifest.renderRevision, limits.guestPacketBytes)
+    // Every mount, including restored sessions, starts with a viewport-sized surface.
+    const sdk = guestSdk(mountId, manifest.renderRevision, limits.guestPacketBytes, currentGuestHeightCap())
     if (new TextEncoder().encode(sdk).byteLength > limits.sdkBytes) throw new Error('RICH_SDK_TOO_LARGE')
     const appearance = this.appearance()
     const css = richThemeCss(appearance) + manifest.css
@@ -199,6 +201,20 @@ export class RichBlockController {
     })
     this.styledAs = appearance.theme
     this.publish({ reservation })
+    // A window resize re-caps mounted guests without recreating their surfaces; the guest re-reports its bounded height.
+    this.stopViewport?.()
+    if (typeof window !== 'undefined') {
+      let timer: ReturnType<typeof setTimeout> | null = null
+      const onResize = (): void => {
+        if (timer !== null) clearTimeout(timer)
+        timer = setTimeout(() => {
+          timer = null
+          if (this.ready) void this.send('viewport', { heightCap: currentGuestHeightCap() }).catch(() => {})
+        }, 400)
+      }
+      window.addEventListener('resize', onResize)
+      this.stopViewport = () => { if (timer !== null) clearTimeout(timer); window.removeEventListener('resize', onResize); this.stopViewport = null }
+    }
     // A switch that landed while this document was being built is applied once the guest exists.
     if (this.appearance().theme !== appearance.theme) void this.restyle().catch((error: unknown) => { console.error('Rich restyle failed', error) })
   }
@@ -236,6 +252,7 @@ export class RichBlockController {
       const theme = this.theme()
       this.lastTheme = JSON.stringify(theme)
       await this.send('init', { snapshot, theme })
+      if (typeof window !== 'undefined') await this.send('viewport', { heightCap: currentGuestHeightCap() })
       return
     }
     if (!this.ready) return
@@ -250,7 +267,7 @@ export class RichBlockController {
     if (packet.type === 'resize') {
       const height = packet.payload.height
       // Reserve one CSS pixel for device-scale rounding of the native viewport.
-      if (typeof height === 'number' && Number.isFinite(height)) this.publish({ height: Math.max(24, Math.min(12000, Math.ceil(height) + 1)) })
+      if (typeof height === 'number' && Number.isFinite(height)) this.publish({ height: Math.max(24, Math.min(GUEST_HEIGHT_MAX, Math.ceil(height) + 1)) })
       return
     }
     if (packet.type === 'content.error') {
@@ -482,6 +499,7 @@ export class RichBlockController {
   private async retireGuest(): Promise<void> {
     const reservation = this.view.reservation
     this.stopNative?.(); this.stopNative = null
+    this.stopViewport?.()
     this.publish({ reservation: null })
     if (reservation !== null && this.native !== undefined) await this.native.release(reservation.lease)
   }

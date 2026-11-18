@@ -1,20 +1,30 @@
 /** Disposable read-only preview: append decoding, frame coalescing and no Host action capability. */
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { PreviewDecoder } from '../shared/authored.ts'
+import { currentGuestHeightCap, GUEST_HEIGHT_MAX } from './guest-sdk.ts'
 import type { NativeRichBridge, RichReservation } from './native.ts'
 import type { RichAppearance } from '../shared/theme.ts'
 import { richThemeCss } from '../shared/theme.ts'
 
-/** Trusted preview bootstrap. Generated HTML is inert; no generated JavaScript is installed. */
-const previewSdk = String.raw`(() => {
+/**
+ * Trusted preview bootstrap. Generated HTML is inert; no generated JavaScript is installed.
+ * @param heightCap - reported height bound; taller inert content scrolls inside the preview.
+ * @returns JavaScript source with no host credentials.
+ */
+const previewSdk = (heightCap: number) => String.raw`(() => {
   const bridge = window.richGuest, root = document.querySelector('[data-rich-content-root]');
   document.body.inert = true;
+  let heightCap = ${heightCap};
   const stable = document.createElement('div'), tail = document.createElement('div'), style = document.createElement('style');
   root.append(stable, tail); document.head.append(style);
   let html = '', cutoff = 0, scan = 0, depth = 0, tagStart = -1, quote = '', raw = '', comment = false, seq = 0;
-  let lastHeight = 0;
+  let lastHeight = 0, tall = false;
+  // Toggling the scrollbar inside the observer callback re-wraps the observed root in the same frame, which Chrome reports as a window error.
+  document.documentElement.style.overflowY = 'hidden';
   const resize = () => {
-    const height = Math.ceil(root.getBoundingClientRect().height);
+    const content = Math.ceil(root.getBoundingClientRect().height);
+    if ((content > heightCap) !== tall) { tall = !tall; setTimeout(() => { document.documentElement.style.overflowY = tall ? 'auto' : 'hidden'; }, 0); }
+    const height = Math.max(24, Math.min(heightCap, content));
     if (height !== lastHeight) { lastHeight = height; bridge.send({ type: 'preview.resize', height }); }
   };
   const voidTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
@@ -25,6 +35,11 @@ const previewSdk = String.raw`(() => {
       if (/^on/i.test(attribute.name) || attribute.name === 'autofocus') node.removeAttribute(attribute.name);
   };
   bridge.subscribe(packet => {
+    if (packet.type === 'viewport') {
+      const next = Number(packet.heightCap);
+      if (Number.isFinite(next)) { heightCap = Math.max(24, Math.min(12000, Math.round(next))); resize(); }
+      return;
+    }
     if (packet.type !== 'preview.append' || packet.seq !== seq + 1 || typeof packet.html !== 'string' || typeof packet.css !== 'string') return;
     seq++; html += packet.html; style.append(document.createTextNode(packet.css));
     const previous = cutoff;
@@ -72,6 +87,7 @@ export class RichPreview {
   private timer: ReturnType<typeof setTimeout> | null = null
   private unsubscribe: (() => void) | undefined
   private sending = false
+  private stopViewport: (() => void) | null = null
 
   /** @param native - trusted native adapter; absent on Web. @param appearance - Host profile preferences, shared with final rendering. */
   constructor(private readonly native: NativeRichBridge | undefined, private readonly appearance: RichAppearance) {}
@@ -88,7 +104,8 @@ export class RichPreview {
   async open(): Promise<void> {
     if (this.native === undefined) return
     try {
-      const reservation = await this.native.acquire({ mountId: `preview-${randomUUID()}`, mountNonce: randomUUID(), html: '', css: richThemeCss(this.appearance), js: '', sdk: previewSdk })
+      // The cap is baked into the SDK: previews keep a viewport-sized native surface, like final blocks.
+      const reservation = await this.native.acquire({ mountId: `preview-${randomUUID()}`, mountNonce: randomUUID(), html: '', css: richThemeCss(this.appearance), js: '', sdk: previewSdk(currentGuestHeightCap()) })
       if (this.stopped) { await this.native.release(reservation.lease); return }
       this.unsubscribe = this.native.subscribe(reservation.lease, (packet) => {
         if (this.stopped) return
@@ -97,12 +114,31 @@ export class RichPreview {
           return
         }
         if (packet.type === 'native.closed') { void this.close().catch(() => { this.publish({ error: true }) }); return }
-        if (packet.type === 'preview.ready') { this.ready = true; this.schedule() }
+        if (packet.type === 'preview.ready') {
+          this.ready = true
+          if (typeof window !== 'undefined') void this.native?.send(reservation.lease, { type: 'viewport', heightCap: currentGuestHeightCap() }).catch(() => {})
+          this.schedule()
+        }
         if (packet.type === 'preview.resize' && typeof packet.height === 'number' && Number.isFinite(packet.height))
-          this.publish({ height: Math.max(24, Math.min(12000, Math.ceil(packet.height) + 1)) })
+          this.publish({ height: Math.max(24, Math.min(GUEST_HEIGHT_MAX, Math.ceil(packet.height) + 1)) })
         if (packet.type === 'native.error') this.publish({ error: true })
       })
       this.publish({ reservation })
+      // A window resize re-caps the preview like final blocks; the inert document scrolls inside.
+      this.stopViewport?.()
+      if (typeof window !== 'undefined') {
+        let resizeTimer: ReturnType<typeof setTimeout> | null = null
+        const onResize = (): void => {
+          if (resizeTimer !== null) clearTimeout(resizeTimer)
+          resizeTimer = setTimeout(() => {
+            resizeTimer = null
+            if (!this.ready) return
+            void this.native?.send(reservation.lease, { type: 'viewport', heightCap: currentGuestHeightCap() }).catch(() => {})
+          }, 400)
+        }
+        window.addEventListener('resize', onResize)
+        this.stopViewport = () => { if (resizeTimer !== null) clearTimeout(resizeTimer); window.removeEventListener('resize', onResize); this.stopViewport = null }
+      }
     } catch { this.publish({ error: true }) } // Preview failure leaves source available in the trusted fallback.
   }
   /**
@@ -139,6 +175,7 @@ export class RichPreview {
     this.stopped = true
     if (this.timer !== null) clearTimeout(this.timer)
     this.unsubscribe?.()
+    this.stopViewport?.()
     const reservation = this.view.reservation
     this.publish({ reservation: null, closed: true })
     if (reservation !== null) await this.native?.release(reservation.lease)

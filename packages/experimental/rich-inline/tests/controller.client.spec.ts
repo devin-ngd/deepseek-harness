@@ -72,6 +72,24 @@ beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('real rich controller async lifetimes', () => {
+  it('uses the latest viewport when a resize finishes before guest readiness', async () => {
+    let resize = () => {}
+    const window = {
+      innerHeight: 800,
+      addEventListener: (_: string, callback: () => void) => { resize = callback },
+      removeEventListener: () => {},
+    }
+    vi.stubGlobal('window', window)
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    vi.stubGlobal('getComputedStyle', () => ({ colorScheme: 'light', getPropertyValue: () => '' }))
+    vi.stubGlobal('document', { documentElement: {} })
+    const h = harness()
+    const stop = h.controller.open(messageId, blockId); await settle()
+    window.innerHeight = 1200; resize(); await vi.advanceTimersByTimeAsync(400)
+    h.emit('lease-mount-1', 'mount-1', 1, 'ready', { sdkVersion: '1' }); await settle()
+    expect(vi.mocked(h.native.send).mock.calls.some(([, packet]) => packet.type === 'viewport' && (packet.payload as { heightCap: number }).heightCap === 980)).toBe(true)
+    stop(); await settle()
+  })
   it('settles the native close draft without blocking the guest acknowledgement queue', async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: false }))
     vi.stubGlobal('getComputedStyle', () => ({ colorScheme: 'light', getPropertyValue: () => '' }))
