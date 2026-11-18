@@ -5,6 +5,7 @@ import { lstatSync, readFileSync, readlinkSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { isLocalGeneratedArtifact } from './local-generated-artifacts.ts'
 import { canonicalReferenceText } from './verify-public-repository-links.ts'
 
 const root = resolve(import.meta.dirname, '..')
@@ -61,7 +62,7 @@ export interface RepositoryReference {
 }
 
 function isMaintained(file: string): boolean {
-  return !excludedPrefixes.some(prefix => file.startsWith(prefix))
+  return !isLocalGeneratedArtifact(file) && !excludedPrefixes.some(prefix => file.startsWith(prefix))
 }
 
 /**

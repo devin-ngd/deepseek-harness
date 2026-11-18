@@ -75,6 +75,24 @@ describe('unique object-name prefix search', () => {
 describe('maintained repository reference policy', () => {
   const numericCommit = String(6_344_383)
 
+  it('skips local artifacts but still rejects references in maintained handoff files', (test) => {
+    const fixture = repository(test)
+    for (const file of [
+      '.build/output/README.md',
+      'clients/harmony-mobile/handoff/deploy-rc1/profile-backup/plugin/README.md',
+      'clients/harmony-mobile/handoff/standard-plugin-workspace/source-candidates-X/pkg/README.md',
+      'clients/harmony-mobile/handoff/standard-plugin-workspace/source-fixes-X/manifest.json',
+      'clients/harmony-mobile/handoff/standard-plugin-workspace/desktop-command-X/validation-Y/sources/plugin/README.md',
+      'clients/harmony-mobile/handoff/standard-plugin-workspace/review-X/official-plugin-Y/official-packages/pkg/README.md',
+      'clients/harmony-mobile/handoff/workspace-plugin-host-X/documentation/docs/tasks.md',
+      'clients/harmony-mobile/handoff/workspace-admission-X/inputs/tasks.md',
+      'clients/harmony-mobile/handoff/phase29/README.md',
+    ]) fixture.write(file, fixture.commit)
+    expect(scanRepositoryReferences(fixture.root)).toEqual([
+      { file: 'clients/harmony-mobile/handoff/phase29/README.md', line: 1, kind: 'commit-hash' },
+    ])
+  })
+
   it.each([
     ['uv.lock', `artifact = { size = ${numericCommit} }`],
     ['python/sdk/uv.lock', `sdist.size = ${numericCommit}`],
