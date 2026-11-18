@@ -1185,6 +1185,29 @@ def test_client_accepts_explicit_environment_dsh_home(
     }
 
 
+def test_custom_launch_args_still_use_explicit_dsh_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env_dump = tmp_path / "env.json"
+    home = tmp_path / "isolated-home"
+    _install_fake_bundled_dsh(tmp_path, monkeypatch)
+    monkeypatch.setenv("DSH_HOME", str(tmp_path / "ambient-home"))
+
+    with HarnessClient(
+        HarnessConfig(dsh_home=str(home), env={"ENV_DUMP": str(env_dump)}),
+        _launch_args=(sys.executable, str(tmp_path / "dsh.py")),
+    ) as client:
+        client.initialize(provider="deepseek-official", cwd="/workspace", model="deepseek-v4-pro")
+
+    assert json.loads(env_dump.read_text())["DSH_HOME"] == str(home)
+
+
+def test_custom_launch_args_reject_blank_dsh_home() -> None:
+    client = HarnessClient(HarnessConfig(dsh_home="  "), _launch_args=(sys.executable,))
+    with pytest.raises(ValueError, match="non-empty dsh_home"):
+        client.start()
+
+
 def test_client_rejects_an_implicit_default_dsh_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

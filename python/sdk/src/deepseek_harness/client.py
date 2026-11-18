@@ -75,9 +75,20 @@ class HarnessClient:
         self.close()
 
     def start(self) -> None:
+        """Start the runtime, or start a new runtime after the previous one has closed.
+
+        A restart requires the previous runtime's reader threads to have stopped.
+        """
         if self._proc is not None:
             return
         with self._lock:
+            previous_threads = (self._reader_thread, self._stderr_thread)
+            if any(thread is not None and thread.is_alive() for thread in previous_threads):
+                raise TransportClosedError("previous DeepSeek Harness runtime streams are still closing; retry start after they finish")
+            if self._reader_thread is not None:
+                self._notifications = queue.Queue()
+                self._requests = queue.Queue()
+                self._stderr_lines.clear()
             self._session_parents.clear()
             self._question_tasks.clear()
             self._closing = False
@@ -85,6 +96,8 @@ class HarnessClient:
         env = os.environ.copy()
         if self.config.env:
             env.update(self.config.env)
+        if self._launch_args and self.config.dsh_home is not None:
+            self._configure_dsh_home(env)
         args = list(self._launch_args or self._default_launch_args(env))
         self._proc = subprocess.Popen(
             args,
@@ -607,6 +620,16 @@ class HarnessClient:
         else:
             base = (str(Path(self.config.dsh_bin).expanduser().resolve()),)
 
+        self._configure_dsh_home(env)
+
+        patches = tuple(
+            argument
+            for patch in self.config.patches
+            for argument in ("--patch", str(Path(patch).expanduser().resolve()))
+        )
+        return (*base, "--profile", self.config.profile, *patches)
+
+    def _configure_dsh_home(self, env: dict[str, str]) -> None:
         if self.config.dsh_home is not None:
             if not self.config.dsh_home.strip():
                 raise ValueError("HarnessConfig requires a non-empty dsh_home")
@@ -616,13 +639,6 @@ class HarnessClient:
                 "HarnessConfig requires an explicit dsh_home or non-empty DSH_HOME; "
                 "the Python SDK never uses ~/.dsh implicitly"
             )
-
-        patches = tuple(
-            argument
-            for patch in self.config.patches
-            for argument in ("--patch", str(Path(patch).expanduser().resolve()))
-        )
-        return (*base, "--profile", self.config.profile, *patches)
 
     def _unsubscribe_notifications(self, subscription_id: str) -> None:
         with self._lock:

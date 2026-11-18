@@ -6,7 +6,7 @@ class HarnessError(Exception):
 
 
 class TransportClosedError(HarnessError):
-    """Raised when the runtime subprocess exits or closes stdout."""
+    """Raised when the runtime transport is closed or a previous transport is still closing."""
 
 
 class SdkProtocolError(HarnessError):
