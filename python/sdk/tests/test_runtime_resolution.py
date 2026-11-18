@@ -94,9 +94,15 @@ def test_authoring_resources_validate_installed_and_wheel_payloads(tmp_path: Pat
     archive_path = tmp_path / "payload.zip"
     with zipfile.ZipFile(archive_path, "w") as archive:
         for path in root.rglob("*"):
-            archive.write(path, str(path.relative_to(root)).replace("\\", "/"))
+            name = str(path.relative_to(root)).replace("\\", "/")
+            archive.write(path, name)
+            if target != "win-x64" and path in (python, node):
+                executable = not ((path == python and invalid == "mode") or (path == node and invalid == "node-mode"))
+                archive.getinfo(name).external_attr = (0o100755 if executable else 0o100644) << 16
     with zipfile.ZipFile(archive_path) as archive:
-        for candidate in (root, zipfile.Path(archive)):
+        # Windows cannot represent POSIX executable bits on extracted files.
+        candidates = (zipfile.Path(archive),) if os.name == "nt" and target != "win-x64" else (root, zipfile.Path(archive))
+        for candidate in candidates:
             if invalid is None:
                 validate_resources(candidate, target)
             else:
@@ -335,10 +341,11 @@ def test_explicit_download_uses_runtime_without_a_harness_home(
 ) -> None:
     root = tmp_path / "中文缓存"
     root.mkdir()
-    _resource_sidecars(root / "deepseek-harness-sdk-runtime-linux-x64")
-    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: "linux-x64")
+    target = "win-x64" if os.name == "nt" else "linux-x64"
+    _resource_sidecars(root / f"deepseek-harness-sdk-runtime-{target}")
+    monkeypatch.setattr(runtime, "_current_platform_tag", lambda: target)
     script = tmp_path / "download.py"
-    destination = root / "linux-x64/primary-runtime" if resource == "primary" else root
+    destination = root / target / "primary-runtime" if resource == "primary" else root
     script.write_text("import json,os,sys\n" + f"assert os.environ['DSH_RUNTIME_DOWNLOAD'] == {resource!r}\n"
                       + f"sys.stdout.buffer.write(json.dumps({str(destination)!r}, ensure_ascii=False).encode('utf-8'))\n", encoding="utf-8")
     monkeypatch.delenv("DSH_HOME", raising=False)
