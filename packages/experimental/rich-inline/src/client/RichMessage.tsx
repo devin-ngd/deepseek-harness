@@ -7,7 +7,7 @@ import {
   MarkdownText, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
+import type { MessageId } from '@deepseek-ai/dsh-llm/types'
 import type { RichActionState, RichBlockId } from '../shared/types.ts'
 import type { RichMessageProps } from './slots.ts'
 import css from './RichMessage.module.css'

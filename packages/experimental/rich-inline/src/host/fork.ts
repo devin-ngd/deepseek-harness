@@ -1,7 +1,7 @@
 /** Read-only restoration from the child's own inherited publish facts, never the parent's later ledger. */
 import { createHash } from 'node:crypto'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
+import type { ToolCallId } from '@deepseek-ai/dsh-llm/types'
 import type { RichMountRequest, RichValues } from '../shared/types.ts'
 import { canonicalRichJson, isRichValues, richMarkerIds, typedRichValuesValid } from '../shared/validate.ts'
 import type { RichBlockRecord } from './ledger.ts'

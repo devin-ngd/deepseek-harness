@@ -1,6 +1,6 @@
 /** Private injection seat; components receive values and callbacks, never Cordis context. */
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
+import type { MessageId } from '@deepseek-ai/dsh-llm/types'
 import type { RichBlockId, RichActionId } from '../shared/types.ts'
 import type { BlockView } from './controller.ts'
 import type { MessagePart } from './markers.ts'

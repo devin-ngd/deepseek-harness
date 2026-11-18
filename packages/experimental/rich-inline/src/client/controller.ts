@@ -1,5 +1,5 @@
 /** One trusted message block's transport, durable refresh and disposable native guest. */
-import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
+import type { MessageId } from '@deepseek-ai/dsh-llm/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type {

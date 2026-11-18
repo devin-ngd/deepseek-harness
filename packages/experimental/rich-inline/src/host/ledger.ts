@@ -1,7 +1,7 @@
 /** One durable aggregate holds drafts, action receipts, and dispatch intents atomically. */
 import { z } from 'zod'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { MessageId, ToolCallId } from '@deepseek-ai/dsh-llm/brand'
+import type { MessageId, ToolCallId } from '@deepseek-ai/dsh-llm/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { AttachmentId } from '@deepseek-ai/dsh-attachment'

@@ -1,7 +1,7 @@
 /** Runs the real controller with RPC and Native transport doubles; no Electron security claim. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
-import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
+import type { MessageId } from '@deepseek-ai/dsh-llm/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RichActionStatus, RichBlockId, RichMountId, RichSnapshot } from '../src/shared/types.ts'
 import type { NativeRichBridge } from '../src/client/native.ts'
