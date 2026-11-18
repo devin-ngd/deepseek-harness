@@ -12,7 +12,8 @@ import { z as zod } from 'zod'
 import type { Agent, RequestErrorAction } from '@deepseek-ai/dsh-agent'
 import type { LlmFailure, ResolvedRetryPolicy } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import { RetryId } from './brand.ts'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { RetryId } from './brand.ts'
 import type { LlmRetryEventData } from './types.ts'
 
 export type { LlmRetryEventData, LlmRetryStartedEventData } from './types.ts'
@@ -223,7 +224,7 @@ export async function apply(ctx: Context, config: Config = {}, internals: RetryI
     const unbounded = policy.mode === 'normal' && policy.unboundedCodes?.includes(failure.code) === true
     if (policy.mode === 'normal' && !unbounded && previousRetry >= policy.maxRetries) return next()
     const retry = previousRetry + 1
-    const retryId = previous?.retryId ?? RetryId(randomUUID())
+    const retryId = previous?.retryId ?? brandString<RetryId>(randomUUID())
     let delayMs: number
     if (failure.providerRetryAfterMs !== undefined
       && Number.isFinite(failure.providerRetryAfterMs)

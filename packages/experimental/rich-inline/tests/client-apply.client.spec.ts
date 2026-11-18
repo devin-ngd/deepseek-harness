@@ -11,7 +11,7 @@ import type { ThemeSettingsInjected } from '../src/client/ThemeSettings.tsx'
 import type { RichThemeSettings } from '../src/client/appearance.ts'
 import type { RichInjected } from '../src/client/slots.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionPendingInteraction } from '@deepseek-ai/dsh-client-ui-session/client'
 import { PendingQuestion } from '../../../client/ui-user-questions/src/client/contract/slots.ts'
 import { RichQuestion, type RichQuestionInjected } from '../src/client/RichQuestion.tsx'
 
@@ -32,8 +32,8 @@ async function fixture() {
   ctx.provide('remote.richInline', { appearance: async () => ({ ok: true, value: { theme: 'cyber', accent: 'auto' } }) })
   ctx.provide('fileUpload', { upload: vi.fn() })
   ctx.provide('locale', new LocaleRuntime(ctx))
-  const sessionStatus = createSnapshotStore<SessionStatusSnapshot>(new Map())
-  ctx.provide('uiSession', { sessionStatus })
+  const pendingInteractions = createSnapshotStore<ReadonlyMap<SessionId, SessionPendingInteraction>>(new Map())
+  ctx.provide('uiSession', { pendingInteractions })
   ctx.provide('sessions', { list: createSnapshotStore({ byId: { [SID]: { projectionValues: { agentPreset: 'rich' } } } }) })
   const formState = createSnapshotStore<ConfigFormSnapshot<RichThemeSettings>>({
     status: 'ready', value: { theme: 'cyber' }, base: {}, user: {}, revision: 0, writable: true,
@@ -63,7 +63,7 @@ async function fixture() {
     'settings.general.item': { kind: 'list', scope: 'root' },
     'shell.overlay': { kind: 'list', scope: 'root' },
   } } as never, () => null)
-  return { ctx, unmount, formState, set, serve, whileServed, sessionStatus }
+  return { ctx, unmount, formState, set, serve, whileServed, pendingInteractions }
 }
 
 it('uses the official composer election and original question source only in enabled sessions', async () => {
@@ -75,7 +75,7 @@ it('uses the official composer election and original question source only in ena
     const entry = b.ctx.slots.entries('conversation.composer')[0]!
     expect(entry).toMatchObject({ component: RichQuestion, options: { priority: -10 } })
     const pending = new PendingQuestion(SID, [{ id: 'one', question: 'Choose an approach' }])
-    b.sessionStatus.set(new Map([[SID, { pendingInteraction: pending, running: false, completionUnread: false }]]))
+    b.pendingInteractions.set(new Map([[SID, pending]]))
     expect(entry.select!({ pendingInteraction: pending } as never)).toBe(pending)
     expect(entry.select!({ pendingInteraction: undefined } as never)).toBeNull()
     expect(entry.select!({ pendingInteraction: { kind: 'approval', sessionId: SID } } as never)).toBeNull()

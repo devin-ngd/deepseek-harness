@@ -17,7 +17,8 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import { CommandId } from '@deepseek-ai/dsh-commands/brand'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CommandId } from '@deepseek-ai/dsh-commands/types'
 // Side-effect type imports: the configuration-event SessionEventMap merges.
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
@@ -80,10 +81,10 @@ describe('summary blank = no submitted command or turn', () => {
     const session = ctx.sessions.create()
     await attach(session)
     session.append('command/run', {
-      commandId: CommandId('blank-cmd-1'), name: 'test-command', source: { kind: 'user' },
+      commandId: brandString<CommandId>('blank-cmd-1'), name: 'test-command', source: { kind: 'user' },
     })
     expect(await listBlank(remote, session.id)).toBe(false)
-    session.append('command/done', { commandId: CommandId('blank-cmd-1'), kind: 'error', text: 'Not approved.' })
+    session.append('command/done', { commandId: brandString<CommandId>('blank-cmd-1'), kind: 'error', text: 'Not approved.' })
     expect({ blank: await listBlank(remote, session.id), events: session.snapshotEvents().map(({ type, data }) => ({ type, data })) }).toMatchInlineSnapshot(`
       {
         "blank": false,

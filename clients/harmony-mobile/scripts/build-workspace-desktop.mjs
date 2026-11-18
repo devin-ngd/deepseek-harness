@@ -13,7 +13,8 @@ const reportPath = explicitReport ?? 'evidence/workspace-desktop-build.json'
 const client = resolve('.'), root = JSON.parse(await readFile('source.json', 'utf8')).dshRoot
 const web = join(root, 'apps/web/dist'), webIndex = join(web, 'index.html')
 const environment = join(root, '.dsh-build/client-build-environment.json')
-const release = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
+const host = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
+const release = host.version
 const webBuild = JSON.parse(await readFile(environment, 'utf8'))
 assert.equal(webBuild.environment.DSH_CLIENT_VERSION, release, 'Run the DSH build:artifacts task for the current Web release.')
 const indexBytes = await readFile(webIndex)
@@ -26,7 +27,7 @@ assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-client-ui-workspace'], 
 assert.ok(manifest.files.includes('workspace-shell'))
 await cp(web, join(stage, 'workspace-shell'), { recursive: true, force: false, errorOnExist: true })
 assert.deepEqual(await readFile(join(stage, 'workspace-shell/index.html')), indexBytes)
-manifest.dependencies.zod = '4.4.3'
+manifest.dependencies.zod = host.devDependencies.zod
 const entries = ['index', 'admission', 'transport', 'paired-provider', 'relay-lifecycle', 'product', 'pairing', 'test-session', 'device-binding-command']
 for (const entry of entries.slice(3).filter(value => value !== 'device-binding-command')) manifest.exports['./' + entry] = { types: './lib/types/desktop-plugin/src/' + entry + '.d.ts', default: './lib/' + entry + '.js' }
 await writeFile(join(stage, 'package.json'), JSON.stringify(manifest, null, 2) + '\n')

@@ -23,7 +23,8 @@ export async function projectionPaths(project, root) {
   const paths = Object.fromEntries(Object.entries(raw.config.compilerOptions.paths)
     .map(([name, values]) => [name, values.map(value => resolve(root, value))]))
   const current = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(current.version, '0.2.2-rc.1')
+  const plugin = JSON.parse(await readFile(join(project, 'desktop-plugin/package.json'), 'utf8'))
+  assert.equal(current.version, plugin.peerDependencies['@deepseek-ai/dsh'])
   paths['@deepseek-ai/dsh-client-connection/client'] = [join(root, 'packages/client/connection/src/client/index.ts')]
   const digest = createRequire(join(root, 'packages/experimental/webworker-runtime/package.json'))
   const sha = digest.resolve('@noble/hashes/sha2.js'), utils = digest.resolve('@noble/hashes/utils.js')

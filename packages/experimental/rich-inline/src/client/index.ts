@@ -108,7 +108,7 @@ async function activate(ctx: Context, config: Config): Promise<void> {
     inject: (sessionId): RichQuestionInjected => ({
       hooks: { appearance },
       keyedHooks: { questionCard: (key) => {
-        const pending = scope.uiSession.sessionStatus.getSnapshot().get(sessionId)?.pendingInteraction
+        const pending = scope.uiSession.pendingInteractions.getSnapshot().get(sessionId)
         return (pending?.kind === 'question' || pending?.kind === 'plan-review') && pending.key === key ? pending : undefined
       } },
     }),

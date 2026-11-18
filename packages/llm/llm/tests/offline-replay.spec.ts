@@ -40,7 +40,7 @@ describe('offline replay dispatch', () => {
       expect(llm.getOfflineReplayCounts()).toEqual({
         realCalls: 0, replay: [{ expectedCalls: 1, calls: 1, blockedCalls: 1, realCalls: 0 }],
       })
-    } finally { await ctx.root.fiber.dispose() }
+    } finally { await ctx[Context.root].fiber.dispose() }
   })
 
   it('requires replay from creation for root, title and subtask runtimes even after releasing an owner', async () => {
@@ -61,7 +61,7 @@ describe('offline replay dispatch', () => {
         expect(metadata).not.toHaveBeenCalled()
         expect(live.invoked).not.toHaveBeenCalled()
         expect(llm.getOfflineReplayCounts()).toEqual({ realCalls: 0, replay: [] })
-      } finally { await ctx.root.fiber.dispose() }
+      } finally { await ctx[Context.root].fiber.dispose() }
     }
   })
 
@@ -83,7 +83,7 @@ describe('offline replay dispatch', () => {
       expect(live.invoked).not.toHaveBeenCalled()
       expect(llm.getOfflineReplayCounts()).toEqual({ realCalls: 0,
         replay: [{ calls: 1, expectedCalls: 1, blockedCalls: 1, realCalls: 0 }] })
-    } finally { await ctx.root.fiber.dispose() }
+    } finally { await ctx[Context.root].fiber.dispose() }
   })
   it('admits the exact budget and refuses an extra call before middleware or a live adapter', async () => {
     const ctx = new Context()
@@ -107,7 +107,7 @@ describe('offline replay dispatch', () => {
       llm.assertZeroRealCalls()
       expect(counter.snapshot()).toEqual({ calls: 2, expectedCalls: 2, blockedCalls: 1, realCalls: 0 })
       expect(() => { counter.assertConsumed() }).toThrow('cleanly')
-    } finally { await ctx.root.fiber.dispose() }
+    } finally { await ctx[Context.root].fiber.dispose() }
   })
 
   it('fails on a missing counter, unknown route, wrong model and revoked registration', async () => {
@@ -130,7 +130,7 @@ describe('offline replay dispatch', () => {
       expect(local.invoked).not.toHaveBeenCalled()
       expect(live.invoked).not.toHaveBeenCalled()
       llm.assertZeroRealCalls()
-    } finally { await ctx.root.fiber.dispose() }
+    } finally { await ctx[Context.root].fiber.dispose() }
   })
 
   it('releases the offline requirement idempotently and detects earlier non-replay dispatch', async () => {
@@ -146,7 +146,7 @@ describe('offline replay dispatch', () => {
       expect(local.invoked).toHaveBeenCalledTimes(1)
       expect(() => { llm.assertZeroRealCalls() }).toThrow('real adapter dispatches')
       expect(llm.getOfflineReplayCounts()).toEqual({ realCalls: 1, replay: [] })
-    } finally { await ctx.root.fiber.dispose() }
+    } finally { await ctx[Context.root].fiber.dispose() }
   })
 })
 

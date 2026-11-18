@@ -39,7 +39,7 @@ describe('offline replay installation', () => {
       expect(upload).not.toHaveBeenCalled()
       handle.dispose()
       expect(() => llm.assertOfflineReplayReady('deepseek-official', 'fixed')).toThrow('counter are required')
-    } finally { input.remove(); await ctx.root.fiber.dispose() }
+    } finally { input.remove(); await ctx[Context.root].fiber.dispose() }
   })
 
   it('refuses an additional invocation before extensions and keeps the failed count visible', async () => {
@@ -56,7 +56,7 @@ describe('offline replay installation', () => {
       expect(() => { handle.assertConsumed() }).toThrow('cleanly')
       expect(upload).not.toHaveBeenCalled()
       llm.assertZeroRealCalls()
-    } finally { input.remove(); await ctx.root.fiber.dispose() }
+    } finally { input.remove(); await ctx[Context.root].fiber.dispose() }
   })
 
   it('fails before registering a route when providers, budget, or the input file is missing', async () => {
@@ -69,7 +69,7 @@ describe('offline replay installation', () => {
       expect(() => { apply(ctx, { offline: true, file: '' }) }).toThrow('fixture path')
       expect(llm.listProviders()).toEqual([])
       llm.assertZeroRealCalls()
-    } finally { input.remove(); await ctx.root.fiber.dispose() }
+    } finally { input.remove(); await ctx[Context.root].fiber.dispose() }
   })
 
   it('refuses completion when all stream handles were counted but never read', async () => {
@@ -83,6 +83,6 @@ describe('offline replay installation', () => {
       }
       expect(() => { llm.assertOfflineReplayConsumed() }).toThrow('never bound')
       llm.assertZeroRealCalls()
-    } finally { input.remove(); await ctx.root.fiber.dispose() }
+    } finally { input.remove(); await ctx[Context.root].fiber.dispose() }
   })
 })

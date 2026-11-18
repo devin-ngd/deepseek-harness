@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-rich-inline",
   "description": "Durable message-inline HTML interactions with host-owned authorization",
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.4",
   "type": "module",
   "license": "MIT",
   "publishConfig": {
@@ -57,7 +57,8 @@
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
-    "lib/typert.remote-client.d.ts"
+    "lib/typert.remote-client.d.ts",
+    "lib/typert.remote-client.d.ts.map"
   ],
   "dsh": {
     "client": {
@@ -151,6 +152,6 @@
     "@deepseek-ai/dsh-util-crypto": "workspace:*"
   },
   "engines": {
-    "dsh": ">=0.2.2-rc.1 <0.2.2-rc.2"
+    "dsh": "0.2.2-rc.4"
   }
 }

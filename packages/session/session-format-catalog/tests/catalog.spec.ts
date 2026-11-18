@@ -7,8 +7,9 @@ import type { SessionMessageProjection } from '@deepseek-ai/dsh-session/surface'
 import type { Message } from '@deepseek-ai/dsh-llm'
 import { MESSAGE_PROJECTION_EVENT_TYPES } from '@deepseek-ai/dsh-session/src/known-event-types.ts'
 import { validateInstalledCurrentSessionArtifact } from '../src/current.ts'
-import { SESSION_FORMAT_VERSION, Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, Session, type SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { brandString } from '@deepseek-ai/dsh-brand'
 
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === 'object') {
@@ -24,7 +25,7 @@ describe('first-party Session format catalog', () => {
   it('supplies built-in current message interpreters and validates their durable references', () => {
     expect(currentSessionMessageProjections.map(projection => projection.type).sort())
       .toEqual([...MESSAGE_PROJECTION_EVENT_TYPES].filter(type => !optionalProjectionTypes.has(type)).sort())
-    const session = Session.create(SessionId('projection-catalog'))
+    const session = Session.create(brandString<SessionId>('projection-catalog'))
     session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'no image' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
     const artifact = {
       header: { ...session.header, delegationDepth: 0 }, inheritedEventCount: 0,
@@ -34,7 +35,7 @@ describe('first-party Session format catalog', () => {
   })
 
   it.each([...optionalProjectionTypes])('requires an owning interpreter for %s throughout detached reads', (type) => {
-    const session = Session.create(SessionId('optional-projection-catalog'))
+    const session = Session.create(brandString<SessionId>('optional-projection-catalog'))
     const artifact = { header: { ...session.header, delegationDepth: 0 }, inheritedEventCount: 0,
       events: [{ type, seq: 0, time: 0, data: { targets: [] } }] }
     const validate = () => { validateInstalledCurrentSessionArtifact(artifact) }

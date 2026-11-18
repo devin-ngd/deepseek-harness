@@ -1,6 +1,7 @@
 /** In-memory SDK route checks; no transport startup, agent loop, provider or process. */
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
+import DeepSeekAuth from '@deepseek-ai/dsh-deepseek-auth'
 import { LlmAdapter, LlmRuntime, OfflineReplayCounter } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { JsonRpcTransportPeer } from '@deepseek-ai/dsh-sdk-protocol'
@@ -38,12 +39,13 @@ describe('ordinary SDK initialize with injected adapters', () => {
       expect(create).not.toHaveBeenCalled()
       expect(adapter.dispatched).not.toHaveBeenCalled()
       llm.assertZeroRealCalls()
-    } finally { await server.shutdown(); await ctx.root.fiber.dispose() }
+    } finally { await server.shutdown(); await ctx[Context.root].fiber.dispose() }
   })
 
-  it('retains the ordinary official-route fallback using an injected plugin mount', async () => {
+  it('mounts the ordinary official-route fallback when authentication is already available', async () => {
     const ctx = new Context()
     const llm = new LlmRuntime(ctx)
+    await ctx.plugin(DeepSeekAuth)
     const adapter = new LocalAdapter()
     const mounted = ctx.plugin({ name: 'sdk-fallback-mock', apply() { /* No application services are mounted. */ } })
     const fallback = await mounted
@@ -61,7 +63,7 @@ describe('ordinary SDK initialize with injected adapters', () => {
       llm.assertZeroRealCalls()
       await server.shutdown()
       expect(disposed).toHaveBeenCalledTimes(1)
-    } finally { await server.shutdown(); await ctx.root.fiber.dispose() }
+    } finally { await server.shutdown(); await ctx[Context.root].fiber.dispose() }
   })
 })
 
@@ -84,7 +86,7 @@ describe('offline SDK initialize', () => {
       expect(plugin).not.toHaveBeenCalled()
       expect(create).not.toHaveBeenCalled()
       llm.assertZeroRealCalls()
-    } finally { await server.shutdown(); await ctx.root.fiber.dispose() }
+    } finally { await server.shutdown(); await ctx[Context.root].fiber.dispose() }
   })
 
   it('refuses an installed adapter without a counter before model lookup', async () => {
@@ -101,7 +103,7 @@ describe('offline SDK initialize', () => {
       expect(plugin).not.toHaveBeenCalled()
       expect(adapter.dispatched).not.toHaveBeenCalled()
       llm.assertZeroRealCalls()
-    } finally { await server.shutdown(); await ctx.root.fiber.dispose() }
+    } finally { await server.shutdown(); await ctx[Context.root].fiber.dispose() }
   })
 
   it('accepts only a counted exact replay route, without dispatch or Session creation', async () => {
@@ -120,7 +122,7 @@ describe('offline SDK initialize', () => {
       expect(adapter.dispatched).not.toHaveBeenCalled()
       llm.assertZeroRealCalls()
       for await (const _chunk of llm.stream({ provider: 'replay', model: 'fixed', messages: [], maxTokens: 10 })) { /* Consume one mock-only response. */ }
-    } finally { await server.shutdown(); await ctx.root.fiber.dispose() }
+    } finally { await server.shutdown(); await ctx[Context.root].fiber.dispose() }
   })
 
   it('rejects shutdown when a ready replay never consumed its required call', async () => {
@@ -134,6 +136,6 @@ describe('offline SDK initialize', () => {
       await expect(server.shutdown()).rejects.toThrow('did not consume its exact call budget')
       expect(adapter.dispatched).not.toHaveBeenCalled()
       llm.assertZeroRealCalls()
-    } finally { await ctx.root.fiber.dispose() }
+    } finally { await ctx[Context.root].fiber.dispose() }
   })
 })

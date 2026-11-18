@@ -1,8 +1,6 @@
 ---
 name: agent-experience
-description: Use when designing or changing model-facing tools, skills, context loading, or multi-step agent workflows in DeepSeek Harness.
+description: Use when writing or changing a model-facing tool definition (name, description, parameter schema, or its system-prompt section), and when designing skills, context loading, or multi-step workflows, to make information discoverable and use context efficiently.
 ---
 
-# Agent Experience
-
-Read [the canonical agent-experience skill](../../../packages/preset/agent-preset/skills/agent-experience/SKILL.md) and apply its instructions. Resolve its relative references from the canonical file's directory.
+Read and follow [tool design](../../../packages/preset/agent-preset/skills/dsh-doc/references/tool-design.md). The `dsh-doc` skill ships that file to installed DSH, so edit the rules there.
