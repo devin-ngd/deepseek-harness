@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { aggregateCheckArgs, buildHostContracts, buildLibraryArtifacts, compileReferencedProjects } from './compile-referenced-projects.ts'
+import { aggregateCheckArgs, buildHostContracts, buildLibraryArtifacts, checkHostFresh, compileReferencedProjects, referencedProjectsCompilerArgs } from './compile-referenced-projects.ts'
 import { runCiBench } from './run-ci-bench.ts'
 import { removeFixtureSafely } from './test-fixture-cleanup.ts'
 import { setPublishedFiles, writeTypertWorkspace } from './typert-workspace.fixture.ts'
@@ -193,6 +193,19 @@ describe('bundle-free Host contracts', { timeout: 60_000 }, () => {
     expect(outputs()).toEqual(['typert.host.d.ts', 'typert.host.js', 'types/index.d.ts', 'types/index.js'])
   })
 
+  it('checks the aggregate after rebuilding Host declarations', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-host-fresh-'))
+    onTestFinished(() => { removeFixtureSafely(root) })
+    writeTypertWorkspace(root)
+    writeFileSync(join(root, 'aggregate.ts'), 'const value: number = "invalid"\n')
+    const configPath = join(root, 'tsconfig.host.json')
+    const config = JSON.parse(readFileSync(configPath, 'utf8')) as { files: string[] }
+    config.files = ['aggregate.ts']
+    writeFileSync(configPath, JSON.stringify(config))
+
+    await expect(checkHostFresh(root)).rejects.toThrow('Host aggregate check exited with')
+  })
+
   it('writes Typert declarations from source when Host compilation fails', async () => {
     const { run, outputs } = typertWorkspace('/** @typert schema */\nexport interface Payload { value: string }\nexport const value: number = "invalid"\n')
 
@@ -219,6 +232,76 @@ describe('bundle-free Host contracts', { timeout: 60_000 }, () => {
 })
 
 describe('package project compilation', () => {
+  it('rechecks backdated source and config instead of accepting stale incremental outputs', () => {
+    const { root, leaf } = fixture()
+    const configPath = join(leaf, 'tsconfig.json')
+    const config = JSON.parse(readFileSync(configPath, 'utf8')) as { compilerOptions: { paths?: Record<string, string[]> } }
+    config.compilerOptions.paths = { '@fixture/type': ['./src/a.d.ts'] }
+    writeFileSync(configPath, JSON.stringify(config))
+    writeFileSync(join(leaf, 'src/a.d.ts'), 'export type Value = string\n')
+    writeFileSync(join(leaf, 'src/b.d.ts'), 'export type Value = number\n')
+    const source = join(leaf, 'src/index.ts')
+    writeFileSync(source, 'import type { Value } from "@fixture/type"\nexport const value: Value = "valid"\n')
+    const incremental = () => spawnSync(process.execPath, [compiler, '-b', leaf], { cwd: root, encoding: 'utf8' })
+    const forced = () => spawnSync(process.execPath, referencedProjectsCompilerArgs(root, 'host', 'checked', true), { cwd: root, encoding: 'utf8' })
+    const old = new Date('2000-01-01T00:00:00Z')
+
+    expect(incremental().status).toBe(0)
+    expect(forced().status).toBe(0)
+    writeFileSync(source, 'import type { Value } from "@fixture/type"\nexport const value: Value = 42\n')
+    utimesSync(source, old, old)
+    expect(incremental().status).toBe(0)
+    const sourceFailure = forced()
+    expect(sourceFailure.status).not.toBe(0)
+    expect(sourceFailure.stdout + sourceFailure.stderr).toContain('TS2322')
+
+    writeFileSync(source, 'import type { Value } from "@fixture/type"\nexport const value: Value = "valid"\n')
+    expect(forced().status).toBe(0)
+    config.compilerOptions.paths['@fixture/type'] = ['./src/b.d.ts']
+    writeFileSync(configPath, JSON.stringify(config))
+    utimesSync(configPath, old, old)
+    expect(incremental().status).toBe(0)
+    const configFailure = forced()
+    expect(configFailure.status).not.toBe(0)
+    expect(configFailure.stdout + configFailure.stderr).toContain('TS2322')
+  }, 60_000)
+
+  it('checks referenced projects and source additions or removals on a forced build', () => {
+    const { root, leaf } = fixture()
+    const consumer = join(root, 'consumer')
+    mkdirSync(join(consumer, 'src'), { recursive: true })
+    const leafConfig = JSON.parse(readFileSync(join(leaf, 'tsconfig.json'), 'utf8')) as Record<string, unknown>
+    writeFileSync(join(consumer, 'tsconfig.json'), JSON.stringify({ ...leafConfig, references: [{ path: '../leaf package' }] }))
+    const source = join(consumer, 'src/index.ts')
+    writeFileSync(source, 'import { value } from "../../leaf package/lib/types/index.js"\nexport const result: number = value\n')
+    const hostConfigPath = join(root, 'tsconfig.host.json')
+    const hostConfig = JSON.parse(readFileSync(hostConfigPath, 'utf8')) as { references: { path: string }[] }
+    hostConfig.references = [{ path: './consumer' }]
+    writeFileSync(hostConfigPath, JSON.stringify(hostConfig))
+    const forced = () => spawnSync(process.execPath, referencedProjectsCompilerArgs(root, 'host', 'checked', true), { cwd: root, encoding: 'utf8' })
+
+    expect(forced().status).toBe(0)
+    writeFileSync(join(leaf, 'src/index.ts'), 'export const value: string = "changed"\n')
+    const old = new Date('2000-01-01T00:00:00Z')
+    utimesSync(join(leaf, 'src/index.ts'), old, old)
+    const changed = forced()
+    expect(changed.status).not.toBe(0)
+    expect(changed.stdout + changed.stderr).toContain('TS2322')
+    writeFileSync(join(leaf, 'src/index.ts'), 'export const value: number = 42\n')
+    expect(forced().status).toBe(0)
+
+    const added = join(consumer, 'src/extra.ts')
+    writeFileSync(added, 'export const extra: number = "invalid"\n')
+    utimesSync(added, old, old)
+    const additionFailure = forced()
+    expect(additionFailure.status).not.toBe(0)
+    expect(additionFailure.stdout + additionFailure.stderr).toContain('TS2322')
+    rmSync(added)
+    writeFileSync(source, 'import { extra } from "./extra.js"\nexport { extra }\n')
+    const removalFailure = forced()
+    expect(removalFailure.status).not.toBe(0)
+    expect(removalFailure.stdout + removalFailure.stderr).toContain('TS2307')
+  }, 60_000)
   it('records Windows-style glob keys without changing artifact bytes', () => {
     const { leaf } = fixture()
     const output = join(leaf, 'lib')
@@ -414,6 +497,6 @@ describe('package project compilation', () => {
     ], { cwd: repository, encoding: 'utf8' })
 
     expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain('expected exactly one mode: host, client, host-contracts, or host-libraries')
+    expect(result.stderr).toContain('expected exactly one mode: host, client, host-contracts, host-fresh, or host-libraries')
   })
 })

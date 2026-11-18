@@ -104,6 +104,7 @@ pnpm run build:web
 | 声明 TypeScript 工作完成之前 | 在最近一次 `build:artifacts` 之后运行 `pnpm run build:check`，或运行 `pnpm run build` |
 | 完整验证（与 CI 必需的构建 lane 相同） | `pnpm run build` |
 | 只做类型检查、不需要 Web 与 Desktop 产物 | `pnpm run typecheck` |
+| 源码或配置的时间戳可能早于构建产物时重新检查 Host | `pnpm run typecheck:host:fresh` 重新生成 Typert、强制重建 Host 引用并检查 Host aggregate；它不会移除已删除源码留下的产物 |
 | lint 或文档代码块检查 | `pnpm run lint` 或 `pnpm run doc-typecheck`；它们各自先准备 `host-contracts` |
 
 PR 产物 builder 运行 `build:artifacts`；必需的 Linux 与 Windows 普通构建以及公开 `typecheck` 还检查仓库级测试和脚本 program。CI benchmark 准备阶段还对其临时 library 输出使用 `--noCheck`，由这些必需构建负责诊断；其他产物 builder 保留包检查（[理由](../.agents/notes/implemented/process/2026-10-05-pr-artifact-typechecks.zh.md)）。

@@ -48,6 +48,7 @@ export function runPnpmCommand(root: string, args: readonly string[]): void {
  * @param root - Repository root containing the aggregate tsconfig.
  * @param face - Independent compiler face whose package projects are emitted.
  * @param mode - Check package types by default; benchmark emission defers diagnostics to required full builds.
+ * @param force - Rebuild every referenced project regardless of timestamps.
  * @returns Arguments for `process.execPath`, including an 8 GiB old-space heap limit for the Host face.
  * @throws If the aggregate configuration is invalid, has no references, or can emit files.
  */
@@ -55,6 +56,7 @@ export function referencedProjectsCompilerArgs(
   root: string,
   face: 'host' | 'client',
   mode: CompilationMode = 'checked',
+  force = false,
 ): string[] {
   const configPath = resolve(root, `tsconfig.${face}.json`)
   const config = ts.getParsedCommandLineOfConfigFile(configPath, {}, {
@@ -80,6 +82,7 @@ export function referencedProjectsCompilerArgs(
     ...hostHeapArgs(face),
     fileURLToPath(import.meta.resolve('typescript/bin/tsc')),
     '-b',
+    ...force ? ['--force'] : [],
     ...mode === 'benchmark-emit' ? ['--noCheck'] : [],
     // Relative arguments keep the complete workspace graph below Windows' command-line limit.
     ...references.map(reference => relative(root, reference.path)),
@@ -132,13 +135,14 @@ function compilerStep(
   face: 'host' | 'client',
   mode: CompilationMode,
   needs: readonly LibraryStepId[],
+  force = false,
 ): LibraryStep {
   return {
     id: face === 'host' ? 'host-src' : 'client-src',
     label: `${face} compiler`,
-    displayCommand: `tsc -b${mode === 'benchmark-emit' ? ' --noCheck' : ''} <tsconfig.${face}.json references>`,
+    displayCommand: `tsc -b${force ? ' --force' : ''}${mode === 'benchmark-emit' ? ' --noCheck' : ''} <tsconfig.${face}.json references>`,
     command: process.execPath,
-    args: referencedProjectsCompilerArgs(root, face, mode),
+    args: referencedProjectsCompilerArgs(root, face, mode, force),
     needs,
   }
 }
@@ -246,8 +250,28 @@ export async function buildHostContracts(root: string): Promise<void> {
   for (const step of contractSteps(root, 'host')) await runStepAsync(root, step)
 }
 
+/**
+ * Rebuild and check Host references and the aggregate independently of timestamps.
+ * Existing outputs whose source was deleted are not removed.
+ * @param root - Repository root containing the Host configuration and source contributors.
+ * @returns A promise that settles after generation, compilation, and the aggregate check exit.
+ * @throws The first failed step's error; dependent steps do not start after failure.
+ */
+export async function checkHostFresh(root: string): Promise<void> {
+  await runStepAsync(root, typertStep())
+  await runStepAsync(root, compilerStep(root, 'host', 'checked', ['host-typert'], true))
+  await runStepAsync(root, {
+    id: 'host-src',
+    label: 'Host aggregate check',
+    displayCommand: 'tsc -p tsconfig.host.json',
+    command: process.execPath,
+    args: aggregateCheckArgs('host'),
+    needs: [],
+  })
+}
+
 if (import.meta.main) {
-  const usage = 'compile-referenced-projects: expected exactly one mode: host, client, host-contracts, or host-libraries'
+  const usage = 'compile-referenced-projects: expected exactly one mode: host, client, host-contracts, host-fresh, or host-libraries'
   const { positionals } = parseArgs({ allowPositionals: true })
   const [mode] = positionals
   if (positionals.length !== 1) throw new Error(usage)
@@ -259,6 +283,9 @@ if (import.meta.main) {
       break
     case 'host-contracts':
       await buildHostContracts(root)
+      break
+    case 'host-fresh':
+      await checkHostFresh(root)
       break
     case 'host-libraries':
       buildLibraryArtifacts(root, true)

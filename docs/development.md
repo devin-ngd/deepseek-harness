@@ -100,6 +100,7 @@ Choose the command by what the change needs:
 | Before declaring TypeScript work complete | `pnpm run build:check` after the latest `build:artifacts`, or `pnpm run build` |
 | Complete verification, as the required CI build lanes run it | `pnpm run build` |
 | Type checks without the Web and Desktop artifacts | `pnpm run typecheck` |
+| Rechecking Host when source or configuration timestamps may be older than the build outputs | `pnpm run typecheck:host:fresh` regenerates Typert, forcibly rebuilds Host references, and checks the Host aggregate; it does not remove outputs left by deleted sources |
 | Lint or documentation code-block checks | `pnpm run lint` or `pnpm run doc-typecheck`; each prepares `host-contracts` itself |
 
 PR artifact builders run `build:artifacts`; required Linux and Windows normal builds and public `typecheck` also check the repository-wide test and script programs. CI benchmark preparation additionally uses `--noCheck` for its disposable library outputs, relying on those required builds for diagnostics; other artifact builders keep package checking ([rationale](../.agents/notes/implemented/process/2026-10-05-pr-artifact-typechecks.md)).
