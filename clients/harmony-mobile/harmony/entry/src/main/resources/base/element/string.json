@@ -645,6 +645,18 @@
       "value": "错误代码：%s"
     },
     {
+      "name": "error_connection_mesh_required",
+      "value": "当前无法通过局域网连接电脑。请连接可访问电脑的 Wi-Fi，或开启 Mesh 后重试。"
+    },
+    {
+      "name": "error_connection_lan_unavailable",
+      "value": "未找到同网段的电脑。请让手机和电脑连接到同一局域网后重试。"
+    },
+    {
+      "name": "error_connection_endpoints_unavailable",
+      "value": "暂时未收到电脑的连接地址。请确认电脑上的 DSH 正在运行并已启用地址上报。"
+    },
+    {
       "name": "error_connection_unavailable",
       "value": "暂时连不上电脑。请确认电脑上的 DSH 正在运行且手机连接已开启，然后重新连接。"
     },

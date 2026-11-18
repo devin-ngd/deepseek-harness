@@ -24,6 +24,10 @@ The journal fixes audience/pair ids/public keys/expiry and admits only monotonic
 
 ## What the server sees
 
+On the existing control path, `harmony-relay-endpoints-v1` exchanges signed WLAN and Tailnet candidates for an already registered pair. The broker keeps one desktop publication in memory per pair until expiry or revocation. It can see the private addresses and port. This exchange issues no room or data capability and writes no address journal. The phone authenticates the returned publication with its saved desktop pin before dialing the desktop.
+
+`harmony-relay-reverse-lan-v1` uses the same control path. An authenticated desktop subscribes for one request. A paired phone signs its private listener address, port and one-use admission value in the subscriber's challenge round. The relay delivers the request to the current desktop subscriber, then retires the subscription. The desktop verifies the phone's saved key before dialing. The relay can see the short-lived request fields and forwards no connection data.
+
 nginx terminates TLS and can see external IP, HTTP/WS headers, public host/path, pair/room/role/capability, timing and lengths. Node sees the proxy's loopback peer plus forwarded metadata. The control broker sees approved long-term public keys/fingerprints, pair id, routing epoch, nonce, proof/signature and both temporary raw room tokens in process memory. RelayRooms stores token digests; the broker/ShortPairingRooms must retain raw role tokens until receipt/lifetime cleanup. These routing fields are not hidden by endpoint E2E.
 
 E2E data hello exposes role/protocol, ephemeral public SPKI and nonce; application frame headers expose binding id, role, sequence and kind. Desktop grant proofs and Session/task/rich HTML/form/draft/action bodies travel inside endpoint encryption. The relay has no private identity or traffic key and does not decrypt or parse binary bodies. It cannot itself enforce that authorized binary bytes are ciphertext; endpoint pinning and correct crypto are required. Custom E2E and native integration still need qualification.

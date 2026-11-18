@@ -56,9 +56,16 @@ if (firstUseTest || productTest) auditProductLayout(await productLayoutParser(),
 const module = JSON.parse(await readFile(join(native, 'entry/src/main/module.json5'), 'utf8'))
 const profile = JSON.parse(await readFile(join(native, 'build-profile.json5'), 'utf8'))
 const app = JSON.parse(await readFile(join(native, 'AppScope/app.json5'), 'utf8'))
+const workspaceCacheReview = /^--project=\.build[\\/]native-controls-workspace-startup-rc2-\d+$/.test(projectArgs[0] ?? '')
+  && app.app.bundleName === 'local.dsh.mobile.workspacecachecheck' && /^0\.0\.0-rc2\.\d+-cachecheck$/.test(app.app.versionName)
 const expectedPermissions = networkTest || firstUseTest || productTest || !cryptoTest && !pairingTest && !pairingFlowTest && !pairedProductTest ? [{ name: 'ohos.permission.INTERNET' }] : []
-if (JSON.stringify(module.module.requestPermissions) !== JSON.stringify(expectedPermissions) || profile.app.signingConfigs.length !== 0 || app.app.bundleName !== (workspaceReview ? 'local.dsh.mobile.workspacecheck' : productTest || firstUseTest ? 'local.dsh.mobile.offlineproduct' : pairedProductTest ? 'local.dsh.mobile.pairedproductcheck' : pairingFlowTest ? 'local.dsh.mobile.pairingflowcheck' : pairingTest ? 'local.dsh.mobile.pairingcheck' : cryptoTest ? 'local.dsh.mobile.cryptocheck' : networkTest ? 'local.dsh.mobile.netreplay' : 'local.dsh.mobile.lab')) {
-  throw new Error('Build accepts only the default permission-free app or the isolated INTERNET-only unsigned replay variant.')
+if (productTest && projectArgs.length > 0 && /"inspectNetwork": true\b/.test(await readFile(join(native, 'entry/src/main/ets/product/ProductConfiguration.ets'), 'utf8'))) {
+  expectedPermissions.push({ name: 'ohos.permission.GET_NETWORK_INFO' })
+}
+const expectedBundle = workspaceReview ? 'local.dsh.mobile.workspacecheck' : productTest || firstUseTest ? 'local.dsh.mobile.offlineproduct' : pairedProductTest ? 'local.dsh.mobile.pairedproductcheck' : pairingFlowTest ? 'local.dsh.mobile.pairingflowcheck' : pairingTest ? 'local.dsh.mobile.pairingcheck' : cryptoTest ? 'local.dsh.mobile.cryptocheck' : networkTest ? 'local.dsh.mobile.netreplay' : 'local.dsh.mobile.lab'
+if (JSON.stringify(module.module.requestPermissions) !== JSON.stringify(expectedPermissions) || profile.app.signingConfigs.length !== 0
+  || (app.app.bundleName !== expectedBundle && !workspaceCacheReview)) {
+  throw new Error('Build accepts only the declared unsigned variants and their exact permissions.')
 }
 const scope = join(native, 'node_modules/@ohos')
 await mkdir(scope, { recursive: true })

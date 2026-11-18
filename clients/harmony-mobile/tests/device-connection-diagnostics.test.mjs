@@ -42,6 +42,28 @@ for(const[name,facts,expected]of[
 test('public text rejects unknown stages and categories',()=>{const failure=new api.DeviceConnectionFailure('ticket','refused',raw());assert.equal(api.deviceConnectionDiagnosticText(failure.diagnostic),'ticket/refused');failure.cleanupFailed();assert.equal(api.deviceConnectionDiagnosticText(failure.diagnostic),'ticket/refused / cleanup-failed');assert.equal(api.deviceConnectionDiagnosticText({stage:secret,category:'refused',cleanupFailed:false}),'');assert.equal(api.deviceConnectionDiagnosticText({stage:'ticket',category:secret,cleanupFailed:false}),'')})
 test('actual Facade separates route refusal from original native identity read',async()=>{const authority={},f=new api.NativeDeviceProductFacade(authority,JSON.stringify({...policy.core,enabled:true}),'fixture-original','relay.example',5000,policy.relay,{read:async()=>null,write:async()=>{},close:async()=>{}},{signer:{},primitives:{}},{after:()=>()=>{}},()=>1000,async(_raw,diagnostic)=>{diagnostic('identity-read');throw raw()},()=>{},100);f.connectionApproved=true;f.routes={current:async()=>null};await assert.rejects(f.connection({},{},new AbortController().signal),error=>error.diagnostic.stage==='route-verify');f.routes={current:async()=>({offer:{routeId:'fixture-route',routeEpoch:1,expiresAt:5000}})};await assert.rejects(f.connection({},{},new AbortController().signal),error=>error.diagnostic.stage==='identity-read')})
 
+test('a missing Mesh route survives LAN endpoint teardown as the first failure', async () => {
+  const primitives = api.nodeE2EPrimitives
+  const unsigned = {
+    schema: 'harmony-device-binding/1', bindingId: 'fixture-binding', desktopId: 'fixture-desktop', profileId: 'desktop',
+    deviceId: 'fixture-phone', identityAlias: 'fixture-original', desktopPublicSpki: api.desktopKey.publicSpki, phonePublicSpki: api.phoneKey.publicSpki,
+    desktopCredentialId: await primitives.credentialId(api.desktopKey.publicSpki), credentialId: await primitives.credentialId(api.phoneKey.publicSpki),
+    audience: 'relay.example', scope: { kind: 'all-visible-sessions', profileId: 'desktop' }, operations: ['session.sync'], epoch: 1, createdAt: 1, revoked: false,
+  }
+  const signature = primitives.encode(await api.desktopKey.sign(api.deviceBindingBytes(unsigned)))
+  const failure = new api.DeviceConnectionFailure('native-channel', 'mesh-required')
+  const core = new api.NativeDeviceCore(JSON.stringify({ ...unsigned, signature }), 5000, policy.relay, {
+    clock: () => 1000, remotePublicSpki: api.desktopKey.publicSpki, signer: api.phoneKey, primitives,
+    scheduler: { after: () => () => {} }, agreement: async () => ({ key: { close() {} }, nonce: new Uint8Array(32) }),
+    lan: { open: async () => { throw failure }, close: async () => {} },
+  }, () => {}, () => {}, undefined)
+  try {
+    await core.initialize()
+    await assert.rejects(core.ready(), error => error === failure)
+    assert.equal(api.deviceConnectionDiagnosticText(failure.diagnostic), 'native-channel/mesh-required')
+  } finally { await core.close() }
+})
+
 // These execute the actual ETS acquisition owner against the existing fixed-key SDK substitute.
 const native=await import('../tests/helpers/product-native-harness.mjs')
 test('real native ports forward only allowlisted content-free control and E2E facts',async()=>{

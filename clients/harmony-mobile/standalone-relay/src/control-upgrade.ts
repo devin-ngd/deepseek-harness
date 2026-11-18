@@ -5,6 +5,8 @@ import type { Duplex } from 'node:stream'
 import { nodeRelaySocket, relayHeader, relayOriginAllowed, denyRelayUpgrade, type RelayNativeOrigin } from '../../integration/relay-upgrade.ts'
 import { RELAY_CONTROL_PATH, RELAY_CONTROL_SUBPROTOCOL } from '../../src/relay-control-protocol.ts'
 import { RoomBroker } from './room-broker.ts'
+import { DEVICE_ENDPOINT_SUBPROTOCOL } from '../../src/device-endpoint-exchange.ts'
+import { DEVICE_REVERSE_SUBPROTOCOL } from '../../src/device-reverse-control.ts'
 /** Owned control upgrade shares the host's total TCP/header bounds and existing WS ping/pong policy. */
 export class RelayControlUpgrade {
   private readonly wss: WebSocketServer
@@ -22,8 +24,15 @@ export class RelayControlUpgrade {
     socket.on('error', () => socket.destroy())
     try {
       const role = relayHeader(req, 'x-dsh-relay-role'), pair = relayHeader(req, 'x-dsh-relay-pair')
-      if (this.closed || req.method !== 'GET' || req.url !== RELAY_CONTROL_PATH || req.headers.cookie !== undefined || !relayOriginAllowed(req, this.audience, this.nativeOrigin, role) || req.headers.authorization !== undefined || relayHeader(req, 'host') !== this.audience || relayHeader(req, 'sec-websocket-protocol') !== RELAY_CONTROL_SUBPROTOCOL || role !== 'desktop' && role !== 'phone' || !this.broker.allowed(pair, role)) throw new Error('control denied')
-      this.wss.handleUpgrade(req, socket, head, ws => { try { this.broker.attach(pair, role, nodeRelaySocket(ws, this.maxControlFrames, false)) } catch (error) { void error; ws.terminate() } })
+      const protocol = relayHeader(req, 'sec-websocket-protocol')
+      if (this.closed || req.method !== 'GET' || req.url !== RELAY_CONTROL_PATH || req.headers.cookie !== undefined || !relayOriginAllowed(req, this.audience, this.nativeOrigin, role) || req.headers.authorization !== undefined || relayHeader(req, 'host') !== this.audience || protocol !== RELAY_CONTROL_SUBPROTOCOL && protocol !== DEVICE_ENDPOINT_SUBPROTOCOL && protocol !== DEVICE_REVERSE_SUBPROTOCOL || role !== 'desktop' && role !== 'phone' || !this.broker.allowed(pair, role)) throw new Error('control denied')
+      this.wss.handleUpgrade(req, socket, head, ws => {
+        try {
+          const port = nodeRelaySocket(ws, this.maxControlFrames, false)
+          if (protocol === DEVICE_ENDPOINT_SUBPROTOCOL || protocol === DEVICE_REVERSE_SUBPROTOCOL) this.broker.attachEndpoints(pair, role, port, protocol === DEVICE_REVERSE_SUBPROTOCOL)
+          else this.broker.attach(pair, role, port)
+        } catch (error) { void error; ws.terminate() }
+      })
     } catch (error) { void error; denyRelayUpgrade(socket) }
   }
   /** @returns after all control ports close; repeated callers share terminal cleanup. */

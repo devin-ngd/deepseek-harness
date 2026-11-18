@@ -16,8 +16,9 @@ import { NativeProductRichPort } from './NativeProductRichOwner'
 import { NativeWorkspaceProduct } from './NativeWorkspaceProduct'
 /** Deployment inputs must be supplied locally; device API 0 keeps the source app inactive. */
 export interface NativeDeviceRecoveryPolicy { bindingId: string; epoch: number; desktopCredentialId: string; credentialId: string; identityAlias: string; retiredRoutes: string[] }
+export interface NativeDeviceLanAddress { address?: string; port: number; tailnetAddress?: string; inspectNetwork?: boolean; rendezvous?: boolean }
 export interface NativeDeviceHistoryPolicy { maxBytes: number; maxSessions: number }
-export interface NativeProductConfiguration { deviceRecovery?: NativeDeviceRecoveryPolicy; deviceBindingMode?: boolean; deviceAutoConnect?: boolean; deviceReconnectMs?: number; deviceRoutingTtlMs?: number; deviceCatalogRefreshMs?: number; deviceHistoryCache?: NativeDeviceHistoryPolicy; enabled: boolean; approvedHost: string; identityAlias: string; deviceApiVerified: number; maxCryptoBytes: number; maxTotalSendBytes: number; publicTrustMaxBytes: number; corePolicyJson: string; relay: NativeRelayBudgets }
+export interface NativeProductConfiguration { deviceRecovery?: NativeDeviceRecoveryPolicy; deviceBindingMode?: boolean; deviceAutoConnect?: boolean; deviceReconnectMs?: number; deviceRoutingTtlMs?: number; deviceCatalogRefreshMs?: number; deviceLan?: NativeDeviceLanAddress; deviceHistoryCache?: NativeDeviceHistoryPolicy; enabled: boolean; approvedHost: string; identityAlias: string; deviceApiVerified: number; maxCryptoBytes: number; maxTotalSendBytes: number; publicTrustMaxBytes: number; corePolicyJson: string; relay: NativeRelayBudgets }
 interface GrantRecord { credentialId: string }
 interface PairedRecord { pairId: string; audience: string; credentialId: string; desktopCredentialId: string; grant: GrantRecord }
 interface PublicRecord { identityAlias: string; desktopPublicSpki: string; paired: PairedRecord }

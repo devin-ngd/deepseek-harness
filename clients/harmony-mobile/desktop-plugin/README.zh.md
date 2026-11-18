@@ -22,6 +22,12 @@
 
 rc2.30 的 `/device` 组件默认使用 `connectionMode: paired`，自动等待已配对手机，掉线后重试。`connectionMode: window` 保留显式临时窗口流程。双端和中继的一次更新见[已配对自动连接](../docs/paired-connection-rc2.30.md)，原双端及常驻中继已更新，手机自动连接及真实会话列表已核验。下列版本记录为历史。
 
+要用原配对在局域网直连，在桌面 `/device` 配置中加入 `lan: { port: 17847 }`。在鸿蒙实验目录运行 `node scripts/prepare-device-native.mjs --version <version> --lan-port 17847` 准备配套手机候选。双端用同一端口进行 UDP 发现和 TCP 直连。手机在每次建连时发现电脑当前的私有 IPv4 地址，并用原配对认证电脑。网段允许设备互访及 UDP 广播时，发现过程无需 DHome。如果网络拦截广播但允许设备互访，可在桌面 `lan.address` 和手机的 `--lan-address` 中指定电脑地址。电脑不可达时，直连模式提示连接失败。
+
+使用动态地址时，将 `lan.rendezvous.wlanInterface` 和 `lan.rendezvous.tailnetInterface` 设为桌面系统报告的 Wi-Fi 和 Tailscale 接口名称，将 `lan.rendezvous.tailnetPeerAddress` 设为已配对手机的 Tailnet IPv4，用于入站检查。保留 `lan.port`，省略 `lan.address` 和 `lan.tailnet`。准备手机包时用 `--lan-port 17847 --rendezvous`，端口与桌面一致。桌面等待手机连接期间发布当前地址，并订阅签名反连请求。手机有 Wi-Fi 时先拨号到桌面 WLAN 地址，再让桌面拨号到手机的临时 WLAN 监听，最后在存在对应 Mesh 路由时尝试 Tailnet。反连需要手机、桌面和中继都支持 `harmony-relay-reverse-lan-v1`，使用已配置的 WLAN 源地址、同一端口和原配对。手机在接纳连接、超时或取消后关闭监听。所有数据路径都重新进行加密握手。Tailscale 必要时可使用 DERP。手机默认每 30 秒重试，可通过 `--reconnect-ms` 调整。
+
+较慢的连接可以在构建手机包时用 `--request-timeout-ms` 延长请求等待时间，用 `--catalog-refresh-ms` 降低会话目录的刷新频率。请求超时默认 10000 毫秒，刷新间隔默认 5000 毫秒。选项对该手机包的所有连接生效，包括局域网。
+
 要启用原生聊天分页，在桌面设置 `historyPage: { openingMaxMessages: 3, maxMessages: 50, targetBytes: 524288, turnWindow: { minMessages: 10, minTurns: 1 } }`，并在准备配套手机包时加上 `--paged-history`。首屏保持较小；每页旧消息尽量包含至少一个完整的更早对话轮，内容较短时可包含多轮。消息数和字节数限制可能拆分较长的对话轮；页面超过目标大小时，桌面会在现有硬上限内减少消息数后重试。滚到会话顶部后下拉一次，读取一页旧消息。
 
 桌面插件支持历史缓存校验时，准备手机包可加上 `--history-cache`。已缓存的会话和已下载的页面可以离线只读查看，也包括已经加载并缓存的富交互内容。连接后，桌面校验会话，手机复用连续的本地记录；未缓存的历史需要联网。应用在私有存储中最多缓存八个会话，总计 12 MiB；空间不足时先丢弃最早的缓存页。本地撤销配对会清除缓存；桌面目录刷新成功后，不再可访问的会话会被隐藏。

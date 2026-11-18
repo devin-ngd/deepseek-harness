@@ -10,8 +10,10 @@ import type { JsonValue } from './upstream.ts'
 export interface PairedRelayPolicy { readonly maxProofs: number; readonly maxQueuedBytes: number; readonly maxChallengeTtlMs: number; readonly maxRoomTtlMs: number; readonly handshakeMs: number; readonly e2e: E2ELimits }
 /** @param policy - explicit local limits. @returns after inert validation, before any transport or timer acquisition. */
 export function validatePairedRelayPolicy(policy: PairedRelayPolicy): void { if (![policy.maxProofs, policy.maxQueuedBytes, policy.maxChallengeTtlMs, policy.maxRoomTtlMs, policy.handshakeMs, ...Object.values(policy.e2e)].every(value => Number.isSafeInteger(value) && value > 0) || policy.e2e.maxFrames > 0xffffffff) throw new Error('invalid paired relay policy') }
-/** Endpoints supply platform IO and maintained crypto ports; source returns transient keys only, after a signed room exists. */
-export interface PairedRelayPorts { readonly control: RelaySocket; readonly signer: P256IdentitySigner; readonly primitives: E2EPrimitives; readonly remotePublicSpki: string; readonly scheduler: CleanupScheduler; readonly clock: () => number; readonly diagnostic?: (stage: E2EDiagnostic) => void; readonly controlDiagnostic?: (stage: ControlDiagnostic) => void; agreement(): Promise<{ readonly key: P256Agreement; readonly nonce: Uint8Array }>; data(lease: EndpointRoomLease): Promise<RelaySocket> }
+/** Platform-owned identity and transient key acquisition for an encrypted device connection. */
+export interface DeviceCryptoPorts { readonly signer: P256IdentitySigner; readonly primitives: E2EPrimitives; readonly remotePublicSpki: string; readonly scheduler: CleanupScheduler; readonly clock: () => number; readonly diagnostic?: (stage: E2EDiagnostic) => void; agreement(): Promise<{ readonly key: P256Agreement; readonly nonce: Uint8Array }> }
+/** The relay data port opens only after a signed room exists. */
+export interface PairedRelayPorts extends DeviceCryptoPorts { readonly control: RelaySocket; readonly controlDiagnostic?: (stage: ControlDiagnostic) => void; data(lease: EndpointRoomLease): Promise<RelaySocket> }
 /** Protocol failure and uncertain resource release are independent outcomes. */
 export class PairedRelayFailure extends Error {
   constructor(readonly protocolFailed: boolean, readonly cleanupFailed: boolean) { super('paired connection failed'); this.name = 'PairedRelayFailure' }

@@ -114,7 +114,36 @@ await writeFile(join(stage,'detached-smoke.log'), smoke.stdout + smoke.stderr); 
 const detached = JSON.parse(smoke.stdout.trim())
 const sdk = await json(sdkPath), nativeRoot=resolve('.build/native-controls-device-' + label), parity=[]
 assert.equal(sdk.exitCode,0); assert.equal(sdk.inputsUnchangedDuringBuild,true); assert.equal(sdk.nativeJsImportAudit.passed,true)
-for(const [path,digest] of Object.entries(sdk.sourceHashes)){assert.equal(hash(await readFile(path)),digest,'SDK input changed: '+path);const name=relative(nativeRoot,path).replaceAll('\\','/');assert.ok(!name.startsWith('../'));if(['AppScope/app.json5','entry/src/main/ets/product/ProductConfiguration.ets'].includes(name))continue;assert.equal(hash(await readFile(join('harmony',name))),digest,'Source parity: '+name);parity.push(name)}
+const preparation = await json(join(nativeRoot, 'input-snapshot/manifest.json'))
+assert.equal(preparation.version, version)
+assert.equal(preparation.target, nativeRoot)
+for (const input of [...preparation.nativeInputs, ...preparation.sourceInputs]) assert.equal(hash(await readFile(input.path)), input.sha256, 'Preparation source changed: ' + input.path)
+const generated = new Map(preparation.reports.map(report => [report.output, report]))
+const richDocument = generated.get('entry/src/main/resources/rawfile/product-rich-document.js')
+assert.ok(richDocument)
+for (const [path, digest] of Object.entries(sdk.sourceHashes)) {
+  const bytes = await readFile(path)
+  assert.equal(hash(bytes), digest, 'SDK input changed: ' + path)
+  const name = relative(nativeRoot, path).replaceAll('\\', '/')
+  assert.ok(!name.startsWith('../'))
+  if (['AppScope/app.json5', 'entry/src/main/ets/product/ProductConfiguration.ets'].includes(name)) continue
+  const bundle = generated.get(name)
+  if (bundle !== undefined) {
+    assert.equal(digest, bundle.sha256, 'Generated bundle changed: ' + name)
+    assert.equal(bytes.length, bundle.bytes)
+  } else if (name === 'entry/src/main/ets/generated/NativeAssetIndex.ets') {
+    const before = await readFile(join('harmony', name), 'utf8')
+    const row = `  new NativeAssetEntry('product-rich-document.js', ${richDocument.bytes}, '${richDocument.sha256}'),`
+    assert.equal(bytes.toString(), before.replace(/  new NativeAssetEntry\('product-rich-document\.js',[^\n]+/, row))
+  } else if (name === 'entry/src/main/module.json5' && preparation.deviceLan?.inspectNetwork) {
+    const expected = await json(join('harmony', name))
+    expected.module.requestPermissions.push({ name: 'ohos.permission.GET_NETWORK_INFO' })
+    assert.deepEqual(JSON.parse(bytes), expected)
+  } else {
+    assert.equal(hash(await readFile(join('harmony', name))), digest, 'Source parity: ' + name)
+  }
+  parity.push(name)
+}
 assert.equal((await json(join(nativeRoot,'AppScope/app.json5'))).app.versionName,version)
 const payload=await readFile(sdk.artifact.path);assert.equal(hash(payload),sdk.artifact.sha256)
 const names=tar(['-tf',sdk.artifact.path]).toString().trim().split(/\r?\n/);assert.equal(new Set(names).size,names.length);for(const name of ['module.json','ets/modules.abc','resources/rawfile/product-rich-document.js','resources/rawfile/guest-sdk.js'])assert.ok(names.includes(name))

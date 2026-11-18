@@ -16,7 +16,7 @@ function selectedMobile(options={}){
   const rpc=new api.DeviceProductRpc({request:async()=>{},follow:async()=>{},stop:async key=>{events.push('view-stop-'+id);await options.release?.();if(!open)throw Error('provider closed before consumer');stops.push(key)}},{after:()=>()=>{}},100,8,'fixture')
   const route={desktopId:'fixture',profileId:'desktop',sessionId:'fixture-session'},value=connection(async()=>{events.push('channel-close-'+id);open=false;abort.abort();rpc.close();await options.close?.()})
   value.binding={...value.binding,id:'fixture-'+id,signal:abort.signal};value.catalog=async()=>({sessions:[{profileId:'desktop',sessionId:route.sessionId,title:'Fixture',projectId:null}],projects:null})
-  value.select=async(_route,_ticket,publish,lifetime)=>{const view=rpc.view(route,()=>{});await view.follow('follow','{"argument":{},"resume":null}');await options.select?.({publish,lifetime});return{richRequest:async()=>'',close:()=>view.close()}}
+  value.select=async(_route,_ticket,publish,lifetime,row)=>{const view=rpc.view(route,row,()=>{});await view.follow('follow','{"argument":{},"resume":null}');await options.select?.({publish,lifetime});return{richRequest:async()=>'',close:()=>view.close()}}
   return value
  }
  return{...m,events,stops,opens:()=>opens}

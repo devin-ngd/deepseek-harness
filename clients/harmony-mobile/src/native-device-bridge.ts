@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { DeviceConnectionFailure, deviceConnectionFailure, type DeviceConnectionStage, type DeviceConnectionCategory } from './device-connection-diagnostic.ts'
 import type { ControlDiagnostic } from './relay-control-client.ts'
 import type { E2EDiagnostic } from '../integration/e2e-socket.ts'
-import { PairedRelayFailure, PairedRelayEndpoint, type PairedRelayPolicy, type PairedRelayPorts } from './paired-relay.ts'
+import { PairedRelayFailure, type PairedRelayPolicy } from './paired-relay.ts'
+import { openDeviceEndpoint, type DeviceEndpoint, type DeviceLinkPorts } from './device-lan.ts'
 import { DeviceBindingClient } from './device-binding-client.ts'
 import { deviceBindingSchema, deviceRelayPairId, type DeviceConnectionTicket } from './device-binding-protocol.ts'
 import type { DeviceTransportBinding } from '../integration/device-auth.ts'
@@ -25,7 +26,7 @@ export class NativeDeviceCore implements ProductConnection {
   private authorizedResolve: () => void = () => {}
   private authorizedReject: (error: Error) => void = () => {}
   private readonly authorized = new Promise<void>((resolve, reject) => { this.authorizedResolve = resolve; this.authorizedReject = reject })
-  private endpoint: PairedRelayEndpoint | undefined
+  private endpoint: DeviceEndpoint | undefined
   private originalBinding: DeviceTransportBinding | undefined
   private receipt: DeviceConnectionTicket | undefined
   private phase: DeviceConnectionStage = 'identity-read'
@@ -38,7 +39,7 @@ export class NativeDeviceCore implements ProductConnection {
   private stopHandshake = () => {}
   private stopTicket = () => {}
   /** @param registration - locally confirmed public device receipt, never a relay-provided grant. @param routingExpiresAt - independent finite relay directory/connection lease. @param policy - existing explicit control/E2E budgets. @param ports - existing HUKS/native transport and maintained crypto. @param status - trusted native state sink. @param received - bounded result/frame sink for the original PhoneCore transport. */
-  constructor(private readonly registration: string, private readonly routingExpiresAt: number, private readonly policy: PairedRelayPolicy, private readonly ports: PairedRelayPorts, private readonly status: (state: string) => void, private readonly received: (packet: string) => void, private readonly route: DeviceRoute | undefined) {
+  constructor(private readonly registration: string, private readonly routingExpiresAt: number, private readonly policy: PairedRelayPolicy, private readonly ports: DeviceLinkPorts, private readonly status: (state: string) => void, private readonly received: (packet: string) => void, private readonly route: DeviceRoute | undefined) {
     const value = deviceBindingSchema.parse(JSON.parse(registration))
     if (value.revoked || routingExpiresAt <= ports.clock() || value.desktopPublicSpki !== ports.remotePublicSpki) throw new Error('native device routing denied')
     this.client = new DeviceBindingClient(this.authority, { desktopId: value.desktopId, profileId: 'desktop', deviceId: value.deviceId, identityAlias: value.identityAlias, desktopCredentialId: value.desktopCredentialId, audience: value.audience, maxPublicBytes: policy.e2e.maxPlaintextBytes, maxProofs: policy.maxProofs, maxChallengeTtlMs: policy.maxChallengeTtlMs }, { read: async () => registration, compareAndSet: async () => { throw new Error('connection cannot replace device registration') } }, ports.signer, ports.primitives, ports.clock)
@@ -72,8 +73,13 @@ export class NativeDeviceCore implements ProductConnection {
     if (route !== undefined && route.offer.expiresAt !== this.routingExpiresAt) throw new Error('native routing deadline mismatch')
     if (this.closed) throw new Error('native device closed')
     this.stopHandshake = this.ports.scheduler.after(this.policy.handshakeMs, () => this.fail('timeout'))
-    this.phase = 'control-handshake'
-    this.endpoint = new PairedRelayEndpoint({ pairId: route === undefined ? deviceRelayPairId(value) : id<'harmony-relay-pair'>(route.offer.routeId), epoch: route?.offer.routeEpoch ?? value.epoch, role: 'phone', audience: value.audience, credentialId: id<'harmony-device-credential'>(value.credentialId), expiresAt: this.routingExpiresAt }, this.policy, { ...this.ports, data: async lease => { try { return await this.ports.data(lease) } catch (error) { this.firstFailure ??= deviceConnectionFailure(error, 'native-channel'); throw error } } }, async data => {
+    const ports = this.ports
+    if ('lan' in ports && route !== undefined) throw new Error('LAN requires the saved device binding')
+    this.phase = 'lan' in ports ? 'native-channel' : 'control-handshake'
+    const carrier: DeviceLinkPorts = 'lan' in ports ? { ...ports, lan: { close: () => ports.lan.close(), open: async signal => {
+      try { return await ports.lan.open(signal) } catch (error) { this.firstFailure ??= deviceConnectionFailure(error, 'native-channel'); throw error }
+    } } } : { ...ports, data: async lease => { try { return await ports.data(lease) } catch (error) { this.firstFailure ??= deviceConnectionFailure(error, 'native-channel'); throw error } } }
+    this.endpoint = openDeviceEndpoint({ pairId: route === undefined ? deviceRelayPairId(value) : id<'harmony-relay-pair'>(route.offer.routeId), epoch: route?.offer.routeEpoch ?? value.epoch, role: 'phone', audience: value.audience, credentialId: id<'harmony-device-credential'>(value.credentialId), expiresAt: this.routingExpiresAt }, this.policy, carrier, async data => {
       const binding = this.originalBinding
       if (binding === undefined || binding.signal.aborted) throw new Error('native device binding unavailable')
       if (this.receipt === undefined) {
@@ -97,7 +103,7 @@ export class NativeDeviceCore implements ProductConnection {
     }, binding => {
       this.phase = 'ticket'; this.originalBinding = binding; this.receipt = undefined; this.proofPending = false; this.report('identity-authenticated')
       binding.signal.addEventListener('abort', () => { if (this.originalBinding === binding && !this.closed) { this.unexpectedClose = true; this.receipt = undefined; this.report('disconnected') } }, { once: true })
-    }, state => { if (this.closed) return; if (state === 'failed') this.fail(); else { this.remember(this.phase, 'closed'); this.receipt = undefined; this.authorizedReject(this.firstFailure!); this.report('control-closed') } }, this.lifetime.signal, fact => { this.encryptedFact(fact); this.ports.diagnostic?.(fact) }, fact => { this.controlFact(fact); this.ports.controlDiagnostic?.(fact) })
+    }, state => { if (this.closed) return; if (state === 'failed') this.fail(); else { this.remember(this.phase, 'closed'); this.receipt = undefined; this.authorizedReject(this.firstFailure!); this.report('control-closed') } }, this.lifetime.signal, fact => { this.encryptedFact(fact); ports.diagnostic?.(fact) }, fact => { this.controlFact(fact); if (!('lan' in ports)) ports.controlDiagnostic?.(fact) })
   }
   /** @returns after the original identity's fresh channel proof, never just broker readiness. */
   ready(): Promise<void> { return this.authorized }
@@ -105,7 +111,7 @@ export class NativeDeviceCore implements ProductConnection {
   get binding(): DeviceTransportBinding { if (this.originalBinding === undefined) throw new Error('native device crypto binding unavailable'); return this.originalBinding }
   /** @returns reviewed public short ticket for the native product owner; it is never persisted or passed to a rich guest. */
   ticketJson(): string { if (this.receipt === undefined || this.receipt.expiresAt <= this.ports.clock()) throw new Error('native device ticket unavailable'); return JSON.stringify(this.receipt) }
-  private active(): PairedRelayEndpoint { if (this.closed || this.failed || this.receipt === undefined || this.receipt.expiresAt <= this.ports.clock() || this.binding.signal.aborted || this.endpoint === undefined) throw new Error('native device request denied'); return this.endpoint }
+  private active(): DeviceEndpoint { if (this.closed || this.failed || this.receipt === undefined || this.receipt.expiresAt <= this.ports.clock() || this.binding.signal.aborted || this.endpoint === undefined) throw new Error('native device request denied'); return this.endpoint }
   private selected(candidate: unknown) { const value = route.parse(candidate), binding = deviceBindingSchema.parse(JSON.parse(this.registration)); if (value.desktopId !== binding.desktopId) throw new Error('native device route denied'); return value }
   /** @param idText - native-owned correlation id. @param raw - only metadata, manage, or select/request with an explicit route for Session operations. @returns after encrypted send, never task completion. */
   async request(idText: string, raw: string): Promise<void> {

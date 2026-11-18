@@ -9,6 +9,9 @@ const legacy = process.argv.length === 3 && process.argv[2] === '--legacy'
 const cases = new Map([
   ['encrypted', 'new native facade performs actual encrypted'], ['deadline', 'room issuance respects absolute'],
   ['journal', 'admission journal'], ['paired', 'paired startup reuses'], ['panel-recovery', 'phone connection panel resumes a saved pairing'],
+  ['lan', 'saved LAN pairing'],
+  ['endpoints', 'paired endpoint control'],
+  ['reverse', 'reverse WLAN'],
 ])
 const focus = process.argv.length === 4 && process.argv[2] === '--case' && cases.has(process.argv[3]) ? process.argv[3] : undefined
 if (process.argv.length > 2 && !legacy && focus === undefined) throw new Error('Only --legacy or --case ' + [...cases.keys()].join('/') + ' is supported; real devices and models are not accepted')

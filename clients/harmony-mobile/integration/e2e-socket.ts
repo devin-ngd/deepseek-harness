@@ -30,7 +30,7 @@ export class EncryptedRelayConnection {
         const text = new TextDecoder('utf-8', { fatal: true }).decode(copy)
         if (!binary) {
           if (this.phase !== 'ready' || text !== '{"relay":"ready","v":1}') throw new E2EError('invalid')
-          this.observe('relay-ready'); this.phase = 'hello'; this.transmit(this.crypto.hello()); return
+          this.observe('relay-ready'); this.start(); return
         }
         switch (this.phase) {
           case 'hello': this.observe('peer-hello'); await this.crypto.receiveHello(JSON.parse(text)); if (this.closed()) return; this.observe('keys-derived'); this.phase = 'finished'; this.transmit(await this.crypto.finish(this.signer)); this.observe('finished-sent'); break
@@ -44,6 +44,8 @@ export class EncryptedRelayConnection {
     this.stops.push(bindConnectionLifetime(lifetime, () => this.close()))
   }
   private closed(): boolean { return this.phase === 'closed' }
+  /** Start the authenticated hello after the peer's transport-ready marker has been queued, or after receiving it. */
+  start(): void { if (this.phase !== 'ready') throw new E2EError('not-ready'); this.phase = 'hello'; this.transmit(this.crypto.hello()) }
   private observe(stage: E2EDiagnostic): void { if (this.diagnostic === undefined) return; try { this.diagnostic(stage) } catch (error) { void error; console.warn('DSH_E2E_DIAGNOSTIC_FAILURE') } }
   private transmit(value: object): void { if (this.closed()) return; const bytes = new TextEncoder().encode(JSON.stringify(value)); this.socket.send(bytes) }
   /** @param value - canonical authenticated application payload, containing original command identities. @returns after bounded send; receipt remains owned by desktop journal. No retry is attempted. */

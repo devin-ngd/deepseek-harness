@@ -12,6 +12,20 @@ test('native WSS gate rejects unconfirmed API and wrong local owner before SDK a
   const authority = {}, before = fakeNetwork.connects, socket = new NativeRelaySocket(new NativeRelayPolicy(authority, 'dsh.devinho.me', 0, 100, 128, 256))
   await assert.rejects(socket.connectNative(authority, 'phase36-fake-room', 'phone', '1'.repeat(64), () => {}, () => {})); assert.equal(fakeNetwork.connects, before)
 })
+test('native LAN dial sends only the local URL and disables the system proxy', async () => {
+  const authority = {}, oldFactory = fakeNetwork.factory
+  const owner = new NativeRelaySocket(new NativeRelayPolicy(authority, 'relay.example', 26, 10000, 128, 256))
+  let dial
+  fakeNetwork.factory = () => {
+    const socket = oldFactory()
+    socket.connect = async (url, options) => { dial = { url, options }; return true }
+    return socket
+  }
+  try {
+    await owner.connectLanNative(authority, '192.168.1.42', 17847, '/harmony/lan/v1', 'dsh-harmony-lan-v1', () => {}, () => {})
+    assert.deepEqual(dial, { url: 'ws://192.168.1.42:17847/harmony/lan/v1', options: { protocol: 'dsh-harmony-lan-v1', proxy: 'no-proxy' } })
+  } finally { fakeNetwork.factory = oldFactory; await owner.closeNative(authority) }
+})
 test('native close is shared and a late successful connect is closed again instead of retained', async () => {
   const authority = {}; let connected, enter
   const ready = new Promise(resolve => { enter = resolve }), acquisition = new Promise(resolve => { connected = resolve })

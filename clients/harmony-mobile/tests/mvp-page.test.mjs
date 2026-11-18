@@ -215,6 +215,15 @@ test('task actions appear only for an active task or a pending receipt, and stop
   value.view.task = 'completed'; assert.ok(visibleIds(value).includes('product-task-actions')); assert.equal(visibleIds(value).includes('product-cancel'), false)
   value.view.task = 'idle'; value.failed = true; value.lastRequest = 'request-1'; assert.ok(visibleIds(value).includes('product-task-actions'))
 })
+test('a direct route failure tells the user how to restore Wi-Fi or Mesh connectivity', () => {
+  const { value } = fixture()
+  value.view.error = 'connection-unavailable'
+  value.view.connectionDiagnostic = 'native-channel/mesh-required'
+  assert.equal(value.errorMessage(), 'app.string.error_connection_mesh_required')
+  value.view.connectionDiagnostic = 'native-channel/lan-unavailable'
+  assert.equal(value.errorMessage(), 'app.string.error_connection_lan_unavailable')
+})
+
 test('known failures name their cause, and a dismissed error returns only when the error changes', () => {
   const { value } = fixture()
   for (const [code, resource] of [['', 'product_operation_failed'], ['connection-unavailable', 'error_connection_unavailable'], ['connection-expiry', 'error_connection_expiry'], ['selection-cleanup-failed', 'error_cleanup_failed'], ['device-catalog-unavailable', 'error_catalog_unavailable'], ['public-trust-expired', 'product_successor_notice'], ['device-binding-locally-revoked', 'error_binding_unavailable'], ['unknown-new-code', 'error_generic']]) {

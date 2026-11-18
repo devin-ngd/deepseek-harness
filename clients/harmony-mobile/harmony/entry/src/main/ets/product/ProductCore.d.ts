@@ -9,9 +9,13 @@ export interface ProductPorts { readonly storage: ProductStorage; readonly sched
 export declare class NativeProductFacade { scopeInput(raw: string): string; scopeCatalog(raw: string | null): string; scopeAdd(raw: string | null, document: string): string; constructor(authority: object, policy: string, ports: ProductPorts, publish: (view: string) => void); preview(raw: string): string; trustInput(raw: string): string; renewalInput(raw: string, previous?: string): string; firstUseInput(raw: string, now: number): string; pairingState(): string; boot(): Promise<void>; pair(authority: object, raw: string, compared: boolean): Promise<void>; pairOrResume(authority: object, raw: string, compared: boolean): Promise<void>; connect(authority: object): Promise<void>; select(authority: object, session: string): Promise<void>; submit(authority: object, request: string, text: string): Promise<string>; receipt(authority: object, request: string): Promise<string>; cancel(authority: object): Promise<void>; richRequest(packet: string): Promise<string>; richRefusal(packet: string): string; revoke(authority: object): Promise<void>; close(): Promise<void> }
 
 /** Device mode reuses original native ports and exposes only reviewed public JSON and selected-session operations. */
-import { NativePorts, NativePrimitives, NativeRelayBudgets } from '../paired/PairedCore'
+import { NativeDeviceLinkPorts, NativePrimitives, NativeRelayBudgets } from '../paired/PairedCore'
 export interface NativeDeviceCrypto { signer: { publicSpki: string; sign(bytes: Uint8Array): Promise<Uint8Array> }; primitives: NativePrimitives }
-export interface NativeDeviceNetwork { readonly ports: NativePorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
+export interface NativeDeviceNetwork { readonly ports: NativeDeviceLinkPorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
+export declare class DeviceConnectionFailure extends Error {
+  readonly category: string
+  constructor(stage: 'native-channel', category: 'lan-unavailable' | 'mesh-required' | 'endpoints-unavailable' | 'unavailable')
+}
 export interface NativeDeviceForegroundSelection { binding: string | null; sessionId: string }
 export interface DeviceHistoryStorage { readonly maxBytes: number; readonly maxSessions: number; read(maxBytes: number): Promise<string | null>; write(raw: string): Promise<void>; clear(): Promise<void> }
 export declare class NativeDeviceProductFacade {

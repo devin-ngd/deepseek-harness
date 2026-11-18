@@ -221,7 +221,11 @@ struct Index {
     }
     switch (this.view.error) {
       case '': return $r('app.string.product_operation_failed')
-      case 'connection-unavailable': return $r('app.string.error_connection_unavailable')
+      case 'connection-unavailable':
+        if (this.view.connectionDiagnostic === 'native-channel/mesh-required') return $r('app.string.error_connection_mesh_required')
+        if (this.view.connectionDiagnostic === 'native-channel/lan-unavailable') return $r('app.string.error_connection_lan_unavailable')
+        if (this.view.connectionDiagnostic === 'native-channel/endpoints-unavailable') return $r('app.string.error_connection_endpoints_unavailable')
+        return $r('app.string.error_connection_unavailable')
       case 'connection-expiry': return $r('app.string.error_connection_expiry')
       case 'connection-stopped': return $r('app.string.error_connection_stopped')
       case 'connection-cleanup-failed':

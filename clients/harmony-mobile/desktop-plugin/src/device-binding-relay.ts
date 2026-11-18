@@ -2,7 +2,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { PairedRelayEndpoint, validatePairedRelayPolicy, type PairedRelayPolicy, type PairedRelayPorts } from '../../src/paired-relay.ts'
+import { PairedRelayFailure, validatePairedRelayPolicy, type PairedRelayPolicy } from '../../src/paired-relay.ts'
+import { openDeviceEndpoint, type DeviceEndpoint, type DeviceLinkPorts } from '../../src/device-lan.ts'
 import type { EndpointRelayTrust } from '../../src/relay-control-client.ts'
 import type { EncryptedRelayConnection } from '../../integration/e2e-socket.ts'
 import type { DeviceTransportBinding } from '../../integration/device-auth.ts'
@@ -36,7 +37,7 @@ export interface DeviceWorkspaceProvider {
 export interface WorkspaceGrantLease { readonly transport: DeviceTransportBinding; readonly expiresAt: number }
 
 /** Local routing lease and original crypto ports. `traceWorkspaceRequests` enables content-free timing on Host stdout. */
-export type DeviceBindingRelayPlan = { readonly desktopId: string; isRouteCurrent(): Promise<boolean>; readonly trust: EndpointRelayTrust; readonly policy: PairedRelayPolicy; readonly limits: LinkConfig; readonly historyPage?: HistoryPagePolicy; readonly workspace?: DeviceWorkspaceProvider; readonly traceWorkspaceRequests?: boolean; openPorts(): PairedRelayPorts } & ({ readonly route: DeviceRoute; readonly paired?: never } | { readonly paired: DeviceBinding; readonly route?: never })
+export type DeviceBindingRelayPlan = { readonly desktopId: string; isRouteCurrent(): Promise<boolean>; readonly trust: EndpointRelayTrust; readonly policy: PairedRelayPolicy; readonly limits: LinkConfig; readonly historyPage?: HistoryPagePolicy; readonly workspace?: DeviceWorkspaceProvider; readonly traceWorkspaceRequests?: boolean; openPorts(): DeviceLinkPorts | Promise<DeviceLinkPorts> } & ({ readonly route: DeviceRoute; readonly paired?: never } | { readonly paired: DeviceBinding; readonly route?: never })
 const routeSchema = z.object({ desktopId: z.string().min(1).max(256), profileId: z.literal('desktop'), sessionId: z.string().min(1).max(256) }).strict()
 type WorkspaceStage = 'received' | 'result-ready' | 'sending' | 'socket-submitted'
 interface WorkspaceTrace { readonly seq: number; readonly started: number; operation: string; stage: WorkspaceStage }
@@ -66,8 +67,8 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
     const expiresAt = this.plan.trust.expiresAt
     const context = route === undefined ? undefined : { routeId: route.offer.routeId, routeEpoch: route.offer.routeEpoch, expiresAt: route.offer.expiresAt }
     if (registration.revoked || this.plan.desktopId !== registration.desktopId || this.plan.trust.pairId !== (route === undefined ? deviceRelayPairId(registration) : route.offer.routeId) || this.plan.trust.epoch !== (route?.offer.routeEpoch ?? registration.epoch) || route !== undefined && expiresAt !== route.offer.expiresAt || this.plan.trust.audience !== registration.audience || this.plan.trust.credentialId !== registration.desktopCredentialId || !await this.plan.isRouteCurrent()) throw new Error('device relay saved pairing denied')
-    const ports = this.plan.openPorts(), lifetime = new AbortController(), work = new Map<string, { controller: AbortController; done: Promise<void> }>(), pending = new Set<Promise<void>>()
-    let endpoint: PairedRelayEndpoint | undefined, connection: EncryptedRelayConnection | undefined, binding: DeviceTransportBinding | undefined, channel: DeviceBoundProfileChannel | undefined, proofPending = false, closing: Promise<void> | undefined, failed = false, stopRoute = () => {}
+    const ports = await this.plan.openPorts(), lifetime = new AbortController(), work = new Map<string, { controller: AbortController; done: Promise<void> }>(), pending = new Set<Promise<void>>()
+    let endpoint: DeviceEndpoint | undefined, connection: EncryptedRelayConnection | undefined, binding: DeviceTransportBinding | undefined, channel: DeviceBoundProfileChannel | undefined, proofPending = false, closing: Promise<void> | undefined, failed = false, stopRoute = () => {}
     let ticket: DeviceConnectionTicket | undefined
     let roomExpiresAt = 0
     let workspace: Promise<WorkspaceWireHost> | undefined
@@ -89,8 +90,14 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
     const close = () => {
       if (closing !== undefined) return closing
       stopRoute()
-      for (const action of [() => lifetime.abort(), ...[...work.values()].map(item => () => item.controller.abort()), () => endpoint?.close(), () => ports.control.terminate()]) { try { action() } catch (error) { void error; failed = true } }
-      closing = (async () => { const results = await Promise.allSettled([...pending, ...[...work.values()].map(item => item.done), closeWorkspace(), Promise.resolve().then(() => channel?.close()), Promise.resolve().then(() => endpoint?.settled())]); if (failed || results.some(result => result.status === 'rejected')) throw new Error('device relay cleanup failed') })()
+      for (const action of [() => lifetime.abort(), ...[...work.values()].map(item => () => item.controller.abort()), () => endpoint?.close(), () => { if (!('lan' in ports)) ports.control.terminate() }]) { try { action() } catch (error) { void error; failed = true } }
+      const stopEndpoint = async () => {
+        if (endpoint === undefined && 'lan' in ports) await ports.lan.close()
+        try { await endpoint?.settled() } catch (error) {
+          if (!('lan' in ports) || !(error instanceof PairedRelayFailure) || error.cleanupFailed) throw error
+        }
+      }
+      closing = (async () => { const results = await Promise.allSettled([...pending, ...[...work.values()].map(item => item.done), closeWorkspace(), Promise.resolve().then(() => channel?.close()), stopEndpoint()]); if (failed || results.some(result => result.status === 'rejected')) throw new Error('device relay cleanup failed') })()
       return closing
     }
     const routeTimer = setTimeout(() => { void close().catch(error => { void error; failed = true }) }, expiresAt - Date.now()); stopRoute = () => clearTimeout(routeTimer)
@@ -141,7 +148,8 @@ export class DeviceBindingDesktopRelay implements DesktopRelayLifecycle {
       throw new Error('device carrier method denied')
     }
     try {
-      endpoint = new PairedRelayEndpoint(this.plan.trust, this.plan.policy, ports, async value => {
+      if ('lan' in ports && route !== undefined) throw new Error('LAN requires the saved device binding')
+      endpoint = openDeviceEndpoint(this.plan.trust, this.plan.policy, ports, async value => {
         await assertRoute()
         if (binding === undefined || binding.signal.aborted || connection === undefined) throw new Error('device carrier binding unavailable')
         const outgoing = connection, requestBinding = binding

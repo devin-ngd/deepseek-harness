@@ -10,7 +10,10 @@ import { DeviceBindingProfileProvider, deviceProfileSessionPorts } from './devic
 import { DeviceBindingDesktopRelay } from './device-binding-relay.ts'
 import { DesktopIdentitySigner } from './identity.ts'
 import { WindowsCurrentUserProtection } from './windows-protection.ts'
-import { openDesktopWssPorts, validateDesktopWssPolicy } from '../../integration/desktop-wss.ts'
+import { openDesktopWssPorts, startDesktopEndpointPublisher, validateDesktopWssPolicy } from '../../integration/desktop-wss.ts'
+import { openDesktopLanPorts } from '../../integration/desktop-lan.ts'
+import { subscribeDesktopReverse } from '../../integration/desktop-reverse.ts'
+import { isDeviceLanEndpoint, isDeviceTailnetAddress } from '../../src/device-lan-address.ts'
 import { validatePairedRelayPolicy } from '../../src/paired-relay.ts'
 import { deviceBindingSchema, deviceRelayPairId, type DeviceBinding } from '../../src/device-binding-protocol.ts'
 import { id } from '../../src/protocol.ts'
@@ -29,11 +32,18 @@ import { deviceSnapshotMaxBytes } from './session-window.ts'
 
 const positive = z.number().int().positive().max(0x7fffffff), identifier = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/), alias = z.string().regex(/^[a-z][a-z0-9-]{0,126}$/)
 const workspaceReapproval = 'The encrypted phone connection changed. Approve workspace access again after reconnecting.'
+const tailnetAddress = z.string().refine(isDeviceTailnetAddress)
 const settings = z.object({ enabled: z.literal(true), desktopId: identifier, deviceId: identifier, identityAlias: alias, phoneIdentityAlias: alias, audience: z.string().max(253).regex(/^[a-z0-9.-]+$/), identityProtectionTimeoutMs: positive,
   connectionMode: z.enum(['paired', 'window']).default('paired'), reconnectMs: positive.default(5000),
   historyPage: z.object({ maxMessages: positive.max(50), targetBytes: positive, openingMaxMessages: positive.max(50).optional(),
     turnWindow: z.object({ minMessages: positive, minTurns: positive }).strict().optional() }).strict()
     .refine(value => value.turnWindow === undefined || value.turnWindow.minMessages <= value.maxMessages).optional(),
+  lan: z.object({ address: z.string().optional(), port: positive.max(65535),
+    tailnet: z.object({ localAddress: tailnetAddress, peerAddress: tailnetAddress }).strict().refine(value => value.localAddress !== value.peerAddress).optional(),
+    rendezvous: z.object({ wlanInterface: z.string().min(1).max(128), tailnetInterface: z.string().min(1).max(128), tailnetPeerAddress: tailnetAddress }).strict()
+      .refine(value => value.wlanInterface !== value.tailnetInterface).optional(),
+  }).strict().refine(value => (value.address === undefined || value.tailnet === undefined && isDeviceLanEndpoint(value.address, value.port))
+    && (value.rendezvous === undefined || value.address === undefined && value.tailnet === undefined)).optional(),
   enrollmentTtlMs: positive.max(600000), connectionTtlMs: positive.max(1800000), challengeTtlMs: positive, maxChallenges: positive, maxCatalogRows: positive, maxPublicBytes: positive, routingTtlMs: positive, journalMode: z.enum(['create', 'reopen']),
   relay: z.object({ maxProofs: positive, maxQueuedBytes: positive, maxChallengeTtlMs: positive, maxRoomTtlMs: positive, handshakeMs: positive, e2e: z.object({ maxFrameBytes: positive, maxPlaintextBytes: positive, maxFrames: positive }).strict() }).strict(),
   wss: z.object({ host: z.string(), handshakeMs: positive, maxFrameBytes: positive, maxBufferedBytes: positive, maxControlFrames: positive }).strict(),
@@ -84,6 +94,8 @@ class DeviceCommand {
     } catch (error) { await this.clear(); throw error }
   }
   private async openProduct(prepared: Prepared, record: DeviceBinding, route?: DeviceRoute): Promise<void> {
+    const lan = this.options.lan
+    if (lan !== undefined && route !== undefined) throw new Error('LAN requires the saved device binding')
     const provider = await deviceCommandStep('profile-provider', () => new DeviceBindingProfileProvider(prepared.context, Date.now))
     const { options, spec } = await deviceCommandStep('transport-policy', () => {
       const options: Desktop.Options = {
@@ -98,7 +110,28 @@ class DeviceCommand {
     const selection = route === undefined ? { paired: record } : { route }
     const historyPage = this.options.historyPage === undefined ? undefined : { ...spec.snapshot, maxMessages: this.options.historyPage.maxMessages,
       targetBytes: this.options.historyPage.targetBytes, ...(this.options.historyPage.turnWindow === undefined ? {} : { turnWindow: this.options.historyPage.turnWindow }) }
-    await deviceCommandStep('relay-provider', () => prepared.context.provide('harmonyRelayLifecycle', this.relay = new DeviceBindingDesktopRelay(prepared.owner, provider, { ...selection, desktopId: record.desktopId, ...(historyPage === undefined ? {} : { historyPage }), ...(prepared.workspace === undefined ? {} : { workspace: prepared.workspace, traceWorkspaceRequests: this.options.workspace?.traceRequests === true }), isRouteCurrent: async () => route === undefined ? JSON.stringify(await prepared.owner.publicRecord(this.authority)) === JSON.stringify(record) : JSON.stringify(await prepared.routes.current(this.authority)) === JSON.stringify(route), trust, policy: this.options.relay, limits: spec.limits, openPorts: () => openDesktopWssPorts(this.options.wss, trust, prepared.signer, record.phonePublicSpki) })))
+    const openPorts = async () => {
+      if (lan === undefined) return openDesktopWssPorts(this.options.wss, trust, prepared.signer, record.phonePublicSpki)
+      const ports = await openDesktopLanPorts(lan, this.options.wss, trust, prepared.signer, record.phonePublicSpki)
+      if (ports.endpoints === undefined) return ports
+      let stop = () => Promise.resolve()
+      try {
+        stop = startDesktopEndpointPublisher(this.options.wss, trust, prepared.signer, ports.endpoints,
+          this.options.relay.maxChallengeTtlMs, () => this.ctx.logger('harmony-device').warn('Desktop endpoint publication unavailable'))
+        const reverse = ports.reverse
+        const stopReverse = reverse === undefined ? () => Promise.resolve() : subscribeDesktopReverse(this.options.wss, trust, prepared.signer,
+          record.phonePublicSpki, this.options.relay.maxChallengeTtlMs, reverse, () => this.ctx.logger('harmony-device').warn('Reverse WLAN rendezvous unavailable'))
+        return { ...ports, lan: { open: async (signal: AbortSignal) => {
+          const socket = await ports.lan.open(signal)
+          await stopReverse()
+          return socket
+        }, close: async () => {
+          const results = await Promise.allSettled([stopReverse(), stop(), ports.lan.close()])
+          if (results.some(result => result.status === 'rejected')) throw new Error('desktop endpoint cleanup failed')
+        } } }
+      } catch (error) { await Promise.all([stop(), ports.lan.close()]); throw error }
+    }
+    await deviceCommandStep('relay-provider', () => prepared.context.provide('harmonyRelayLifecycle', this.relay = new DeviceBindingDesktopRelay(prepared.owner, provider, { ...selection, desktopId: record.desktopId, ...(historyPage === undefined ? {} : { historyPage }), ...(prepared.workspace === undefined ? {} : { workspace: prepared.workspace, traceWorkspaceRequests: this.options.workspace?.traceRequests === true }), isRouteCurrent: async () => route === undefined ? JSON.stringify(await prepared.owner.publicRecord(this.authority)) === JSON.stringify(record) : JSON.stringify(await prepared.routes.current(this.authority)) === JSON.stringify(route), trust, policy: this.options.relay, limits: spec.limits, openPorts })))
     let stopProduct: (() => Promise<void>) | undefined
     await deviceCommandStep('product-activate', async () => { const product = prepared.context.plugin(Desktop, options); stopProduct = () => product.dispose(); await product; if (this.closed) throw new Error('device startup cancelled'); this.product = stopProduct }, [() => stopProduct?.(), () => this.clear()])
   }
@@ -243,7 +276,7 @@ class DeviceCommand {
 export async function apply(ctx: Context, candidate: unknown = { enabled: false }): Promise<void> {
   if (z.object({ enabled: z.literal(false).optional() }).strict().safeParse(candidate).success) return
   const options = settings.parse(candidate); validateDesktopWssPolicy(options.wss); validatePairedRelayPolicy(options.relay)
-  if (options.audience !== options.wss.host || options.challengeTtlMs > options.relay.maxChallengeTtlMs) throw new Error('device command policy denied')
+  if (options.audience !== options.wss.host || options.challengeTtlMs > options.relay.maxChallengeTtlMs || options.lan !== undefined && options.connectionMode !== 'paired') throw new Error('device command policy denied')
   if (options.workspace !== undefined && (Math.ceil(options.workspace.wire.maxChunkBytes * 4 / 3) + 256 > options.relay.e2e.maxPlaintextBytes
     || options.workspace.wire.maxRequestBytes > options.relay.e2e.maxPlaintextBytes)) throw new Error('workspace messages exceed device envelope capacity')
   await ctx.inject(commandServices(options), inner => { if (inner.profileContext.name !== 'desktop') throw new Error('device command requires desktop profile'); const command = new DeviceCommand(inner, options); inner.effect(() => () => command.close()); inner.effect(() => inner.commands.register({ name: 'harmony-device', description: 'Bind the original phone to visible desktop Sessions', input: { hint: 'status | start <public JSON> | confirm <signed JSON> | route-start | route-confirm <signed JSON> | route-status | connect | stop | revoke' }, recordInput: false, handler: invocation => command.run(invocation) })); command.startAutomatic() })

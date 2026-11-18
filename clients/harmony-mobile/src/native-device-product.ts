@@ -25,7 +25,8 @@ import { readWorkspaceBytes } from './workspace-bytes.ts'
 import { deviceWorkspaceOrigin } from './workspace-origin.ts'
 import { prepareWorkspace } from './workspace-prepare.ts'
 import type { E2EPrimitives, P256IdentitySigner } from './e2e-channel.ts'
-import type { PairedRelayPorts, PairedRelayPolicy } from './paired-relay.ts'
+import type { PairedRelayPolicy } from './paired-relay.ts'
+import type { DeviceLinkPorts } from './device-lan.ts'
 import type { CleanupScheduler } from '../integration/connection-lifetime.ts'
 import { fields } from './link-protocol.ts'
 import { DeviceRouteOwner } from './device-route-owner.ts'
@@ -33,8 +34,8 @@ import { ProductRouteStorage } from './product-route-storage.ts'
 import { deviceRouteSchema } from './device-route-protocol.ts'
 import { deviceSessionDirectory, deviceSessionActionSchema, deviceSessionManagedSchema, type DeviceSessionRow } from './device-session-directory.ts'
 
-/** Existing native owner acquires original-key crypto and verified WSS; open is separate so receipt validation precedes socket opening. */
-export interface NativeDeviceNetwork { readonly ports: PairedRelayPorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
+/** Native owner acquires original-key crypto and owns socket release. */
+export interface NativeDeviceNetwork { readonly ports: DeviceLinkPorts; open(): Promise<void>; authenticated(): void; close(): Promise<void> }
 /** JSON-free native original-identity crypto; no private bytes are exposed. */
 export interface NativeDeviceCrypto { readonly signer: P256IdentitySigner; readonly primitives: E2EPrimitives }
 /** Last admitted Session and its exact public binding, retained only by the native page owner. */
@@ -100,7 +101,7 @@ export class NativeDeviceProductFacade {
   /** @param raw - strict public device offer or receipt. @returns only original identity/host selection for native bootstrap; no signing or network occurs. */
   static selectionInput(raw: string): string { const value: unknown = JSON.parse(raw), offer = deviceBindingOfferSchema.safeParse(value), record = offer.success ? offer.data.registration : deviceBindingSchema.parse(value); return JSON.stringify({ identityAlias: record.identityAlias, audience: record.audience, bindingId: record.bindingId, desktopPublicSpki: record.desktopPublicSpki }) }
   /** Used only after the facade verifies both signatures before native socket acquisition. */
-  static routingInput(raw: string): string { const candidate: unknown = JSON.parse(raw), route = deviceRouteSchema.safeParse(candidate), value = route.success ? route.data.offer.binding : deviceBindingSchema.parse(candidate); return JSON.stringify({ identityAlias: value.identityAlias, audience: value.audience, bindingId: value.bindingId, desktopPublicSpki: value.desktopPublicSpki, routeId: route.success ? route.data.offer.routeId : deviceRelayPairId(value) }) }
+  static routingInput(raw: string): string { const candidate: unknown = JSON.parse(raw), route = deviceRouteSchema.safeParse(candidate), value = route.success ? route.data.offer.binding : deviceBindingSchema.parse(candidate); return JSON.stringify({ identityAlias: value.identityAlias, audience: value.audience, bindingId: value.bindingId, desktopPublicSpki: value.desktopPublicSpki, epoch: value.epoch, routeId: route.success ? route.data.offer.routeId : deviceRelayPairId(value) }) }
   private local(authority: object): void { if (this.closed || this.startupFailure !== undefined || !this.policy.enabled || authority !== this.authority) throw new Error('native device product disabled') }
   private makeClient(value: DeviceBinding | DeviceBindingOffer['registration']): DeviceBindingClient {
     if (value.identityAlias !== this.identityAlias || value.audience !== this.host || value.profileId !== 'desktop') throw new Error('native device local selection denied')

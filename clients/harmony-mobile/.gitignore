@@ -8,7 +8,14 @@ harmony/entry/build/
 *.cer
 *.p7b
 *.keystore
+handoff/deploy-rc235-20261104/verify-*/verified-profile.json
+handoff/deploy-rc235-20261104/sign-sdk-user/
 
 # Device traces and local acceptance reports stay on the development machine.
 evidence/
 *.log
+handoff/workspace-phone-rc240-*/
+handoff/deploy-rc235-20261104/shots/
+handoff/deploy-rc235-20261104/layouts/
+handoff/deploy-rc235-20261104/rc2-48-signed.hap
+handoff/deploy-rc235-20261104/phone-workspace-diagnostics-*.json

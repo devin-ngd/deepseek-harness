@@ -7,5 +7,15 @@ export const util = { ...files.util, ...pair.util, generateRandomUUID: files.uti
 const TestURL = globalThis.URL
 export default { ...util, URL: { parseURL: (input, base) => new TestURL(input, base) } }
 export const deviceInfo = { sdkApiVersion: 26 }
+export const socket = {
+  constructUDPSocketInstance() { throw new Error('UDP discovery requires a dedicated test port') },
+  constructTCPSocketServerInstance() { throw new Error('Reverse LAN requires a dedicated test listener') },
+}
+export const connection = {
+  NetBearType: { BEARER_CELLULAR: 0, BEARER_WIFI: 1, BEARER_VPN: 4 },
+  getAllNets: async () => [],
+  getNetCapabilities: async () => ({ bearerTypes: [] }),
+  getConnectionProperties: async () => ({ linkAddresses: [], routes: [] }),
+}
 export const cryptoFramework = { ...pair.cryptoFramework, createMd(name) { return { ...pair.cryptoFramework.createMd(name), ...files.cryptoFramework.createMd(name) } } }
 export function resetProductSdk() { pair.reset(); files.resetSdk() }

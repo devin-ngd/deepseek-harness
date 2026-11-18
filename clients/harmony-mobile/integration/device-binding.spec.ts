@@ -2,6 +2,9 @@
 import { it, expect, vi } from 'vitest'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
+import { createSocket } from 'node:dgram'
+import { createServer, type Socket } from 'node:net'
+import { once } from 'node:events'
 import { join } from 'node:path'
 import Authorization from '@deepseek-ai/dsh-authorization'
 import UserQuestions from '@deepseek-ai/dsh-user-questions'
@@ -15,13 +18,17 @@ import { submitProductForm } from './product-browser.ts'
 import { NativeProductOwner, resetProductSdk, state, sdk, network, context } from '../tests/helpers/product-native-harness.mjs'
 import { NativeDeviceProductFacade } from '../src/native-device-product.ts'
 import { NativeDeviceCore } from '../src/native-device-bridge.ts'
-import type { DeviceHistoryStorage } from '../src/device-history-cache.ts'
 import { parseProductPolicy } from '../src/native-product-facade.ts'
 import { DeviceBindingDesktopRelay } from '../desktop-plugin/src/device-binding-relay.ts'
+import { openDesktopLanPorts } from './desktop-lan.ts'
+import { openDesktopLanDiscovery } from './desktop-lan-discovery.ts'
+import { DEVICE_LAN_PATH, DEVICE_LAN_PROTOCOL } from '../src/device-lan-address.ts'
+import { lanDiscoveryMessage, lanDiscoveryScope } from '../src/device-lan-discovery.ts'
+import { DeviceSessionHistory, type DeviceHistoryStorage } from '../src/device-history-cache.ts'
 import { deviceSnapshotMaxBytes } from '../desktop-plugin/src/session-window.ts'
 import { createStandaloneRelay } from '../standalone-relay/src/host.ts'
 import { nodeRelaySocket } from './relay-upgrade.ts'
-import { ImportedP256Agreement } from './p256-channel.ts'
+import { freshNodeAgreement, ImportedP256Agreement } from './p256-channel.ts'
 import { fixtureKey, hostConfig } from './phase39-fixture.ts'
 import { MemoryCredentials } from '../../../packages/credentials/authorization/tests/memory.ts'
 import { credentialKey, parseCredentialKey, isCredentialKeySegment } from '@deepseek-ai/dsh-credentials'
@@ -58,6 +65,145 @@ import { ProfileJournalError, openProfileJournal } from '../desktop-plugin/src/j
 import { DeviceCommandStepError, deviceCommandStep } from '../desktop-plugin/src/device-command-step.ts'
 import { LinkError } from '../src/link-protocol.ts'
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
+import { DEVICE_ENDPOINT_LEASE_MS, DEVICE_ENDPOINT_SUBPROTOCOL, exchangeDeviceEndpoints, type DeviceEndpoints } from '../src/device-endpoint-exchange.ts'
+import { RELAY_CONTROL_PATH } from '../src/relay-control-protocol.ts'
+import { readDesktopEndpoints } from './desktop-lan.ts'
+import { DEVICE_REVERSE_SUBPROTOCOL, exchangeReverseLan, type ReverseLanOffer } from '../src/device-reverse-control.ts'
+import { ReverseTcpPort, admitReverseTcp } from '../src/device-reverse-tcp.ts'
+import { dialDesktopReverse } from './desktop-reverse.ts'
+import { openDeviceEndpoint, type DeviceLanPorts } from '../src/device-lan.ts'
+
+it('reverse WLAN control delivers one signed phone offer to the paired desktop', async () => {
+  const authority = {}, source = fixtureSource(), clock = () => 1000
+  const pair = { ...hostConfig.broker.pairs[0]!, expiresAt: clock() + DEVICE_ENDPOINT_LEASE_MS }
+  const relay = createStandaloneRelay({ ...hostConfig, broker: { ...hostConfig.broker, pairs: [pair] } },
+    authority, clock, () => {}, source, { commit: async () => {} })!
+  await relay.start()
+  const sockets = new Set<WebSocket>()
+  const subscribed = Promise.withResolvers<void>()
+  const request = { address: '10.0.35.148', port: 17847, nonce: Buffer.alloc(32, 12).toString('base64url') }
+  const start = (role: 'phone' | 'desktop', offer: ReverseLanOffer | null, signer = role === 'desktop' ? desktopKey : phoneKey) => {
+    const ws = new WebSocket('ws://127.0.0.1:' + relay.port() + RELAY_CONTROL_PATH, DEVICE_REVERSE_SUBPROTOCOL, {
+      headers: { Host: hostConfig.publicHost, 'X-DSH-Relay-Pair': pair.pairId, 'X-DSH-Relay-Role': role },
+    })
+    sockets.add(ws)
+    ws.on('message', bytes => { if (role === 'desktop' && bytes.toString() === '{"kind":"subscribed"}') subscribed.resolve() })
+    return exchangeReverseLan({ socket: nodeRelaySocket(ws, 8, false), trust: { pairId: pair.pairId, epoch: pair.epoch,
+      role, audience: hostConfig.publicHost, credentialId: p256CredentialId(signer.publicSpki), expiresAt: pair.expiresAt },
+      signer, primitives: nodeE2EPrimitives, phonePublicSpki: phoneKey.publicSpki, offer, clock, maxTtlMs: hostConfig.broker.challengeTtlMs,
+      maxBytes: 4096, signal: AbortSignal.timeout(3000) })
+  }
+  try {
+    await expect(start('phone', request)).rejects.toThrow('reverse rendezvous unavailable')
+    const delivery = start('desktop', null)
+    await Promise.race([subscribed.promise, delivery.then(() => { throw new Error('offer arrived before subscription') })])
+    await expect(start('phone', request, desktopKey)).rejects.toThrow('reverse rendezvous unavailable')
+    await expect(start('phone', request)).resolves.toEqual(request)
+    await expect(delivery).resolves.toEqual(request)
+    await expect(start('phone', request)).rejects.toThrow('reverse rendezvous unavailable')
+  } finally {
+    for (const ws of sockets) ws.terminate()
+    await relay.close()
+  }
+})
+
+it('reverse WLAN TCP carries the original encrypted paired protocol over loopback', async () => {
+  const accepted = Promise.withResolvers<Socket>(), server = createServer(socket => accepted.resolve(socket))
+  const listening = once(server, 'listening')
+  server.listen(0, '127.0.0.1')
+  await listening
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('fixture TCP listener unavailable')
+  const owner = new AbortController()
+  const signal = AbortSignal.any([owner.signal, AbortSignal.timeout(4000)])
+  const limits = { host: 'relay.example', handshakeMs: 3000, maxFrameBytes: 8192, maxBufferedBytes: 32768, maxControlFrames: 8 }
+  const offer = { address: '127.0.0.1', port: address.port, nonce: Buffer.alloc(32, 14).toString('base64url') }
+  const dialing = dialDesktopReverse(offer, '127.0.0.1', limits, signal)
+  let socket: Socket | undefined
+  let desktop: ReturnType<typeof openDeviceEndpoint> | undefined, phone: ReturnType<typeof openDeviceEndpoint> | undefined
+  try {
+    const peer = await Promise.race([accepted.promise, dialing.then(() => { throw new Error('reverse dial ended before accept') })])
+    socket = peer
+    const port = new ReverseTcpPort(limits.maxFrameBytes, limits.maxBufferedBytes, bytes => { peer.write(bytes.subarray(0, 2)); peer.write(bytes.subarray(2)) },
+      () => peer.writableLength, () => peer.destroy())
+    peer.on('data', bytes => port.receive(bytes))
+    peer.on('close', () => port.terminate())
+    peer.on('error', () => port.terminate())
+    expect(await admitReverseTcp(port, offer.nonce, 'phone', signal)).toBe(true)
+    const opened = await dialing
+    if (opened === undefined) throw new Error('fixture reverse dial failed')
+    const policy = { maxProofs: 8, maxQueuedBytes: 32768, maxChallengeTtlMs: 3000, maxRoomTtlMs: 10000, handshakeMs: 3000,
+      e2e: { maxFrameBytes: 8192, maxPlaintextBytes: 4096, maxFrames: 64 } }
+    const trust = { pairId: id<'harmony-relay-pair'>('reverse-loopback-fixture'), epoch: 1, audience: limits.host, expiresAt: Date.now() + 10000 }
+    const phoneReady = Promise.withResolvers<void>(), desktopReady = Promise.withResolvers<void>()
+    const received = Promise.withResolvers<object>()
+    const ports = (role: 'desktop' | 'phone'): DeviceLanPorts => {
+      const remote = role === 'desktop' ? phoneKey : desktopKey, local = role === 'desktop' ? desktopKey : phoneKey
+      const transport = role === 'desktop' ? opened.port : port
+      return { lan: { open: async () => transport, close: async () => { transport.terminate() } }, signer: local,
+        primitives: nodeE2EPrimitives, remotePublicSpki: remote.publicSpki, clock: Date.now,
+        scheduler: { after: (ms, callback) => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } },
+        agreement: async () => ({ key: freshNodeAgreement(), nonce: Buffer.alloc(32, role === 'desktop' ? 1 : 2) }) }
+    }
+    const terminal = () => { phoneReady.reject(new Error('reverse phone endpoint closed')); desktopReady.reject(new Error('reverse desktop endpoint closed')); received.reject(new Error('reverse encrypted delivery closed')) }
+    void received.promise.catch(() => {})
+    phone = openDeviceEndpoint({ ...trust, role: 'phone', credentialId: id<'harmony-device-credential'>(p256CredentialId(phoneKey.publicSpki)) }, policy, ports('phone'),
+      async () => {}, () => phoneReady.resolve(), terminal, signal)
+    desktop = openDeviceEndpoint({ ...trust, role: 'desktop', credentialId: id<'harmony-device-credential'>(p256CredentialId(desktopKey.publicSpki)) }, policy, ports('desktop'),
+      async value => { if (value !== null && typeof value === 'object') received.resolve(value) }, () => desktopReady.resolve(), terminal, signal)
+    await Promise.all([desktopReady.promise, phoneReady.promise])
+    await phone.send({ fixture: 'phone command' })
+    expect(await received.promise).toEqual({ fixture: 'phone command' })
+  } finally {
+    owner.abort()
+    socket?.destroy()
+    await Promise.allSettled([dialing, phone?.settled(), desktop?.settled(), new Promise<void>(resolve => server.close(() => resolve()))])
+  }
+})
+
+it('paired endpoint control publishes, replaces and expires live addresses without issuing a room', async () => {
+  const clock = { now: 1000 }, authority = {}, source = fixtureSource()
+  const pair = { ...hostConfig.broker.pairs[0]!, expiresAt: clock.now + 3 * DEVICE_ENDPOINT_LEASE_MS }
+  const roomToken = vi.fn(source.token)
+  const relay = createStandaloneRelay({ ...hostConfig, broker: { ...hostConfig.broker, pairs: [pair] } }, authority, () => clock.now, () => {}, { ...source, token: roomToken }, { commit: async () => {} })!
+  await relay.start()
+  const change = async (role: 'phone' | 'desktop', candidates: DeviceEndpoints | null, signer = role === 'phone' ? phoneKey : desktopKey, expectedDesktop = desktopKey.publicSpki) => {
+    const ws = new WebSocket('ws://127.0.0.1:' + relay.port() + RELAY_CONTROL_PATH, DEVICE_ENDPOINT_SUBPROTOCOL, { headers: {
+      Host: hostConfig.publicHost, 'X-DSH-Relay-Pair': pair.pairId, 'X-DSH-Relay-Role': role,
+    } })
+    const port = nodeRelaySocket(ws, 8, false)
+    try { return await exchangeDeviceEndpoints({ socket: port, trust: { pairId: pair.pairId, epoch: 1, role,
+      audience: hostConfig.publicHost, credentialId: p256CredentialId(signer.publicSpki), expiresAt: pair.expiresAt }, signer,
+      primitives: nodeE2EPrimitives, desktopPublicSpki: expectedDesktop, candidates, clock: () => clock.now,
+      maxTtlMs: hostConfig.broker.challengeTtlMs, maxBytes: 4096, signal: AbortSignal.timeout(1500) }) }
+    finally { port.terminate() }
+  }
+  const names = { wlanInterface: 'fixture-wifi', tailnetInterface: 'fixture-mesh', tailnetPeerAddress: '100.64.7.21' }
+  const interfaces = (wlan: string, tailnet: string): Parameters<typeof readDesktopEndpoints>[2] => ({
+    'fixture-wifi': [{ family: 'IPv4', address: wlan, internal: false, netmask: '255.255.255.0', mac: '', cidr: wlan + '/24' }],
+    'fixture-mesh': [{ family: 'IPv4', address: tailnet, internal: false, netmask: '255.255.255.255', mac: '', cidr: tailnet + '/32' }],
+  })
+  try {
+    expect((await change('phone', null)).candidates).toBeNull()
+    const first = readDesktopEndpoints(names, 17847, interfaces('192.168.60.10', '100.64.7.20'))
+    await change('desktop', first)
+    expect((await change('phone', null)).candidates).toEqual(first)
+    await expect(change('phone', null, phoneKey, fixtureKey(9).publicSpki)).rejects.toThrow('endpoint exchange unavailable')
+    await expect(change('desktop', first, phoneKey)).rejects.toThrow('endpoint exchange unavailable')
+    clock.now += 10
+    const next = readDesktopEndpoints(names, 17847, interfaces('192.168.60.11', '100.64.7.22'))
+    await change('desktop', next)
+    expect((await change('phone', null)).candidates).toEqual(next)
+    clock.now += hostConfig.broker.challengeTtlMs
+    expect((await change('phone', null)).candidates).toEqual(next)
+    clock.now += DEVICE_ENDPOINT_LEASE_MS
+    relay.sweep()
+    expect((await change('phone', null)).candidates).toBeNull()
+    await relay.revokePair(authority, pair.pairId)
+    await expect(change('phone', null)).rejects.toThrow('endpoint exchange unavailable')
+    expect(roomToken).not.toHaveBeenCalled()
+  } finally { await relay.close() }
+})
 
 it('native continuous follow configuration rejects invalid failure budgets before activation', async () => {
   const { core: policy } = JSON.parse(await readFile(new URL('../product.config.json', import.meta.url), 'utf8'))
@@ -863,4 +1009,231 @@ it('paired startup reuses saved devices after retired windows and reconnects wit
     expect(await readFile(published.configuration.deviceRoutes.path)).toEqual(before)
     expect(await f.storage.read()).toBe(JSON.stringify(binding))
   } finally { historyPages.mockRestore(); follow.mockRestore(); await app?.close(); await stop?.(); for (const socket of sockets) socket.terminate(); await relay?.close(); await routes?.close(); await f.close() }
+})
+
+it.each(['fixed', 'discovery'] as const)('saved LAN pairing with %s reads a Session without a relay and reconnects', async mode => {
+  const f = await fixture('paired-lan-' + mode)
+  const catalog = vi.spyOn(DeviceBoundProfileChannel.prototype, 'catalog')
+  const olderReads = vi.spyOn(DeviceBoundProfileChannel.prototype, 'history')
+  const historyPages = vi.spyOn(f.ctx.sessionController, 'page')
+  const cacheFrames = vi.spyOn(DeviceSessionHistory.prototype, 'expand')
+  const mountRich = vi.spyOn(f.ctx.richInline, 'mount')
+  let app: NativeDeviceProductFacade | undefined, stop: (() => Promise<void>) | undefined
+  let phoneSocket: WebSocket | undefined
+  try {
+    const binding = await f.bind(), saved = JSON.stringify(binding)
+    const sessionId = id<'SessionId'>('existing-lan-session')
+    const otherSession = id<'SessionId'>('other-lan-session')
+    const messages = Array.from({ length: 8 }, (_, index) => 'Existing LAN message ' + (index + 1))
+    await f.ctx.sessionController.create({ sessionId, cwd: f.world })
+    await f.ctx.sessionController.create({ sessionId: otherSession, cwd: f.world })
+    const appendMessage = (text: string, turn: number) => {
+      f.ctx.sessions.get(sessionId)!.append('assistant/message', {
+        turn, step: 1, stream: [],
+        message: createAssistantMessage({ content: [{ type: 'text', text }], source: { provider: 'fixed', model: 'fixed' } }),
+      }, { surfaceOp: 'append' })
+    }
+    for (const [index, text] of messages.entries()) {
+      const report = index === 4 ? '\n\n```rich-html\n' + JSON.stringify({
+        key: 'older-briefing', html: '<article>Archived briefing body</article>', css: '', js: '',
+        fallbackText: 'Archived briefing body', stateSchemaVersion: 1,
+      }) + '\n```' : ''
+      appendMessage(text + report, index + 1)
+    }
+    const base = JSON.parse(await readFile(new URL('../product.config.json', import.meta.url), 'utf8'))
+    const expiresAt = Date.now() + 900000, endpoint = { address: '127.0.0.1', port: 0 }, policy = base.relay
+    const socketLimits = { host: binding.audience, handshakeMs: policy.handshakeMs, maxFrameBytes: policy.e2e.maxFrameBytes, maxBufferedBytes: policy.maxQueuedBytes, maxControlFrames: 64 }
+    const trust = { pairId: deviceRelayPairId(binding), epoch: binding.epoch, role: 'desktop' as const, audience: binding.audience,
+      credentialId: id<'harmony-device-credential'>(binding.desktopCredentialId), expiresAt }
+    const discoveryScope = lanDiscoveryScope(trust.pairId, desktopKey.publicSpki)
+    const scheduler = { after: (ms: number, callback: () => void) => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } }
+    const options = { enabled: true, desktopId: binding.desktopId, profileId: 'desktop', journalMode: 'create' as const, snapshotMaxMessages: 3 }
+    const spec = Desktop.resolveOptions(options, Date.now)
+    const olderCount = mode === 'discovery' ? 1 : 3
+    const provider = new DeviceBindingProfileProvider(f.ctx, Date.now)
+    await f.ctx.plugin(Desktop, options)
+    let boundPort = 0
+    let discoveryFailure = false
+    const discoveryNonces = new Set<string>()
+    const discover = async (signal: AbortSignal) => {
+      const udp = createSocket('udp4')
+      try {
+        const listening = once(udp, 'listening', { signal })
+        udp.bind(0, '127.0.0.1')
+        await listening
+        const digest = async (value: string) => createHash('sha256').update(value).digest('base64url')
+        const nonce = Buffer.alloc(16, discoveryNonces.size + 1).toString('base64url')
+        discoveryNonces.add(nonce)
+        const query = await lanDiscoveryMessage(discoveryScope, nonce, 'q', digest)
+        const reply = await lanDiscoveryMessage(discoveryScope, nonce, 'r', digest)
+        expect(await lanDiscoveryMessage(lanDiscoveryScope(trust.pairId, fixtureKey(61).publicSpki), nonce, 'r', digest)).not.toBe(reply)
+        const replied = once(udp, 'message', { signal })
+        void replied.catch(() => {})
+        await new Promise<void>((resolve, reject) => udp.send(query, boundPort, '127.0.0.1', error => error === null ? resolve() : reject(error)))
+        const [packet, source] = await replied
+        expect(packet.toString('utf8')).toBe(reply)
+        expect(source.port).toBe(boundPort)
+        return source.address as string
+      } finally { await new Promise<void>(resolve => udp.close(resolve)) }
+    }
+    const mount = () => {
+      return new DeviceBindingDesktopRelay(f.owner, provider, {
+        paired: binding, desktopId: binding.desktopId, isRouteCurrent: async () => await f.storage.read() === saved,
+        trust, policy, limits: spec.limits, historyPage: { ...spec.snapshot, targetBytes: olderCount === 1 ? 1 : 131072,
+          turnWindow: { minMessages: 2, minTurns: 1 } },
+        openPorts: async () => {
+          const ports = await openDesktopLanPorts(endpoint, socketLimits, trust, desktopKey, phoneKey.publicSpki)
+          boundPort = ports.port
+          if (mode === 'fixed') return ports
+          try {
+            const closeDiscovery = await openDesktopLanDiscovery('127.0.0.1', ports.port, discoveryScope,
+              address => address === '127.0.0.1', () => { discoveryFailure = true })
+            return { ...ports, lan: { open: ports.lan.open, close: async () => { await Promise.all([ports.lan.close(), closeDiscovery()]) } } }
+          } catch (error) { await ports.lan.close(); throw error }
+        },
+      })
+    }
+    let latest: { connection?: string; sessions?: Array<{ sessionId: string }>; selected?: string; messages?: Array<{ text: string; processText?: string }>; readOnly?: boolean; historyHasMore?: boolean; historySyncing?: boolean; historyOffline?: boolean; historyCachedEnd?: boolean; offlineAvailable?: boolean; richJson?: string } = {}
+    let acquisitions = 0
+    let cacheText: string | null = null
+    const historyStorage: DeviceHistoryStorage | undefined = mode === 'discovery' ? {
+      maxBytes: 1024 * 1024, maxSessions: 2, read: async () => cacheText,
+      write: async raw => { cacheText = raw }, clear: async () => { cacheText = null },
+    } : undefined
+    const makeApp = () => new NativeDeviceProductFacade(f.native, JSON.stringify({ ...base.core, enabled: true, pagedHistory: true }),
+      binding.identityAlias, binding.audience, expiresAt, policy, { read: async () => saved,
+        write: async () => { throw new Error('LAN attempted to replace the saved pairing') }, close: async () => {} },
+      { signer: phoneKey, primitives: nodeE2EPrimitives }, scheduler, Date.now, async raw => {
+        expect(raw).toBe(saved)
+        acquisitions++
+        const close = async () => { phoneSocket?.terminate() }
+        return { ports: { signer: phoneKey, primitives: nodeE2EPrimitives, remotePublicSpki: desktopKey.publicSpki, scheduler, clock: Date.now,
+          agreement: async () => ({ key: freshNodeAgreement(), nonce: Buffer.alloc(32, acquisitions) }),
+          lan: { open: async signal => {
+            signal.throwIfAborted()
+            const address = mode === 'discovery' ? await discover(signal) : '127.0.0.1'
+            phoneSocket = new WebSocket('ws://' + address + ':' + boundPort + DEVICE_LAN_PATH, DEVICE_LAN_PROTOCOL, { perMessageDeflate: false })
+            return nodeRelaySocket(phoneSocket, 64)
+          }, close } }, open: async () => {}, authenticated: () => {}, close }
+      }, view => { latest = JSON.parse(view) }, 60000, undefined, true, undefined, historyStorage)
+    app = makeApp()
+    await app.boot()
+    const first = mount()
+    stop = await first.mount(f.ctx)
+    await app.connect(true)
+    expect(latest.connection).toBe('connected')
+    expect(latest.sessions?.some(row => row.sessionId === sessionId)).toBe(true)
+    expect(catalog).toHaveBeenCalledTimes(1)
+    await app.select(sessionId)
+    const displayed = () => latest.messages?.map(row => (row.processText ?? row.text).trimEnd())
+    const mounted = (): { mountId: string } | null => latest.richJson ? JSON.parse(latest.richJson) : null
+    const archivedReport = { scope: { sessionId }, manifest: { html: '<article>Archived briefing body</article>' } }
+    const snapshotPacket = (mountId: string) => JSON.stringify({ kind: 'rich.request', id: 'briefing-read', operation: 'rich.snapshot', payload: { mountId } })
+    await expect.poll(displayed).toEqual(messages.slice(-3))
+    expect(latest.historyHasMore).toBe(true)
+    expect(catalog).toHaveBeenCalledTimes(1)
+    expect(latest.richJson).toBe('')
+    await expect(app.loadOlder()).resolves.toBe('loaded')
+    expect(displayed()).toEqual(messages.slice(-(3 + olderCount)))
+    expect(historyPages.mock.calls.some(([request]) => request.turnWindow?.minMessages === (olderCount === 1 ? 1 : 2) && request.turnWindow.minTurns === 1)).toBe(true)
+    await expect.poll(mounted).toMatchObject({ snapshot: archivedReport })
+    const firstPacket = snapshotPacket(mounted()!.mountId)
+    const firstHostMount = await mountRich.mock.results[0]!.value
+    const firstHostRequest = { sessionId, mountId: firstHostMount.mountId }
+    expect(await f.ctx.richInline.snapshot(firstHostRequest)).toMatchObject(archivedReport)
+    expect(JSON.parse(await app.richRequest(firstPacket))).toMatchObject({ kind: 'rich.reply', value: archivedReport })
+    await expect(app.loadOlder()).resolves.toBe('loaded')
+    expect(displayed()).toEqual(messages.slice(-(3 + 2 * olderCount)))
+    expect(latest.historyHasMore).toBe(olderCount === 1)
+    if (olderCount === 3) await expect(app.loadOlder()).resolves.toBe('empty')
+    expect(olderReads).toHaveBeenCalledTimes(2)
+
+    await app.select(otherSession)
+    expect(latest).toMatchObject({ selected: otherSession, richJson: '' })
+    await expect(async () => f.ctx.richInline.snapshot(firstHostRequest)).rejects.toThrow('STALE_MOUNT')
+    await expect(app.richRequest(firstPacket)).rejects.toThrow()
+
+    phoneSocket?.terminate()
+    await expect.poll(() => first.terminalState).toBe('closed')
+    await app.close(); await stop(); stop = await mount().mount(f.ctx)
+    app = makeApp()
+    await app.boot()
+    if (historyStorage !== undefined) {
+      expect(latest).toMatchObject({ connection: 'disconnected', offlineAvailable: true })
+      expect(latest.sessions?.some(row => row.sessionId === sessionId)).toBe(true)
+      await app.select(sessionId)
+      expect(latest).toMatchObject({ selected: sessionId, readOnly: true, historyOffline: true })
+      expect(displayed()).toEqual(messages.slice(-3))
+      await expect(app.loadOlder()).resolves.toBe('loaded')
+      expect(displayed()).toEqual(messages.slice(-4))
+      await expect.poll(mounted).toMatchObject({ snapshot: archivedReport })
+      expect(JSON.parse(await app.richRequest(snapshotPacket(mounted()!.mountId)))).toMatchObject({ kind: 'rich.reply', error: true })
+      await expect(app.loadOlder()).resolves.toBe('loaded')
+      expect(displayed()).toEqual(messages.slice(-5))
+      expect(latest.historyCachedEnd).toBe(true)
+      expect(olderReads).toHaveBeenCalledTimes(2)
+      expect(acquisitions).toBe(1)
+      await app.close()
+      app = makeApp()
+      await app.boot()
+    }
+    await app.connect(true)
+    expect(latest.connection).toBe('connected')
+    expect(acquisitions).toBe(2)
+    expect(discoveryNonces.size).toBe(mode === 'discovery' ? 2 : 0)
+    expect(discoveryFailure).toBe(false)
+    expect(await f.storage.read()).toBe(saved)
+    if (historyStorage !== undefined) {
+      expect(cacheText).not.toBeNull()
+      const originalSelect = DeviceBoundProfileChannel.prototype.select
+      const validationReached = Promise.withResolvers<void>(), releaseValidation = Promise.withResolvers<void>()
+      const validation = vi.spyOn(DeviceBoundProfileChannel.prototype, 'select').mockImplementationOnce(async function (this: DeviceBoundProfileChannel, route) {
+        validationReached.resolve()
+        await releaseValidation.promise
+        await originalSelect.call(this, route)
+      })
+      const opening = app.select(sessionId)
+      try {
+        await Promise.race([validationReached.promise, opening])
+        expect(displayed()).toEqual(messages.slice(-3))
+        expect(latest).toMatchObject({ selected: sessionId, historySyncing: true, readOnly: true, historyHasMore: false })
+      } finally {
+        releaseValidation.resolve()
+        validation.mockRestore()
+        await opening
+      }
+      await expect.poll(() => latest.historySyncing).toBe(false)
+      await expect.poll(displayed).toEqual(messages.slice(-3))
+      expect(cacheFrames.mock.calls.some(([frame]) => frame !== null && typeof frame === 'object' && 'reused' in frame && frame.reused === true)).toBe(true)
+      expect(catalog).toHaveBeenCalledTimes(2)
+      await expect(app.loadOlder()).resolves.toBe('loaded')
+      expect(displayed()).toEqual(messages.slice(-(3 + olderCount)))
+      expect(olderReads).toHaveBeenCalledTimes(2)
+      await expect.poll(mounted).toMatchObject({ snapshot: archivedReport })
+      expect(JSON.parse(await app.richRequest(snapshotPacket(mounted()!.mountId)))).toMatchObject({ value: archivedReport })
+
+      appendMessage('New desktop message', messages.length + 1)
+      await app.select(sessionId)
+      await expect.poll(displayed).toEqual([...messages, 'New desktop message'].slice(-3))
+      expect(catalog).toHaveBeenCalledTimes(2)
+      await expect(app.loadOlder()).resolves.toBe('loaded')
+      expect(olderReads).toHaveBeenCalledTimes(2)
+      expect(displayed()).toEqual([...messages, 'New desktop message'].slice(-4))
+
+      const denied = vi.spyOn(DeviceBoundProfileChannel.prototype, 'select').mockRejectedValueOnce(new Error('fixture selection denied'))
+      try {
+        await expect(app.select(sessionId)).rejects.toThrow()
+        expect(latest.selected).toBe('')
+        expect(displayed()).toEqual([])
+      } finally { denied.mockRestore() }
+    } else {
+      await app.select(sessionId)
+      await expect.poll(displayed).toEqual(messages.slice(-3))
+      expect(mounted()).toBeNull()
+      await expect(app.richRequest(firstPacket)).rejects.toThrow()
+      await expect(app.loadOlder()).resolves.toBe('loaded')
+      await expect.poll(mounted).toMatchObject({ snapshot: archivedReport })
+      expect(JSON.parse(await app.richRequest(snapshotPacket(mounted()!.mountId)))).toMatchObject({ value: archivedReport })
+    }
+  } finally { historyPages.mockRestore(); mountRich.mockRestore(); cacheFrames.mockRestore(); olderReads.mockRestore(); catalog.mockRestore(); await app?.close(); await stop?.(); phoneSocket?.terminate(); await f.close() }
 })

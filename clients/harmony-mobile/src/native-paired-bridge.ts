@@ -7,6 +7,33 @@ import { id } from './protocol.ts'
 import type { DeviceTransportBinding } from '../integration/device-auth.ts'
 import type { E2EDiagnostic } from '../integration/e2e-socket.ts'
 import type { ControlDiagnostic } from './relay-control-client.ts'
+import { exchangeDeviceEndpoints, type DeviceEndpoints } from './device-endpoint-exchange.ts'
+import type { RelaySocket } from '../integration/relay-core.ts'
+import type { E2EPrimitives, P256IdentitySigner } from './e2e-channel.ts'
+import { exchangeReverseLan, type ReverseLanOffer } from './device-reverse-control.ts'
+export { DEVICE_ENDPOINT_SUBPROTOCOL } from './device-endpoint-exchange.ts'
+export { DEVICE_REVERSE_SUBPROTOCOL } from './device-reverse-control.ts'
+export { ReverseTcpPort, admitReverseTcp } from './device-reverse-tcp.ts'
+
+/** @returns a native-owned cancellation controller for one reverse attempt. */
+export function reverseAttemptController(): AbortController { return new AbortController() }
+
+/** @param socket - dedicated native reverse control port. @param pair - current paired identity. @param epoch - pairing epoch. @param host - paired relay audience. @param expiresAt - local trust deadline. @param offer - active Wi-Fi listener and one-use nonce. @param signer - original phone signer. @param primitives - native crypto. @param maxTtlMs - challenge cap. @param maxBytes - control frame cap. @param signal - bounded attempt. @returns after the signed offer reaches a subscribed desktop. */
+export async function publishNativeReverse(socket: RelaySocket, pair: string, epoch: number, host: string, expiresAt: number,
+  offer: ReverseLanOffer, signer: P256IdentitySigner, primitives: E2EPrimitives, maxTtlMs: number, maxBytes: number, signal: AbortSignal): Promise<void> {
+  const trust = { pairId: id<'harmony-relay-pair'>(pair), epoch, role: 'phone' as const, audience: host, expiresAt,
+    credentialId: await primitives.credentialId(signer.publicSpki) }
+  await exchangeReverseLan({ socket, trust, signer, primitives, phonePublicSpki: signer.publicSpki, offer, clock: Date.now, maxTtlMs, maxBytes, signal })
+}
+export { DEVICE_LAN_PATH, DEVICE_LAN_PROTOCOL, hasDeviceMeshRoute, ipv4SubnetBroadcast, isDeviceLanEndpoint, isDeviceLanPort, isDeviceTailnetAddress, isIpv4InSubnet } from './device-lan-address.ts'
+export { DEVICE_LAN_DISCOVERY_BYTES, lanDiscoveryMessage, lanDiscoveryScope } from './device-lan-discovery.ts'
+/** @param socket - native address control socket. @param pair - original routing pair. @param epoch - original pairing epoch. @param host - paired relay audience. @param expiresAt - local connection lifetime bound. @param desktopPublicSpki - confirmed desktop signer. @param signer - original phone signer. @param primitives - native verification port. @param maxTtlMs - proof freshness limit. @param maxBytes - frame cap. @param signal - connection lifetime. @returns verified direct addresses, if currently published. */
+export async function lookupNativeDeviceEndpoints(socket: RelaySocket, pair: string, epoch: number, host: string, expiresAt: number,
+  desktopPublicSpki: string, signer: P256IdentitySigner, primitives: E2EPrimitives, maxTtlMs: number, maxBytes: number, signal: AbortSignal): Promise<DeviceEndpoints | null> {
+  const trust = { pairId: id<'harmony-relay-pair'>(pair), epoch, role: 'phone' as const, audience: host, expiresAt,
+    credentialId: await primitives.credentialId(signer.publicSpki) }
+  return (await exchangeDeviceEndpoints({ socket, trust, signer, primitives, desktopPublicSpki, candidates: null, clock: Date.now, maxTtlMs, maxBytes, signal })).candidates
+}
 /** Narrow JSON facade keeps unknown/DSH Peer types out of ArkTS; runtime validates every record before signing or delivery. */
 export class NativePairedCore {
   private readonly lifetime = new AbortController()

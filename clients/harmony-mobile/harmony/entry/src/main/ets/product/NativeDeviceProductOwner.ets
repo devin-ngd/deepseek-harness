@@ -4,10 +4,10 @@ import { huks } from '@kit.UniversalKeystoreKit'
 import { deviceInfo } from '@kit.BasicServicesKit'
 import { common } from '@kit.AbilityKit'
 import { NativeDeviceProductFacade, NativeDeviceNetwork, NativeDeviceCrypto, NativeDeviceForegroundSelection, ProductStorage, AutomaticConnection, DeviceHistoryStorage } from './ProductCore'
-import { NativePorts } from '../paired/PairedCore'
+import { NativeDeviceLinkPorts, isDeviceLanEndpoint, isDeviceLanPort, isDeviceTailnetAddress } from '../paired/PairedCore'
 import { NativeProductConfiguration, NativeProductPublicStorage } from './NativeProductOwner'
 import { NativeDeviceTrustFile } from './NativeDeviceTrustFile'
-import { NativePairedConnectionOwner, NativePairedPolicy, NativeProductCodec } from '../native/NativePairedConnectionOwner'
+import { NativeEndpointTrust, NativePairedConnectionOwner, NativePairedPolicy, NativeProductCodec } from '../native/NativePairedConnectionOwner'
 import { NativeCryptoPrimitives } from '../native/NativeCryptoPrimitives'
 import { NativeDeviceKeys, NativeDeviceKeyPolicy } from '../native/NativeDeviceKeys'
 import { NativeExistingIdentitySigner } from '../native/NativeExistingIdentitySigner'
@@ -16,16 +16,17 @@ import { ProductView } from './ProductView'
 
 class DeviceAuthority { readonly label: string = 'native-device-product' }
 interface DevicePublicSelection { identityAlias: string; audience: string; bindingId: string; desktopPublicSpki: string }
-interface DeviceRoutingSelection { identityAlias: string; audience: string; bindingId: string; desktopPublicSpki: string; routeId: string }
+interface DeviceRoutingSelection { identityAlias: string; audience: string; bindingId: string; desktopPublicSpki: string; epoch: number; routeId: string }
 interface DeviceCommandPolicy { enabled: boolean; commandPrefix: string }
 interface SavedDeviceScope { key: string; desktopId: string; profileId: string; sessions: string[] }
 interface DevicePreview { desktopId: string }
 class DeviceNetwork implements NativeDeviceNetwork {
-  readonly ports: NativePorts
+  readonly ports: NativeDeviceLinkPorts
   private owner: NativePairedConnectionOwner
   private authority: object
-  constructor(ports: NativePorts, owner: NativePairedConnectionOwner, authority: object) { this.ports = ports; this.owner = owner; this.authority = authority }
-  open(): Promise<void> { return this.owner.openDeviceControlNative(this.authority) }
+  private direct: boolean
+  constructor(ports: NativeDeviceLinkPorts, owner: NativePairedConnectionOwner, authority: object, direct: boolean) { this.ports = ports; this.owner = owner; this.authority = authority; this.direct = direct }
+  open(): Promise<void> { return this.direct ? Promise.resolve() : this.owner.openDeviceControlNative(this.authority) }
   authenticated(): void { this.owner.authenticatedDeviceDataNative(this.authority) }
   close(): Promise<void> { return this.owner.closeNative(this.authority) }
 }
@@ -53,6 +54,7 @@ export class NativeDeviceProductOwner {
   private starting: boolean = false
   private automatic: AutomaticConnection | undefined = undefined
   private connectionState: string = 'disconnected'
+  private directEndpoint: string = ''
   private autoStopped: boolean = false
   private preparing: Promise<void> | undefined = undefined
   private closing: Promise<void> | undefined = undefined
@@ -102,7 +104,7 @@ export class NativeDeviceProductOwner {
         const policy = JSON.parse(this.config.corePolicyJson) as DeviceCommandPolicy; policy.enabled = true; policy.commandPrefix = 'device-native-' + util.generateRandomUUID(false)
         const publicStore: ProductStorage = { read: async () => this.raw, write: async (next: string): Promise<void> => { await storage.write(next); this.raw = next }, close: () => storage.close() }
         const crypto: NativeDeviceCrypto = { signer: { publicSpki, sign: (bytes: Uint8Array): Promise<Uint8Array> => signer.signNative(authority, bytes) }, primitives: codec }
-        const routing = this.config.deviceRoutingTtlMs
+        const routing = this.config.deviceRoutingTtlMs, lan = this.config.deviceLan
         const historyPolicy = this.config.deviceHistoryCache
         let historyStorage: DeviceHistoryStorage | undefined
         if (historyPolicy !== undefined && this.filesDir !== '') {
@@ -111,12 +113,24 @@ export class NativeDeviceProductOwner {
             read: (maxBytes: number): Promise<string | null> => file.read(maxBytes), write: (raw: string): Promise<void> => file.write(raw),
             clear: (): Promise<void> => file.clear() }
         }
+        if (lan !== undefined && (!isDeviceLanPort(lan.port) || lan.address !== undefined && !isDeviceLanEndpoint(lan.address, lan.port)
+          || lan.tailnetAddress !== undefined && !isDeviceTailnetAddress(lan.tailnetAddress)
+          || lan.rendezvous === true && (lan.inspectNetwork !== true || lan.address !== undefined || lan.tailnetAddress !== undefined))) throw new Error('native LAN configuration denied')
         if (routing === undefined || !Number.isSafeInteger(routing) || routing <= 0 || routing > 0x7fffffff) throw new Error('native device routing budget missing')
         const runtime = new NativeDeviceProductFacade(authority, JSON.stringify(policy), this.alias, this.host, Date.now() + routing, this.config.relay, publicStore, crypto, { after: (ms: number, callback: () => void): () => void => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer) } }, () => Date.now(), async (raw: string, diagnostic?: (stage: string) => void): Promise<NativeDeviceNetwork> => {
+          this.directEndpoint = ''
           const record = JSON.parse(NativeDeviceProductFacade.routingInput(raw)) as DeviceRoutingSelection, owner = new NativePairedConnectionOwner(authority, new NativePairedPolicy(this.host, record.routeId, this.alias, huks.HuksAuthStorageLevel.HUKS_AUTH_STORAGE_LEVEL_ECE, deviceInfo.sdkApiVersion, this.config.maxCryptoBytes, this.config.maxTotalSendBytes, this.config.relay))
-          try { const ports = await owner.acquireDevicePortsNative(authority, record.desktopPublicSpki, diagnostic); if (this.closed || generation !== this.generation) throw new Error('native device network retired'); return new DeviceNetwork(ports, owner, authority) }
+          const endpointTrust: NativeEndpointTrust | undefined = lan?.rendezvous === true ? { epoch: record.epoch, expiresAt: Date.now() + routing } : undefined
+          try {
+            const ports: NativeDeviceLinkPorts = lan === undefined
+              ? await owner.acquireDevicePortsNative(authority, record.desktopPublicSpki, diagnostic)
+              : await owner.acquireLanPortsNative(authority, record.desktopPublicSpki, lan.address, lan.port, lan.tailnetAddress, diagnostic, lan.inspectNetwork === true,
+                (address: string, port: number): void => { if (!this.closed && generation === this.generation) this.directEndpoint = address + ':' + port.toString() }, endpointTrust)
+            if (this.closed || generation !== this.generation) throw new Error('native device network retired')
+            return new DeviceNetwork(ports, owner, authority, lan !== undefined)
+          }
           catch (error) { try { await owner.closeNative(authority) } catch (cleanup) { void cleanup; diagnostic?.('cleanup-failed') }; throw (error as Error) }
-        }, view => { if (!this.closed && generation === this.generation) { const next = JSON.parse(view) as ProductView; if (typeof next.startupDiagnostic === 'string' && next.startupDiagnostic.length > 0) { this.startupReported = true; if (this.config.deviceRecovery !== undefined && (this.storage?.recoveryRequired?.() === true || this.routeStorage?.recoveryRequired?.() === true)) this.recoveryState = 'required' }; next.storageRecoveryAudit = this.recoveryAudit; next.storageRecovery = this.recoveryState; next.startupStorage = this.startupStorage; next.connectionGeneration = generation; this.connectionState = next.connection; this.publish(JSON.stringify(next)) } }, this.config.deviceCatalogRefreshMs === undefined ? 0 : this.config.deviceCatalogRefreshMs, this.routeStorage, this.config.deviceAutoConnect === true, this.foregroundSelection, historyStorage)
+        }, view => { if (!this.closed && generation === this.generation) { const next = JSON.parse(view) as ProductView; if (typeof next.startupDiagnostic === 'string' && next.startupDiagnostic.length > 0) { this.startupReported = true; if (this.config.deviceRecovery !== undefined && (this.storage?.recoveryRequired?.() === true || this.routeStorage?.recoveryRequired?.() === true)) this.recoveryState = 'required' }; next.storageRecoveryAudit = this.recoveryAudit; next.storageRecovery = this.recoveryState; next.startupStorage = this.startupStorage; next.connectionGeneration = generation; this.connectionState = next.connection; this.publish(JSON.stringify(next)) } }, this.config.deviceCatalogRefreshMs === undefined ? 0 : this.config.deviceCatalogRefreshMs, this.routeStorage, this.config.deviceAutoConnect === true || lan !== undefined, this.foregroundSelection, historyStorage)
         this.originalSigner = signer; this.runtime = runtime; await runtime.boot()
         if (this.config.deviceAutoConnect === true && !this.closed && generation === this.generation) {
           const retry = this.config.deviceReconnectMs
@@ -133,7 +147,13 @@ export class NativeDeviceProductOwner {
   private core(): NativeDeviceProductFacade { this.available(); if (this.runtime === undefined) throw new Error('native device not prepared'); return this.runtime }
   connectionEnabled(): boolean { return !this.recovering && this.recoveryState !== 'refused' && this.runtime !== undefined && this.runtime.bound() && this.runtime.routeReady() }
   /** Verified original host disclosure; foreground renewal never preserves network consent. */
-  connectionHost(): string { return this.runtime === undefined ? '' : this.runtime.connectionHost() }
+  connectionHost(): string {
+    if (this.runtime === undefined) return ''
+    const lan = this.config.deviceLan
+    if (lan === undefined) return this.runtime.connectionHost()
+    if (this.connectionState === 'connected' && this.directEndpoint !== '') return this.directEndpoint
+    return (lan.tailnetAddress === undefined && lan.rendezvous !== true ? 'LAN' : 'LAN / Mesh') + ':' + lan.port.toString()
+  }
   async previewEnrollment(raw: string): Promise<string> { this.selection(raw); await this.ensureRuntime(); return this.core().previewEnrollment(raw) }
   async signEnrollment(raw: string, compared: boolean): Promise<string> { if (!compared) throw new Error('native original fingerprint comparison required'); this.selection(raw); await this.ensureRuntime(); return this.core().signEnrollment(raw, compared) }
   preview(raw: string): string { if (new util.TextEncoder().encodeInto(raw).length > this.config.publicTrustMaxBytes) throw new Error('native device preview capacity'); return NativeDeviceProductFacade.previewReceipt(raw) }

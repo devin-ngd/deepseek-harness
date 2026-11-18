@@ -1,10 +1,10 @@
 /** Closed phone diagnostic vocabulary. Never derive UI/log text from an exception, payload or remote string. */
 import { TransportError } from './wire.ts'
 export type DeviceConnectionStage = 'identity-read' | 'route-verify' | 'native-channel' | 'control-handshake' | 'encrypted-handshake' | 'ticket' | 'first-catalog' | 'active-channel' | 'connection-expiry' | 'local-stop'
-export type DeviceConnectionCategory = 'unavailable' | 'refused' | 'timeout' | 'closed' | 'invalid'
+export type DeviceConnectionCategory = 'unavailable' | 'refused' | 'timeout' | 'closed' | 'invalid' | 'lan-unavailable' | 'mesh-required' | 'endpoints-unavailable'
 export interface DeviceConnectionDiagnostic { readonly stage: DeviceConnectionStage; readonly category: DeviceConnectionCategory; readonly cleanupFailed: boolean }
 const stages: readonly string[] = ['identity-read','route-verify','native-channel','control-handshake','encrypted-handshake','ticket','first-catalog','active-channel','connection-expiry','local-stop']
-const categories: readonly string[] = ['unavailable','refused','timeout','closed','invalid']
+const categories: readonly string[] = ['unavailable','refused','timeout','closed','invalid','lan-unavailable','mesh-required','endpoints-unavailable']
 /** The first private cause is retained non-enumerably; only this closed projection may cross the native view boundary. */
 export class DeviceConnectionFailure extends Error {
   private cleanup = false
