@@ -26,6 +26,7 @@ import { frameSummary } from './summarizer.ts'
 import type { SummarizationInput, SummaryResult } from './summarizer.ts'
 interface RegionDependencies {
   readonly meter: TokenMeter
+  entryState(session: Session): CompactionEntryState
   summarize(input: SummarizationInput, agent: Agent, signal?: AbortSignal): Promise<SummaryResult>
   recover(error: unknown, agent: Agent, sourceEventSeqs: readonly SessionSeq[], signal?: AbortSignal): boolean
 }
@@ -64,9 +65,13 @@ interface CompactionTransactionOptions {
   readonly sourceCommandId?: CommandId
 }
 
-interface CompactionEntryState {
+/** Facts read atomically before a transaction writes its opening marker. */
+export interface CompactionEntryState {
+  /** Current open turn, or null without one. */
   readonly openTurn: number | null
-  readonly unmatchedCompactionStart: SessionEvent<'compaction/start'> | undefined
+  /** Last unmatched opening marker, if any. */
+  readonly unmatchedCompactionStart: SessionSeq | undefined
+  /** Most recent constructor seed marker, if any. */
   readonly latestEndSeedSeq: SessionSeq | undefined
 }
 
@@ -182,7 +187,7 @@ export async function compactSurfaceRegion(
 ): Promise<CompactionResult> {
   if (options.owner === null) signal?.throwIfAborted()
   const selection = validateSurfaceRegion(session, start, end)
-  const entryState = inspectCompactionEntryState(session)
+  const entryState = dependencies.entryState(session)
   assertCompactionInactive(
     entryState.unmatchedCompactionStart,
     entryState.latestEndSeedSeq,
@@ -307,13 +312,13 @@ function throwManualFailure(failure: TransactionFailure): never {
  * @param stage - operation label included in the busy diagnostic.
  */
 function assertCompactionInactive(
-  unmatchedCompactionStart: SessionEvent<'compaction/start'> | undefined,
+  unmatchedCompactionStart: SessionSeq | undefined,
   latestEndSeedSeq: SessionSeq | undefined,
   stage: string,
 ): void {
   if (unmatchedCompactionStart === undefined
     || (latestEndSeedSeq !== undefined
-      && latestEndSeedSeq > unmatchedCompactionStart.seq)) return
+      && latestEndSeedSeq > unmatchedCompactionStart)) return
   throw new ManualCompactionError(
     'busy',
     `${stage}: compaction already in progress; the session compaction lock is already active`,
@@ -322,11 +327,10 @@ function assertCompactionInactive(
 
 /**
  * Recheck the durable compaction lock after an asynchronous policy decision.
- * @param session - session whose latest marker state is inspected.
+ * @param entryState - current turn and marker state.
  * @param stage - operation label included in the busy diagnostic.
  */
-export function assertNoActiveCompaction(session: Session, stage: string): void {
-  const entryState = inspectCompactionEntryState(session)
+export function assertNoActiveCompaction(entryState: CompactionEntryState, stage: string): void {
   assertCompactionInactive(
     entryState.unmatchedCompactionStart,
     entryState.latestEndSeedSeq,
@@ -563,11 +567,15 @@ function buildSummarizationInput(
   }
 }
 
-/** Inspect open-turn, unmatched-compaction, and latest seed-boundary state independently. */
-function inspectCompactionEntryState(session: Session): CompactionEntryState {
+/**
+ * Inspect open-turn, unmatched-compaction, and latest seed-boundary state independently.
+ * @param session - Session whose committed history is inspected.
+ * @returns the transaction facts at its current cut.
+ */
+export function inspectCompactionEntryState(session: Session): CompactionEntryState {
   let openTurn: number | null = null
   let openTurnStateKnown = false
-  let unmatchedCompactionStart: SessionEvent<'compaction/start'> | undefined
+  let unmatchedCompactionStart: SessionSeq | undefined
   let compactionEntryStateKnown = false
   let latestEndSeedSeq: SessionSeq | undefined
   for (let seq = session.seq - 1; seq >= 0; seq -= 1) {
@@ -579,7 +587,7 @@ function inspectCompactionEntryState(session: Session): CompactionEntryState {
     }
     if (!compactionEntryStateKnown) {
       if (event.type === 'compaction/start') {
-        unmatchedCompactionStart = event
+        unmatchedCompactionStart = event.seq
         compactionEntryStateKnown = true
       } else if (event.type === 'compaction/end') {
         compactionEntryStateKnown = true

@@ -63,6 +63,10 @@ const state = todoProjectionHandle.stateOf(session)
 const { asOfSeq, values } = ctx.sessionProjections.snapshot(session)
 ```
 
+可以等待准备完成的 host-only 单元可使用 `registerPrepared(definition)`，随后在同步读取前等待 `handle.prepare(session, { pageSize, signal })`。恢复按页折叠固定截面的副本，并追赶恢复期间追加的事件；并发调用共享折叠，但各自独立取消。活跃 Session 通过事件流继续推进；独立 Session 追加后必须再次准备。状态缺失、过期或仍在恢复时会明确失败，不会同步读取历史。最后一个注册方释放时会取消并等待恢复结束。检查点写入保留已准备的旧行，没有准备行的 Session 则省略该单元。冷 `restore` 和 `hydrate` 会省略这些 host-only 单元，其失败不会阻塞其他读取；由各自的所有者单独准备。
+
+`handle.stateIfReady(session)` 在状态覆盖当前截面时返回 `{ ready: true, state }`，准备缺失、过期或仍在进行时返回 `{ ready: false }`；已保存的准备失败仍会抛出。此方法不会启动恢复或读取历史。
+
 <a id="bind-several-states-to-one-session"></a>
 ### 将多个状态绑定到一个 Session
 
@@ -87,7 +91,7 @@ const todo = projections.todo()
 
 旧的同步 `return register(...)`、`ctx.effect(() => register(...))` 和同步生成器 yield 保留原有清理所有权。通过异步函数返回注册值时，thenable 会被吸收为句柄，Cordis 会以 `Invalid effect` 拒绝它。在异步生成器中 yield 注册值同样只会得到句柄：该 effect 在释放时以 `Invalid effect` 失败，且从不接管该注册；插件保持激活，其 fiber 在卸载时释放该注册。异步插件和 effect 等待注册完成后返回 `void`；所属 fiber 会自动释放注册。
 
-旧的 `stateOf(session, key)` 已弃用，返回类型为 `unknown`。读取已注册的键时，它会将所有已注册单元的状态计算到 Session 当前游标，不生成无关的客户端视图。未注册或已完全释放的键返回 `undefined`，保留的句柄则仍可读取。兼容范围限于运行时调用；TypeScript 消费方仍需迁移类型声明。
+旧的 `stateOf(session, key)` 已弃用，返回类型为 `unknown`。读取已注册的键时，它会将所有普通注册单元的状态计算到 Session 当前游标，不生成无关的客户端视图；显式准备的单元仅在被请求时读取。未注册或已完全释放的键返回 `undefined`，保留的句柄则仍可读取。兼容范围限于运行时调用；TypeScript 消费方仍需迁移类型声明。
 
 每个 registry 实例对每个键的首次旧式 `stateOf(session, key)` 读取输出一次 `ctx.logger.warn` 弃用警告。注册、调用其返回值、句柄方法和 owner 清理不产生警告。
 
@@ -97,7 +101,7 @@ const todo = projections.todo()
 
 ### 持久检查点
 
-系统通过 `checkpoint(session)` 为每个单元的状态创建检查点，client-visible 与 host-only 一视同仁；同级包 [session-projection-cache](../session-projection-cache/README.zh.md) 持久化这些检查点，使冷读跳过全量日志加载。检查点水位使用 `SessionSeqCursor`（空日志为 `-1`），回放起点使用 `SessionLogOffset`；`restoreFloor` 与 `restore` 实现读取流程，且不会混淆已有事件与日志间隙。`restore` 只折叠在线单元，因此它刷新后的行不含已释放单元，用这些行回写会丢弃这些单元已存储的行。
+系统通过 `checkpoint(session)` 为每个单元的状态创建检查点，client-visible 与 host-only 一视同仁；同级包 [session-projection-cache](../session-projection-cache/README.zh.md) 持久化这些检查点，使冷读跳过全量日志加载。检查点水位使用 `SessionSeqCursor`（空日志为 `-1`），回放起点使用 `SessionLogOffset`；`restoreFloor` 与 `restore` 实现读取流程，且不会混淆已有事件与日志间隙。`restore` 只折叠在线单元，因此它刷新后的行不含已释放单元，用这些行回写会丢弃这些单元已存储的行。对尚未发布的 Session，`prepare(session, rows, events)` 使用可用行和 `SessionStore.prepare` 当前回调提供的规范构造截面逐个恢复已注册单元；行缺失、版本不兼容或格式损坏时重建该单元。此过程不计算 wire 视图。某单元折叠失败不会阻止其他单元准备，其错误留待该单元下次读取或实时驱动时报出。
 
 ### Session 摘要
 

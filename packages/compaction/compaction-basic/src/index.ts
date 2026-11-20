@@ -8,8 +8,8 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { CompactionEngine, ManualCompactionError } from '@deepseek-ai/dsh-compaction'
 import type { CompactionResult, CompactionTrigger } from '@deepseek-ai/dsh-compaction'
-import type { EpochHeader, Session, SessionSeq } from '@deepseek-ai/dsh-session'
-import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
+import { SessionHistoryCopyError, SessionSeq, type EpochHeader, type Session } from '@deepseek-ai/dsh-session'
+import type { PreparedProjectionHandle, ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import { CONTEXT_WINDOW_EXCEEDED_CODE, LlmError } from '@deepseek-ai/dsh-llm'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
@@ -27,8 +27,11 @@ import {
 import {
   assertNoActiveCompaction,
   compactSurfaceRegion,
+  inspectCompactionEntryState,
   selectCompactableRange,
 } from './region.ts'
+import type { CompactionEntryState } from './region.ts'
+import { compactionEntryProjection, type CompactionEntryProjection } from './entry-projection.ts'
 import { summarizeWithLlm } from './summarizer.ts'
 import type { SummarizationInput, SummaryResult, SummaryRoute } from './summarizer.ts'
 import type {
@@ -131,6 +134,7 @@ export class BasicCompactionEngine extends CompactionEngine {
     maxOverflowRetries: maxOverflowRetriesSchema,
     modelPolicies: z.array(modelPolicy),
     auto: z.boolean(),
+    recoveryPageSize: z.number().step(1).min(1),
   })
 
   /** Resolved and validated compaction configuration. */
@@ -141,6 +145,8 @@ export class BasicCompactionEngine extends CompactionEngine {
   private readonly overflowAgents = new WeakMap<Session, Agent>()
   /** Registered at construction; `summarize()` awaits it, so no read precedes readiness. */
   private readonly answeredRoute: Promise<ProjectionHandle<AnsweredRoute>>
+  private entryProjection: PreparedProjectionHandle<CompactionEntryProjection> | undefined
+  private readonly compatibilitySessions = new WeakSet<Session>()
 
   constructor(ctx: Context, config: BasicCompactionConfig = {}) {
     super(ctx)
@@ -149,9 +155,50 @@ export class BasicCompactionEngine extends CompactionEngine {
     if (this.config.auto) this._registerAutomaticCompaction()
   }
 
-  /** Fail plugin activation when the answered-route projection cannot register. */
   protected async [Service.init](): Promise<void> {
+    const ctx = this.ctx
+    const ready = ctx.sessionProjections.registerPrepared(compactionEntryProjection)
+    ctx.on('agent/created', async ({ agent, signal }) => {
+      if (ctx.sessions.get(agent.session.id) !== agent.session) return
+      const handle = await ready
+      ctx.fiber.assertActive()
+      await this.prepareEntryState(handle, agent.session, signal)
+    })
+    this.entryProjection = await ready
     await this.answeredRoute
+    ctx.fiber.assertActive()
+    for (const session of ctx.sessions.list()) {
+      await this.prepareEntryState(this.entryProjection, session)
+    }
+  }
+
+  private async prepareEntryState(
+    handle: PreparedProjectionHandle<CompactionEntryProjection>,
+    session: Session,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    try {
+      await handle.prepare(session, { pageSize: this.config.recoveryPageSize, ...signal === undefined ? {} : { signal } })
+      this.compatibilitySessions.delete(session)
+    } catch (error: unknown) {
+      signal?.throwIfAborted()
+      this.ctx.fiber.assertActive()
+      if (!(error instanceof SessionHistoryCopyError)) throw error
+      this.compatibilitySessions.add(session)
+      this.ctx.logger.warn(`compaction: could not prepare Session ${JSON.stringify(session.id)}; using synchronous compatibility reader`, error)
+    }
+  }
+
+  private entryStateOf(session: Session): CompactionEntryState {
+    const handle = this.entryProjection
+    if (handle === undefined || this.compatibilitySessions.has(session)) return inspectCompactionEntryState(session)
+    const prepared = handle.stateIfReady(session)
+    if (!prepared.ready || prepared.state.turn.kind === 'compatibility') return inspectCompactionEntryState(session)
+    return {
+      openTurn: prepared.state.turn.kind === 'open' ? prepared.state.turn.value : null,
+      unmatchedCompactionStart: prepared.state.unmatchedStart === null ? undefined : SessionSeq(prepared.state.unmatchedStart),
+      latestEndSeedSeq: prepared.state.latestSeed === null ? undefined : SessionSeq(prepared.state.latestSeed),
+    }
   }
 
   /**
@@ -343,7 +390,7 @@ export class BasicCompactionEngine extends CompactionEngine {
     let measurement = meter.measure(agent.session, header)
     const prune = this.ctx.get('toolResultPruner')
     const info = await this.ctx.llm.resolveModelInfo(target.provider, target.model, signal)
-    assertNoActiveCompaction(agent.session, 'automatic pressure compaction')
+    assertNoActiveCompaction(this.entryStateOf(agent.session), 'automatic pressure compaction')
     const targetKey = `${target.provider}/${target.model}`
     if (info.context === undefined) {
       throw new TargetPressureConfigError(
@@ -480,6 +527,7 @@ export class BasicCompactionEngine extends CompactionEngine {
   private regionDependencies(): Parameters<typeof compactSurfaceRegion>[0] {
     return {
       meter: this.ctx.tokenMeter,
+      entryState: session => this.entryStateOf(session),
       summarize: (input, owner, abort) => this.summarize(input, owner, abort),
       recover: (error, agent, sourceEventSeqs, signal) => this.ctx.waterfall('compaction/summary-error', {
         session: agent.session,

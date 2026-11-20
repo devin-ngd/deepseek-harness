@@ -550,6 +550,18 @@ declare class Session {
     projections?: readonly SessionMessageProjection[],
     ): Session;
   /**
+   * Read bounded pages from one fixed prefix of this Session's append-only log.
+   * The ending offset is captured at the call, not when iteration begins. Later
+   * appends are excluded. Each page contains detached, deeply frozen event
+   * copies; their object identities do not identify canonical log objects.
+   * Between pages, the reader yields to the event loop and observes cancellation.
+   * @param options - page size, optional range, and cancellation.
+   * @returns a single-use asynchronous iterable of frozen event arrays in sequence order.
+   * @throws when the page size or requested range is invalid, or the signal is already aborted.
+   *   Iteration rejects if an event cannot be copied as lossless JSON or cancellation occurs.
+   */
+  readHistoryPages(options: SessionHistoryReadOptions): AsyncIterable<readonly SessionEvent[]>;
+  /**
    * Return the immutable event stored at one exact sequence number.
    * @deprecated Existing logic may remain unmigrated for now, but new calls are prohibited.
    * See the [Agent Note](../../../../.agents/notes/implemented/architecture/2026-09-09-deprecate-synchronous-session-event-reads.md).
@@ -1178,6 +1190,8 @@ registerMessageProjection(projection: SessionMessageProjection): () => Promise<v
  * {@link prepare} + {@link enter} + {@link announce} (see
  * `dsh-agent-loop`'s creation transaction).
  *
+ * This store operation does not acquire a persistence write handle. A session
+ * outside the agent lifecycle remains in memory even with persistence mounted.
  * @param id - the session id; omitted, the store mints `session-<n>`.
  * @param options - seed events and/or creation metadata for the header.
  * @returns the live session, already entered and announced.
@@ -1201,12 +1215,15 @@ create(id?: SessionId, options?: CreateSessionOptions): Session
  *   `eventState`, every seed event is either independently owned or any
  *   shared value is deeply frozen; {@link Session.fromRestore} validates and
  *   adopts those values without copying or freezing them.
+ * @param onPrepared - optional synchronous preparation of derived state using
+ *   the exact constructed event cut, including constructor-owned markers. The
+ *   cut is valid for projection preparation only during this callback.
  * @returns the store-owned session, not yet entered and read-only until announced.
  * @throws if a session with `id` already exists, metadata is not a plain
  *   lossless-JSON record with valid scalar fields, or `meta.cwd` is a
  *   non-absolute path.
  */
-prepare(id?: SessionId, options?: PrepareSessionOptions): Session
+prepare( id?: SessionId, options?: PrepareSessionOptions, onPrepared?: (session: Session, events: readonly SessionEvent[]) => undefined, ): Session
 
 /**
  * Enter a session into the store: install the module-private
@@ -1254,7 +1271,8 @@ announce(session: Session): void
  * and one spelling.
  * @param session - the session whose buffered events must reach durable storage.
  * @returns whether at least one durability listener participated, after every
- *   listener has settled successfully.
+ *   listener has settled successfully. This does not establish that a write
+ *   handle exists for the session or that its events were persisted.
  * @throws the first registered listener failure after every listener settles.
  */
 async flush(session: Session): Promise<boolean>
@@ -1279,6 +1297,7 @@ list(): Session[]
  * step/turn closers with the forked cause. Closed steps and turns remain
  * unchanged, including any failed tool calls already missing results.
  * `inheritedEventCount` counts only copied source events, excluding these closers.
+ * Like {@link create}, this does not acquire a persistence write handle.
  *
  * @param source - Live source session object or id.
  * @param boundary - Inclusive source event seq to fork through; omitted means

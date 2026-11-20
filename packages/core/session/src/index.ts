@@ -8,14 +8,17 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { isAbsolute } from 'node:path'
+import { setImmediate as nextEventLoopTurn } from 'node:timers/promises'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { assertNever, deepFreeze, snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
+import { SessionHistoryCopyError } from './history-errors.ts'
+export { SessionHistoryCopyError } from './history-errors.ts'
 import { scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
 import type { Message } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from './types.ts'
 import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
-import type { CreateSessionOptions, EpochHeader, PluginRecord, PluginRecordMap, PluginRecordType, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventInput, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.ts'
+import type { CreateSessionOptions, EpochHeader, PluginRecord, PluginRecordMap, PluginRecordType, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventInput, SessionEventMap, SessionEventType, SessionHeader, SessionHistoryReadOptions, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.ts'
 import { SurfaceManager, validateSessionEventData, validateSurfaceMetadata } from './surface.ts'
 import type { SessionSurface, SessionMessageProjection } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
@@ -468,6 +471,20 @@ function assertPluginRecordEvent(value: unknown): asserts value is SessionEvent 
 
 /** Module-private access to {@link Session}'s record commit, assigned once by its static block. */
 let commitPluginRecord: (session: Session, type: PluginRecordType, data: unknown) => SessionSeq
+let visitPreparedEvents: (session: Session, visitor: (session: Session, events: readonly SessionEvent[]) => undefined) => void
+let isPreparedCut: (session: Session, events: readonly SessionEvent[]) => boolean
+
+/**
+ * Reject an event cut that is not owned by the active Session preparation callback.
+ * @param session - unpublished Session whose preparation is in progress.
+ * @param events - event cut supplied to that callback.
+ * @throws if the cut belongs to another Session or its callback has ended.
+ */
+export function assertSessionPreparationCut(session: Session, events: readonly SessionEvent[]): void {
+  if (!isPreparedCut(session, events)) {
+    throw new Error('session projection preparation requires the active canonical Session cut')
+  }
+}
 
 /**
  * Append one experimental plugin record: an event marked `ignorable` whose
@@ -555,6 +572,7 @@ function createAppendEvent(snapshot: ReturnType<typeof snapshotAppend>, seq: Ses
 export class Session {
   private log: SessionEvent[] = []
   private batchPublication: SessionEvent | undefined
+  #preparedCut: readonly SessionEvent[] | undefined
   /** Single incremental owner of surface acceptance and projection state. */
   private readonly surfaceManager: SurfaceManager
 
@@ -734,6 +752,65 @@ export class Session {
 
   /** Cached immutable full snapshot of the private append-only log. */
   private eventsSnapshot: readonly SessionEvent[] | undefined
+
+  /**
+   * Read bounded pages from one fixed prefix of this Session's append-only log.
+   * The ending offset is captured at the call, not when iteration begins. Later
+   * appends are excluded. Each page contains detached, deeply frozen event
+   * copies; their object identities do not identify canonical log objects.
+   * Between pages, the reader yields to the event loop and observes cancellation.
+   * @param options - page size, optional range, and cancellation.
+   * @returns a single-use asynchronous iterable of frozen event arrays in sequence order.
+   * @throws when the page size or requested range is invalid, or the signal is already aborted.
+   *   Iteration rejects if an event cannot be copied as lossless JSON or cancellation occurs.
+   */
+  readHistoryPages(options: SessionHistoryReadOptions): AsyncIterable<readonly SessionEvent[]> {
+    const { pageSize, signal } = options
+    if (!Number.isSafeInteger(pageSize) || pageSize < 1) {
+      throw new TypeError('session history pageSize must be a positive safe integer')
+    }
+    signal?.throwIfAborted()
+    const from = SessionLogOffset(options.fromSeq ?? 0)
+    const to = SessionLogOffset(options.toSeqExclusive ?? this.seq)
+    if (from > to || to > this.seq) {
+      throw new RangeError(`session history range ${String(from)}..${String(to)} exceeds the current log`)
+    }
+    return this.historyPages(from, to, pageSize, signal)
+  }
+
+  /** Read a captured half-open range without materializing its complete prefix. */
+  private async *historyPages(
+    from: SessionLogOffset,
+    to: SessionLogOffset,
+    pageSize: number,
+    signal: AbortSignal | undefined,
+  ): AsyncGenerator<readonly SessionEvent[]> {
+    for (let cursor: number = from; cursor < to;) {
+      signal?.throwIfAborted()
+      const end = Math.min(cursor + pageSize, to)
+      const page: SessionEvent[] = []
+      for (let index = cursor; index < end; index++) {
+        signal?.throwIfAborted()
+        const source = this.log[index]
+        /* v8 ignore next -- the captured range is within the append-only log. */
+        if (source === undefined) throw new Error(`session history is missing seq ${String(index)}`)
+        const copy = snapshotJsonValue(source)
+        if (copy === undefined) throw new SessionHistoryCopyError(SessionSeq(index))
+        page.push(deepFreeze(copy))
+      }
+      yield Object.freeze(page)
+      cursor = end
+      if (cursor < to) {
+        try {
+          await nextEventLoopTurn(undefined, signal === undefined ? undefined : { signal })
+        } catch (error: unknown) {
+          signal?.throwIfAborted()
+          throw error
+        }
+      }
+    }
+    signal?.throwIfAborted()
+  }
 
   /**
    * Return the immutable event stored at one exact sequence number.
@@ -918,6 +995,16 @@ export class Session {
 
   static {
     commitPluginRecord = (session, type, data) => session.#appendRecord(type, data)
+    visitPreparedEvents = (session, visitor) => {
+      const events = Object.freeze([...session.log])
+      session.#preparedCut = events
+      try {
+        visitor(session, events)
+      } finally {
+        session.#preparedCut = undefined
+      }
+    }
+    isPreparedCut = (session, events) => session.#preparedCut !== undefined && session.#preparedCut === events
   }
 
   /**
@@ -1201,6 +1288,8 @@ export class SessionStore extends Service {
    * {@link prepare} + {@link enter} + {@link announce} (see
    * `dsh-agent-loop`'s creation transaction).
    *
+   * This store operation does not acquire a persistence write handle. A session
+   * outside the agent lifecycle remains in memory even with persistence mounted.
    * @param id - the session id; omitted, the store mints `session-<n>`.
    * @param options - seed events and/or creation metadata for the header.
    * @returns the live session, already entered and announced.
@@ -1235,12 +1324,19 @@ export class SessionStore extends Service {
    *   `eventState`, every seed event is either independently owned or any
    *   shared value is deeply frozen; {@link Session.fromRestore} validates and
    *   adopts those values without copying or freezing them.
+   * @param onPrepared - optional synchronous preparation of derived state using
+   *   the exact constructed event cut, including constructor-owned markers. The
+   *   cut is valid for projection preparation only during this callback.
    * @returns the store-owned session, not yet entered and read-only until announced.
    * @throws if a session with `id` already exists, metadata is not a plain
    *   lossless-JSON record with valid scalar fields, or `meta.cwd` is a
    *   non-absolute path.
    */
-  prepare(id?: SessionId, options?: PrepareSessionOptions): Session {
+  prepare(
+    id?: SessionId,
+    options?: PrepareSessionOptions,
+    onPrepared?: (session: Session, events: readonly SessionEvent[]) => undefined,
+  ): Session {
     let sessionId: SessionId
     if (id === undefined) {
       do sessionId = brandString<SessionId>(`session-${++this.counter}`)
@@ -1263,6 +1359,7 @@ export class SessionStore extends Service {
             this.projections,
           )
           attachments.set(session, null)
+          if (onPrepared !== undefined) visitPreparedEvents(session, onPrepared)
           return session
         }
         case undefined:
@@ -1287,6 +1384,7 @@ export class SessionStore extends Service {
     }
     const session = Session.create(sessionId, seed, header, options?.inheritedEventCount, this.projections)
     attachments.set(session, null)
+    if (onPrepared !== undefined) visitPreparedEvents(session, onPrepared)
     return session
   }
 
@@ -1421,7 +1519,8 @@ export class SessionStore extends Service {
    * and one spelling.
    * @param session - the session whose buffered events must reach durable storage.
    * @returns whether at least one durability listener participated, after every
-   *   listener has settled successfully.
+   *   listener has settled successfully. This does not establish that a write
+   *   handle exists for the session or that its events were persisted.
    * @throws the first registered listener failure after every listener settles.
    */
   async flush(session: Session): Promise<boolean> {
@@ -1476,6 +1575,7 @@ export class SessionStore extends Service {
    * step/turn closers with the forked cause. Closed steps and turns remain
    * unchanged, including any failed tool calls already missing results.
    * `inheritedEventCount` counts only copied source events, excluding these closers.
+   * Like {@link create}, this does not acquire a persistence write handle.
    *
    * @param source - Live source session object or id.
    * @param boundary - Inclusive source event seq to fork through; omitted means

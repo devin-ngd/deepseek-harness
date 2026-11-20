@@ -48,6 +48,8 @@ export interface BasicCompactionConfig extends CompactionPolicyConfig {
   modelPolicies?: ModelCompactPolicyConfig[]
   /** Enable automatic step-boundary pressure and overflow-recovery listeners. Defaults to `true`. */
   auto?: boolean
+  /** Maximum events per page when preparing transaction state for an already-live Session. Defaults to 128. */
+  recoveryPageSize?: number
 }
 
 /** Exactly one validated retention form. */
@@ -70,6 +72,7 @@ interface ResolvedPolicyFields {
 export type ResolvedConfig = ResolvedPolicyFields & ResolvedRetention & {
   readonly modelPolicies: readonly Readonly<ModelCompactPolicyConfig>[]
   readonly auto: boolean
+  readonly recoveryPageSize: number
 }
 
 /** Fully merged policy for one routed conversation target, before capacity scaling. */

@@ -26,12 +26,13 @@ import type {
 import { modelSelectionProjectionDefinition } from '@deepseek-ai/dsh-agent'
 import { errorChain, type ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { interruptedTurnClosers, SessionLogOffset, SessionPreparation } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import type { Session, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
-import type { SessionHandle, SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
+import type { SessionHandle, SessionPersistence, SessionPersistenceCreateOptions } from '@deepseek-ai/dsh-session-persistence'
 import { ReactLoopAgent } from './agent.ts'
 import { inboxProjectionDefinition } from './inbox.ts'
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.ts'
@@ -668,7 +669,9 @@ export class AgentLoop extends Service implements AgentFactory {
    * @returns the published running agent.
    */
   async create(id: SessionId, options: AgentOptions = {}, meta: Pick<SessionHeader, 'cwd'> = {}): Promise<Agent> {
-    using preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, { meta }))
+    using preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, { meta }, (session, events) => {
+      this.runtime.ctx.sessionProjections.prepare(session, {}, events)
+    }))
     const stored = await this.createStoredSession(preparation.session)
     return (await this.initializeAgent(this.ctx, {
       session: preparation.session,
@@ -685,22 +688,20 @@ export class AgentLoop extends Service implements AgentFactory {
    * already written to the handle.
    * @param session - the unpublished session to store.
    * @param signal - optional cancellation forwarded to the backend create.
-   * @param parentSource - fork parent and cut; the constructor log is stored at creation.
+   * @param parentSource - fork parent, cut, and canonical constructor log to store at creation.
    * @returns the owned handle and stored cursor, or `undefined` without a backend.
    */
   private async createStoredSession(
-    session: Session, signal?: AbortSignal, parentSource?: CreateAgentOptions['parentSource'],
+    session: Session, signal?: AbortSignal, parentSource?: SessionPersistenceCreateOptions['parentSource'],
   ): Promise<StoredSession | undefined> {
     const persistence = this.runtime.ctx.get('sessionPersistence')
     if (persistence === undefined) return undefined
-    // oxlint-disable-next-line typescript/no-deprecated -- The stored log includes constructor-generated markers.
-    const stored = parentSource === undefined ? undefined : { ...parentSource, events: session.snapshotEvents() }
     const handle = await persistence.create(session.header, {
       inheritedEventCount: session.inheritedEventCount,
-      ...stored === undefined ? {} : { parentSource: stored },
+      ...parentSource === undefined ? {} : { parentSource },
       ...signal === undefined ? {} : { signal },
     })
-    return { handle, storedCount: stored?.events.length ?? 0 }
+    return { handle, storedCount: parentSource?.events.length ?? 0 }
   }
 
   /**
@@ -723,18 +724,22 @@ export class AgentLoop extends Service implements AgentFactory {
    * @returns the published handle.
    */
   async createAgent(ownerCtx: Context, options: CreateAgentOptions): Promise<AgentHandle> {
+    let parentSource: SessionPersistenceCreateOptions['parentSource']
     const preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(options.sessionId, {
       ...options.seed === undefined ? {} : { seed: options.seed },
       ...options.meta === undefined ? {} : { meta: options.meta },
       ...options.inheritedEventCount === undefined ? {} : { inheritedEventCount: options.inheritedEventCount },
+    }, (session, events) => {
+      this.runtime.ctx.sessionProjections.prepare(session, {}, events)
+      if (options.parentSource !== undefined) parentSource = { ...options.parentSource, events }
     }))
     const published = (async () => {
       using ownedPreparation = preparation
       // raceAbortCall closes a handle that finishes creating after cancellation.
       const stored = options.signal === undefined
-        ? await this.createStoredSession(ownedPreparation.session, undefined, options.parentSource)
+        ? await this.createStoredSession(ownedPreparation.session, undefined, parentSource)
         : await raceAbortCall(
-          () => this.createStoredSession(ownedPreparation.session, options.signal, options.parentSource),
+          () => this.createStoredSession(ownedPreparation.session, options.signal, parentSource),
           options.signal,
           options.sessionId,
           (abandoned) => { void abandoned?.handle.close().catch(() => {}) },
@@ -813,6 +818,10 @@ export class AgentLoop extends Service implements AgentFactory {
             meta: structuredClone(handle.header),
             inheritedEventCount: handle.inheritedEventCount,
             eventState: coldRead.eventState,
+          }, (session, events) => {
+            const cache = this.runtime.ctx.get('sessionProjectionCache')
+            if (cache === undefined) this.runtime.ctx.sessionProjections.prepare(session, {}, events)
+            else cache.prepare(session, events)
           }))
           stored = { handle, storedCount: persisted.length + closers.length }
           await this.appendUnstoredSuffix(stored, preparation.session)
