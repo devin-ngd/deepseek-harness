@@ -6,8 +6,8 @@ import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import type { SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
@@ -25,8 +25,6 @@ import type { RemoteAccessBinding } from '@deepseek-ai/dsh-api-remote-access'
 import { Peer } from '@deepseek-ai/dsh-client-connection'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import RichInline from '../src/host/index.ts'
-import type { Config } from '../src/host/index.ts'
-import type { RichAppearance } from '../src/shared/theme.ts'
 import { liveConfig } from '../../../settings/settings/tests/live-config.ts'
 import type { RichActionId, RichBlockId, RichInvokeRequest } from '../src/shared/types.ts'
 import type { RichSessionRecord } from '../src/host/ledger.ts'
@@ -53,14 +51,14 @@ afterEach(async () => {
     }
   }
 })
-/** Profile YAML before schema resolution turns `theme` into a live reference. */
-type ProfileConfig = Omit<Config, 'theme'> & { theme: RichAppearance['theme'] }
-const limits: ProfileConfig = { maxContentBytes: 2_097_152, maxInputBytes: 131_072, maxFileBytes: 10_485_760,
+/** Profile input before schema resolution wraps the live fields. */
+type ProfileConfig = NonNullable<Parameters<typeof RichInline.Config>[0]>
+const limits = { maxContentBytes: 2_097_152, maxInputBytes: 131_072, maxFileBytes: 10_485_760,
   maxBlocksPerSession: 128, maxActionsPerSession: 2_000, dispatchRetryDelayMs: 20, maxDispatchAttempts: 3, maxAutoRepairAttempts: 2,
-  maxFormatRepairAttempts: 1, sourceOffloadMinBytes: 4_096, sourceReadMaxChars: 8_192, theme: 'cyber', accent: 'blue' }
+  maxFormatRepairAttempts: 1, sourceOffloadMinBytes: 4_096, sourceReadMaxChars: 8_192, recoveryPageSize: 128, theme: 'cyber', accent: 'blue' } satisfies ProfileConfig
 
 async function harness(root?: string, seed: readonly SessionEvent[] = [], config: Partial<ProfileConfig> = {},
-  options: { live?: boolean; preset?: string; remote?: boolean; origin?: 'subagent' } = {}) {
+  options: { live?: boolean; preset?: string; remote?: boolean; origin?: 'subagent'; beforeRichMount?: (ctx: Context, session: Session) => void } = {}) {
   const dir = root ?? await mkdtemp(join(tmpdir(), 'dsh-rich-host-'))
   const ctx = new Context()
   if (options.preset !== undefined) ctx.provide('agentPresets', { composedPreset: () => options.preset } as never)
@@ -113,6 +111,7 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
   else ctx.provide('typert', {} as never)
   ctx.provide('attachments', {} as never)
   ctx.provide('fileUploads', {} as never)
+  options.beforeRichMount?.(ctx, session)
   // A Loader entry lets a test edit the profile configuration the way the Plugins page theme picker does.
   const live = options.live === true ? await liveConfig(ctx, RichInline, { ...limits, ...config }) : undefined
   const owner = live?.fiber ?? await ctx.plugin(RichInline, { ...limits, ...config })
@@ -126,7 +125,7 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
       toolSet.dispose()
     }
   }
-  const tool = async (name: string, args: Record<string, unknown>, admitted = true) => {
+  const tool = async (name: string, args: Record<string, unknown>, admitted = true, ptc = false) => {
     const callId = ToolCallId(`unit-${randomUUID()}`)
     const argumentsJson = JSON.stringify(args)
     const signal = new AbortController().signal
@@ -139,8 +138,13 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
       })
       const result = batch.results[0]?.result
       if (result === undefined) throw new Error('Executor omitted the fixture tool result')
-      session.append('tool/result', { turn: 1, step: 1, message: createToolResultMessage({ callId, content: result.content, isError: result.isError }),
-        ...result.meta === undefined ? {} : { meta: result.meta } }, { surfaceOp: 'append' })
+      if (ptc) {
+        session.append('tool/ptc-dispatch', { rootCallId: callId, parentCallId: callId, subCallId: callId, name,
+          arguments: args, content: result.content, isError: result.isError })
+      } else {
+        session.append('tool/result', { turn: 1, step: 1, message: createToolResultMessage({ callId, content: result.content, isError: result.isError }),
+          ...result.meta === undefined ? {} : { meta: result.meta } }, { surfaceOp: 'append' })
+      }
       return result
     } finally {
       toolSet?.dispose()
@@ -329,6 +333,47 @@ describe('data-only document updates', () => {
 
 describe('code-only assistant messages', () => {
   const code = { key: 'news', html: '<h1>News</h1>', css: '', js: '', fallbackText: 'News', stateSchemaVersion: 1 }
+  it('holds its Session observation until a queued mount finishes', async () => {
+    const h = await harness()
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const serial = Reflect.get(h.host, 'serial') as (id: SessionId, run: (record: RichSessionRecord) => Promise<void>) => Promise<void>
+    const chains = Reflect.get(h.host, 'chains') as Map<SessionId, Promise<void>>
+    const blocked = serial.call(h.host, h.session.id, async () => { entered.resolve(undefined); await release.promise })
+    await entered.promise
+    const firstTail = chains.get(h.session.id)
+    const message = createAssistantMessage({ content: [{ type: 'text', text: `\`\`\`rich-html\n${JSON.stringify(code)}\n\`\`\`` }], source: { provider: 'unit', model: 'unit' } })
+    h.session.append('assistant/message', { turn: 1, step: 1, message, stream: [] }, { surfaceOp: 'append' })
+    let disposed = false
+    const observation: SessionObservation = {
+      source: 'live',
+      get header() {
+        if (disposed) throw new Error('observation was released before mount used it')
+        return h.session.header
+      },
+      inheritedEventCount: h.session.inheritedEventCount,
+      events: h.session.snapshotEvents(),
+      cursor: SessionSeq(h.session.seq - 1),
+      retain: () => { throw new Error('not used') },
+      [Symbol.dispose]: () => { disposed = true },
+    }
+    const observe = vi.spyOn(h.ctx.sessionQuery, 'observeSession').mockResolvedValue(observation)
+    const mounting = h.host.mount({ sessionId: h.session.id, messageId: message.id, blockId: authoredBlockId(message.id, code.key) })
+    void mounting.catch(() => {})
+    try {
+      await vi.waitFor(() => { expect(chains.get(h.session.id)).not.toBe(firstTail) })
+      expect(disposed).toBe(false)
+      release.resolve(undefined)
+      await blocked
+      expect((await mounting).snapshot.manifest.html).toBe(code.html)
+      expect(disposed).toBe(true)
+    } finally {
+      release.resolve(undefined)
+      await blocked
+      await mounting.catch(() => {})
+      observe.mockRestore()
+    }
+  })
   it('commits once from settled source and recovers without replaying actions', async () => {
     const h = await harness()
     const message = createAssistantMessage({ content: [{ type: 'text', text: `\`\`\`rich-html\n${JSON.stringify(code)}\n\`\`\`` }], source: { provider: 'unit', model: 'unit' } })
@@ -775,6 +820,18 @@ describe('RichInline Host', () => {
     expect((await h.tool('rich_inline_progress', { actionId: request.actionId, done: 3, total: 3, label: 'late' })).isError).toBe(true)
     expect((await h.tool('rich_inline_progress', { actionId: 'foreign-action', done: 1, total: 1, label: 'foreign' })).isError).toBe(true)
   })
+  it('observes PTC progress and completion without mounting a PTC executor', async () => {
+    const h = await harness()
+    const m = await h.bind(await h.publish())
+    const request = intent(m)
+    await h.host.invoke(request)
+    await h.claim()
+    const status = () => h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })
+    expect((await h.tool('rich_inline_progress', { actionId: request.actionId, done: 1, total: 2, label: 'working' }, true, true)).isError).toBe(false)
+    await vi.waitFor(async () => { expect((await status()).progress).toEqual({ done: 1, total: 2, label: 'working' }) })
+    expect((await h.tool('rich_inline_complete', { actionId: request.actionId, state: 'completed', values: { result: 'done' } }, true, true)).isError).toBe(false)
+    await vi.waitFor(async () => { expect(await status()).toMatchObject({ state: 'completed', terminal: true, values: { result: 'done' } }) })
+  })
   it('cancels its queued prompt independently of BUSY without cancelling the whole Agent', async () => {
     const h = await harness()
     const m = await h.bind(await h.publish())
@@ -787,6 +844,221 @@ describe('RichInline Host', () => {
       expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('cancelled')
     })
     expect(h.prompts).toHaveLength(1)
+  })
+  it('keeps the claim turn captured before a later turn starts', async () => {
+    const h = await harness()
+    const m = await h.bind(await h.publish())
+    const request = intent(m)
+    await h.host.invoke(request)
+    await vi.waitFor(() => { expect(h.agent.inbox.nextTurn).toHaveLength(1) })
+    const message = h.agent.inbox.nextTurn[0]!
+    h.session.append('turn/start', { turn: 0 })
+    h.session.append('user/message', message, { surfaceOp: 'append' })
+    h.session.append('turn/end', { turn: 0, reason: { kind: 'completed' } })
+    h.session.append('turn/start', { turn: 1 })
+    await vi.waitFor(async () => {
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('outcome_unknown')
+    })
+  })
+  it('uses the prepared latest turn without copying unrelated history', async () => {
+    const h = await harness()
+    const m = await h.bind(await h.publish())
+    const request = intent(m)
+    await h.host.invoke(request)
+    await vi.waitFor(() => { expect(h.agent.inbox.nextTurn).toHaveLength(1) })
+    for (let turn = 0; turn < 100; turn++) {
+      h.session.append('step/start', { turn, step: 1 })
+    }
+    h.session.append('turn/start', { turn: 100 })
+    const snapshot = vi.spyOn(h.session, 'snapshotEvents')
+    h.session.append('user/message', h.agent.inbox.nextTurn[0]!, { surfaceOp: 'append' })
+    expect(snapshot).not.toHaveBeenCalled()
+    await vi.waitFor(async () => {
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('running')
+    })
+  })
+  it('observes events through the compatibility path while hot recovery waits', async () => {
+    const started = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const selected = Promise.withResolvers<{ ctx: Context; session: Session }>()
+    const mounting = harness(undefined, [], {}, {
+      beforeRichMount(ctx, session) {
+        selected.resolve({ ctx, session })
+        const read = session.readHistoryPages.bind(session)
+        vi.spyOn(session, 'readHistoryPages').mockImplementation((options) => {
+          const pages = read(options)
+          return { async *[Symbol.asyncIterator]() {
+            started.resolve(undefined)
+            await release.promise
+            yield* pages
+          } }
+        })
+      },
+    })
+    try {
+      const { session } = await selected.promise
+      await started.promise
+      const snapshot = vi.spyOn(session, 'snapshotEvents')
+      session.append('turn/start', { turn: 7 })
+      session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'during recovery' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
+      expect(snapshot).toHaveBeenCalled()
+      release.resolve(undefined)
+      await mounting
+      snapshot.mockClear()
+      session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'after recovery' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
+      expect(snapshot).not.toHaveBeenCalled()
+    } finally {
+      release.resolve(undefined)
+      await mounting.catch(() => {})
+    }
+  })
+  it('captures the correct turn when its event listener precedes projection drive', async () => {
+    const h = await harness()
+    const m = await h.bind(await h.publish())
+    const request = intent(m)
+    await h.host.invoke(request)
+    await vi.waitFor(() => { expect(h.agent.inbox.nextTurn).toHaveLength(1) })
+    h.session.append('turn/start', { turn: 8 })
+    const snapshot = vi.spyOn(h.session, 'snapshotEvents')
+    const dispatch = h.ctx.events.dispatch.bind(h.ctx.events)
+    const reverse = vi.spyOn(h.ctx.events, 'dispatch').mockImplementation((mode, args) => {
+      const isSessionEvent = mode === 'emit' && args[1] === 'session/event'
+      const callbacks = dispatch(mode, args)
+      return isSessionEvent ? callbacks.toReversed() : callbacks
+    })
+    try {
+      h.session.append('user/message', h.agent.inbox.nextTurn[0]!, { surfaceOp: 'append' })
+      expect(snapshot).toHaveBeenCalled()
+    } finally {
+      reverse.mockRestore()
+    }
+    await vi.waitFor(async () => {
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('running')
+    })
+    h.session.append('turn/end', { turn: 8, reason: { kind: 'completed' } })
+    await vi.waitFor(async () => {
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('outcome_unknown')
+    })
+  })
+  it('keeps a restored non-JSON Session on the synchronous compatibility path', async () => {
+    let restored: Session | undefined
+    let detach: (() => void) | undefined
+    const warnings: string[] = []
+    const h = await harness(undefined, [], {}, {
+      beforeRichMount(ctx, session) {
+        vi.spyOn(ctx.logger, 'warn').mockImplementation((message) => { warnings.push(String(message)) })
+        const id = SessionId('rich-incompatible-history')
+        restored = ctx.sessions.prepare(id, {
+          seed: [{ type: 'turn/start', seq: SessionSeq(0), time: 1, data: { turn: Number.NaN } }],
+          meta: { ...session.header, id }, inheritedEventCount: SessionLogOffset(0), eventState: 'detached',
+        })
+        detach = ctx.sessions.enter(restored)
+        ctx.sessions.announce(restored)
+      },
+    })
+    try {
+      if (restored === undefined) throw new Error('missing restored Session')
+      expect(warnings.some(message => message.includes('using synchronous compatibility reader'))).toBe(true)
+      const snapshot = vi.spyOn(restored, 'snapshotEvents')
+      restored.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+      expect(snapshot).toHaveBeenCalled()
+      const live = vi.spyOn(h.session, 'snapshotEvents')
+      h.session.append('turn/start', { turn: 2 })
+      live.mockClear()
+      h.session.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
+      expect(live).not.toHaveBeenCalled()
+    } finally {
+      detach?.()
+    }
+  })
+  it('rejects activation when preparation fails for an unexpected reason', async () => {
+    const failure = new Error('unexpected history failure')
+    await expect(harness(undefined, [], {}, {
+      beforeRichMount(_ctx, session) {
+        vi.spyOn(session, 'readHistoryPages').mockImplementation(() => { throw failure })
+      },
+    })).rejects.toBe(failure)
+  })
+  it('drains a hot recovery when the plugin owner is disposed', async () => {
+    const started = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const selected = Promise.withResolvers<Context>()
+    const mounting = harness(undefined, [], {}, {
+      beforeRichMount(ctx, session) {
+        selected.resolve(ctx)
+        const read = session.readHistoryPages.bind(session)
+        vi.spyOn(session, 'readHistoryPages').mockImplementation((options) => {
+          const pages = read(options)
+          return { async *[Symbol.asyncIterator]() {
+            started.resolve(undefined)
+            await release.promise
+            yield* pages
+          } }
+        })
+      },
+    })
+    const outcome = mounting.then(() => 'mounted', () => 'disposed')
+    const ctx = await selected.promise
+    try {
+      await started.promise
+      const fiber = [...ctx.registry.get(RichInline)!.fibers][0]!
+      const closing = fiber.dispose()
+      expect(fiber.uid).toBeNull()
+      release.resolve(undefined)
+      await closing
+      await outcome
+      expect(ctx.get('richInline')).toBeUndefined()
+    } finally {
+      release.resolve(undefined)
+      await ctx.fiber.dispose()
+      await outcome
+    }
+  })
+  it('does not process a claim when the latest turn start has malformed data', async () => {
+    const h = await harness()
+    const m = await h.bind(await h.publish())
+    const request = intent(m)
+    await h.host.invoke(request)
+    await vi.waitFor(() => { expect(h.agent.inbox.nextTurn).toHaveLength(1) })
+    const before = await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })
+    const warn = vi.spyOn(h.ctx.logger, 'warn')
+    try {
+      h.session.append('turn/start', null as never)
+      h.session.append('user/message', h.agent.inbox.nextTurn[0]!, { surfaceOp: 'append' })
+      expect(warn.mock.calls.some(args => String(args[0]).includes("reading 'turn'"))).toBe(true)
+      expect(await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId }))
+        .toMatchObject({ state: before.state })
+    } finally {
+      warn.mockRestore()
+    }
+  })
+  it('processes a claim after a valid turn start follows a malformed one', async () => {
+    const h = await harness()
+    const m = await h.bind(await h.publish())
+    const request = intent(m)
+    await h.host.invoke(request)
+    await vi.waitFor(() => { expect(h.agent.inbox.nextTurn).toHaveLength(1) })
+    h.session.append('turn/start', null as never)
+    h.session.append('turn/start', { turn: 3 })
+    h.session.append('user/message', h.agent.inbox.nextTurn[0]!, { surfaceOp: 'append' })
+    await vi.waitFor(async () => {
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('running')
+    })
+  })
+  it('does not treat a claim before the first turn as a claim in turn zero', async () => {
+    const h = await harness()
+    const m = await h.bind(await h.publish())
+    const request = intent(m)
+    await h.host.invoke(request)
+    await vi.waitFor(() => { expect(h.agent.inbox.nextTurn).toHaveLength(1) })
+    h.session.append('user/message', h.agent.inbox.nextTurn[0]!, { surfaceOp: 'append' })
+    await vi.waitFor(async () => {
+      expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('running')
+    })
+    const previousFlushes = h.flush.mock.calls.length
+    h.session.append('turn/end', { turn: 0, reason: { kind: 'completed' } })
+    await vi.waitFor(() => { expect(h.flush.mock.calls.length).toBeGreaterThan(previousFlushes) })
+    expect((await h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })).state).toBe('running')
   })
   it('records a running cancellation and its late terminal result without changing authority', async () => {
     const h = await harness()

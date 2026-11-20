@@ -48,6 +48,8 @@ node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-experimen
 
 CLI 拒绝管理 `desktop`，桌面端应使用应用插件管理器。`dsh.bundle.patch` 激活 [cordis.patch.yml](cordis.patch.yml)，插入 `rich-inline` 项。只有 npm 依赖不会启用插件。验收采用源码 [overlay](../../../apps/web/tests/rich-inline.overlay.yml)。
 
+Host 需要 `sessionProjections`。对于已有的活跃 Session，`recoveryPageSize` 设置每个准备页的事件数，须为正安全整数（默认 128）；独立或尚未准备的 Session 使用同步兼容读取。自定义组合请参阅[升级指南](../../../docs/upgrade-guide/v0.2.2-rc.1/rich-inline-session-projection/guide.zh.md)。
+
 ### 获得的能力
 
 默认的 `activePresets: []` 在所有主会话中启用交互输出。设置 `activePresets: [lumina]` 后，仅选择了这个[已声明模式](../../preset/agent-preset-registry/README.zh.md)的主会话要求交互输出。所有子 Agent 均不接收创作提示、格式修复及任何 `rich_inline_*` 工具，包括源码回读；原生 schema、PTC SDK 和直接执行均强制排除。其他主会话模式保留普通 Markdown 和编码工具；已有交互卡片仍可查看。Lumina 模式可以使用标准模式的完整子插件列表，从而保留相同的编码能力。
