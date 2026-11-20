@@ -44,8 +44,8 @@ function sandboxNotes(sandbox: ShellSandboxInfo | undefined, escalationModes: re
 
 /**
  * Map a settled background process onto the generic job-outcome vocabulary:
- * `killed` stays `killed` (detail: the signal when one is known), everything
- * else is `completed` with the exit code as detail. A nonzero command exit is
+ * Infrastructure failures are `failed`. A killed command reports the signal
+ * when known. A completed command reports its exit code. A nonzero command exit is
  * reported, not failed, exactly like the foreground rendering. Sandbox facts
  * join the detail, since a job's terminal reason is the one line every
  * reader — the model's status line, the roster row — shows.
@@ -54,14 +54,13 @@ function sandboxNotes(sandbox: ShellSandboxInfo | undefined, escalationModes: re
  * @returns the outcome for the `ctx.jobs` registration.
  */
 export function processOutcome(proc: ShellProcess, escalationModes: readonly SandboxMode[] = []): JobOutcome {
-  // TODO(background-infrastructure-outcome): widen ShellProcess with an explicit
-  // infrastructure-failure outcome, then map spawn failures and
-  // sandbox.runnerFailed to job `failed`. The current contract aliases a spawn
-  // failure with a signal-less kill and a runner failure with an ordinary
-  // wrapper exit; real nonzero command exits must remain `completed`.
-  const base: JobOutcome = proc.status === 'killed'
-    ? { status: 'killed', detail: proc.signal !== null ? `signal: ${proc.signal}` : 'killed before exit' }
-    : { status: 'completed', detail: `exit code: ${proc.exitCode ?? 0}`, exitCode: proc.exitCode ?? 0 }
+  const base: JobOutcome = proc.sandbox?.runnerFailed === true
+    ? { status: 'failed', detail: 'sandbox runner failed before command execution' }
+    : proc.failure === 'provider'
+      ? { status: 'failed', detail: 'shell provider failed; command outcome unknown, check effects before retrying' }
+      : proc.status === 'killed'
+        ? { status: 'killed', detail: proc.signal !== null ? `signal: ${proc.signal}` : 'killed before exit' }
+        : { status: 'completed', detail: `exit code: ${proc.exitCode ?? 0}`, exitCode: proc.exitCode ?? 0 }
   const notes = sandboxNotes(proc.sandbox, escalationModes)
   return notes.length === 0 ? base : { ...base, detail: `${base.detail}; ${notes.join(' ')}` }
 }

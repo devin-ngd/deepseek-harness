@@ -253,6 +253,7 @@ describe('spawn construction (pure, every platform)', () => {
     const proc = (await start(ctx.shell, ctx.shell.resolve({ command: 'Write-Output maybe-ran' })))
     await expect(proc.done).resolves.toBeUndefined()
     expect(proc.status).toBe('killed')
+    expect(proc.failure).toBe('provider')
     const output = proc.readOutput().delta
     expect(output).toContain('target stderr')
     expect(output).toContain('subprocess failed before reporting an outcome:')
@@ -292,6 +293,7 @@ describe('spawn construction (pure, every platform)', () => {
     await expect(ex.done).resolves.toBeUndefined()
     expect(ex.status).toBe('killed')
     await expect(ex.result()).resolves.toMatchObject({ aborted: true, timedOut: false, exitCode: null })
+    expect(ex.failure).toBeUndefined()
     expect(ex.readOutput().delta).toBe('')
   })
 

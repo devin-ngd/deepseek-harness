@@ -182,6 +182,8 @@ interface ShellSandboxInfo {
 interface ShellProcess {
   /** Process lifecycle state (settled exactly once). */
   status: ShellProcessStatus
+  /** Provider could not report a process outcome; available after settlement. */
+  failure?: 'provider'
   /** Exit code once finished (null = killed by signal / still running). */
   exitCode: number | null
   /** Terminating signal name, when signal-killed. */
@@ -253,7 +255,7 @@ execute resolves with the process handle after preparation. "Foreground" is a pr
 Implementations must honor these semantics:
 
 - ShellExecution.result rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a descriptive result: first-cause `timedOut`/`aborted`, the spec's `timeoutMs` echoed.
-- The handle is published after preparation. `done` settles at process close and never rejects; spawn failures settle as `killed` with the error on the read path, while `result()` carries the same failure as its rejection.
+- The handle is published after preparation. `done` settles at process close and never rejects; provider failures settle as `killed` with `failure: 'provider'` and the error on the read path, while `result()` carries the same failure as its rejection.
 - `onExpiry: 'none'` arms no deadline; `'kill'` kills at expiry. Expiry during preparation returns a settled timed-out handle without output.
 - ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.
 - A still-running process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a process survives an executor-only reload.

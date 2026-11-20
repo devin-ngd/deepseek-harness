@@ -1062,6 +1062,7 @@ describe('processOutcome', () => {
     const deniedWithoutEscalation = processOutcome(settled({ exitCode: 1, sandbox: { mode: 'read-only', denied: true } }))
     expect(deniedWithoutEscalation.detail).toBe(`exit code: 1; ${sandboxDenialMarker('read-only')}`)
     const runnerFailed = processOutcome(settled({ exitCode: 1, sandbox: { mode: 'read-only', denied: false, runnerFailed: true } }))
+    expect(runnerFailed.status).toBe('failed')
     expect(runnerFailed.detail).toContain('the sandbox runner itself failed under read-only mode')
     expect(processOutcome(settled({ sandbox: { mode: 'read-only', denied: false } })).detail).toBe('exit code: 0')
   })

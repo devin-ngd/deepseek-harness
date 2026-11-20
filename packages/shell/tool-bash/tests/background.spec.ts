@@ -132,14 +132,15 @@ describe('background bash output', () => {
     expect(text(started)).toMatch(/^started background job bash-[0-9a-f]{16}$/)
     const jobs = ctx.jobs
     const job = jobs.list()[0]
-    await until(() => jobs.get(job!.id).status === 'killed' ? true : undefined)
+    await until(() => jobs.get(job!.id).status === 'failed' ? true : undefined)
     const read = text(await executeToolFixture(ctx, {
       signal: testToolSignal,
       callId: brandString<ToolCallId>('background-spawn-failure-read'),
       name: 'job_output',
       arguments: { job_id: String(job!.id) },
     }))
-    expect(read).toMatch(/^\[stderr\]\nsubprocess failed before reporting an outcome: .*\n\[status: killed, killed before exit\]$/s)
+    expect(read).toMatch(/^\[stderr\]\nsubprocess failed before reporting an outcome: /)
+    expect(read).toContain('[status: failed, shell provider failed; command outcome unknown, check effects before retrying]')
   })
 
   it('labels stderr chunks with their channel', async () => {
