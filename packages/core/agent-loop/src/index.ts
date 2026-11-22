@@ -251,6 +251,8 @@ function applyLauncherIdentities(
 
 /** Agent-loop plugin configuration. */
 export interface Config {
+  /** Maximum foreground recovery time before usable output, in milliseconds. */
+  foregroundRetryBudgetMs: number
   /**
    * Maximum parallel-safe calls in flight per agent step. `1` is serial;
    * omission defaults to {@link DEFAULT_MAX_PARALLEL_TOOL_CALLS}.
@@ -292,7 +294,8 @@ export class AgentLoop extends Service implements AgentFactory {
   static inject = ['agents', 'sessions', 'llm', 'tools', 'systemPrompt', 'sessionProjections']
 
   /** Runtime schema for declarative agents. */
-  static Config: z<{ agents?: Config['agents']; maxParallelToolCalls?: number }, Config> = z.object({
+  static Config: z<{ agents?: Config['agents']; maxParallelToolCalls?: number; foregroundRetryBudgetMs?: number }, Config> = z.object({
+    foregroundRetryBudgetMs: z.number().step(1).min(1).max(3_600_000).default(45_000),
     maxParallelToolCalls: z.number().step(1).min(1).default(DEFAULT_MAX_PARALLEL_TOOL_CALLS).volatile(),
     agents: z.array(z.object({
       id: z.string().required(),
@@ -304,7 +307,7 @@ export class AgentLoop extends Service implements AgentFactory {
       cwd: z.string(),
       resumeSessionId: z.string(),
     })).default([]),
-  }) as z<{ agents?: Config['agents']; maxParallelToolCalls?: number }, Config>
+  }) as z<{ agents?: Config['agents']; maxParallelToolCalls?: number; foregroundRetryBudgetMs?: number }, Config>
 
   /** Validated configuration owned by the agent-loop service. */
   readonly config: Config
@@ -320,6 +323,7 @@ export class AgentLoop extends Service implements AgentFactory {
     this.config = {
       agents: applyLauncherIdentities(config.agents, ctx.get(CONFIGURED_AGENT_IDENTITIES_KEY)),
       maxParallelToolCalls: config.maxParallelToolCalls,
+      foregroundRetryBudgetMs: config.foregroundRetryBudgetMs,
     }
     validateConfiguredAgents(this.config.agents)
     this.ownership = new FactoryOwnership(ctx.fiber)

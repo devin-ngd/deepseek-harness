@@ -74,6 +74,9 @@ Every inbox mutation commits one normalized `agent/inbox/spliced` event. The pro
 
 Each step sends the session's derived history — with the latest non-empty `system/message` node as the effective prompt, or no system messages when the rendered prompt is empty — and its visible tool schemas; the model's tool calls run through the guarded tool pipeline and every accepted fact is appended to the session log before the next step derives from it. The loop passes the complete raw call batch to `ctx.tools.execute()`; built-in executors preserve model-order results and exclusive barriers. Cancellation is cooperative: `agent.cancel()` aborts the current activity and, unless `keepInbox` is set, clears pending work; a cancelled stream finalizes the text already delivered to the user.
 
+
+For a turn started by an explicitly foreground composer input, `foregroundRetryBudgetMs` defaults to 45,000 ms from the first rate-limit, transport, server, timeout, or empty-response failure until visible non-whitespace text or a successful response. It includes backoff and retry attempts; an expired retry ends with the provider failure code and preserves manual continuation. The limit does not apply to unmarked inputs, subagents, or the initial attempt, and is disabled for the rest of a turn when unmarked input other than recognized runtime, time, or model-selection context is admitted or queued for its next step. Cancellation remains caller-owned. Retry streams and recovery listeners must honor cancellation for the deadline to release their work.
+
 -----
 
 <a id="understand-the-implementation"></a>

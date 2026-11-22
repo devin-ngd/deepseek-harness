@@ -352,6 +352,8 @@ export interface SessionPromptRequest {
   /** Non-whitespace text or attachments; an empty array continues an eligible failed idle Session. */
   readonly content: readonly PromptContentPart[]
   readonly clientTimeZone?: string
+  /** Explicit interactive composer request; omission keeps the ordinary provider retry policy. */
+  readonly interaction?: 'foreground'
 }
 
 /** Receipt after one prompt enters the target Agent inbox. */
@@ -420,9 +422,9 @@ declare module '@deepseek-ai/dsh-llm' {
      * caller that submitted the prompt. `principal` is written only for a
      * caller other than the owner, so an absent `principal` means the owner.
      */
-    'user-rpc': { kind: 'user'; rpcId: SessionRequestId; clientTimeZone?: string; principal?: Principal }
+    'user-rpc': { kind: 'user'; rpcId: SessionRequestId; clientTimeZone?: string; principal?: Principal; interaction?: 'foreground' }
     /** Empty retry user message with browser prompt correlation and caller metadata. */
-    'retry-rpc': { kind: 'retry'; rpcId: SessionRequestId; clientTimeZone?: string; principal?: Principal }
+    'retry-rpc': { kind: 'retry'; rpcId: SessionRequestId; clientTimeZone?: string; principal?: Principal; interaction?: 'foreground' }
   }
 }
 
