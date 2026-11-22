@@ -512,6 +512,7 @@ export class SessionController extends TypertRemoteService {
     const source: MessageSource = {
       kind: request.content.length === 0 ? 'retry' : 'user',
       rpcId: request.requestId,
+      ...(request.interaction === 'foreground' ? { interaction: request.interaction } : {}),
       ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
       ...(principal === undefined ? {} : { principal }),
     }

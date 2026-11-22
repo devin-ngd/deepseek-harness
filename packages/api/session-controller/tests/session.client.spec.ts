@@ -979,6 +979,15 @@ describe('prompt and cancel errors', () => {
     ])
   })
 
+  it('forwards only explicit foreground intent to the ordinary Session prompt', async ({ mock, start }) => {
+    const session = await sessionBench(mock, start, SID)
+    await session.prompt([{ type: 'text', text: 'interactive' }], 'queue', undefined, undefined, 'foreground')
+    await session.prompt([{ type: 'text', text: 'unspecified' }], 'queue')
+    const requests = mock.log.requests('session/prompt')
+    expect(requests[0]).toMatchObject({ interaction: 'foreground' })
+    expect(requests[1]).not.toHaveProperty('interaction')
+  })
+
   it('publishes the first-prompt lifecycle once the Host accepts the prompt', async ({ mock, start }) => {
     const session = await sessionBench(mock, start, SID)
     session.handleBlank(true)

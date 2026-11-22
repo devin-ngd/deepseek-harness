@@ -49,6 +49,7 @@ interface ConversationAttachmentFace {
     mode: InputSubmitMode,
     signal?: AbortSignal,
     accept?: () => void,
+    interaction?: 'foreground',
   ): Promise<SubmitOutcome>
   serializeDraftAttachments(attachmentIds: readonly DraftAttachmentId[]): Promise<DraftAttachmentSerializationResult>
   releaseDraftAttachment(id: DraftAttachmentId): void
@@ -367,9 +368,9 @@ export class InputHub implements SessionInputResolver {
     accept: () => void,
   ): Promise<SubmitOutcome> {
     if (text === '' && attachmentIds.length === 0) {
-      return session.prompt([], mode, signal).then(result => result.ok ? { kind: 'success' } : { kind: 'error' })
+      return session.prompt([], mode, signal, undefined, 'foreground').then(result => result.ok ? { kind: 'success' } : { kind: 'error' })
     }
-    return this.conversation().sendSession(session, text, attachmentIds, mode, signal, accept)
+    return this.conversation().sendSession(session, text, attachmentIds, mode, signal, accept, 'foreground')
   }
 
   /**

@@ -183,6 +183,7 @@ describe('Conversation inject API', () => {
     await vi.waitFor(() => { expect(b.sessionFake.prompt).toHaveBeenCalledOnce() })
     expect(b.sessionFake.prompt.mock.calls[0]?.[0]).toEqual([])
     expect(b.sessionFake.prompt.mock.calls[0]?.[1]).toBe('queue')
+    expect(b.sessionFake.prompt.mock.calls[0]?.[4]).toBe('foreground')
     pending.resolve({ ok: true, value: { accepted: true } })
     await vi.waitFor(() => { expect(composer.keyboard!.snapshot.phase).toBe('plain') })
     expect(composer.keyboard!.snapshot.draft).toBe('')
@@ -503,7 +504,7 @@ describe('Conversation inject API', () => {
     expect(state.getSnapshot()).toMatchObject({ phase: 'sending', draft: 'hello' })
     await vi.waitFor(() => {
       expect(b.sessionFake.prompt).toHaveBeenCalledWith(
-        [{ type: 'text', text: 'hello' }], 'queue', expect.any(AbortSignal), expect.any(String),
+        [{ type: 'text', text: 'hello' }], 'queue', expect.any(AbortSignal), expect.any(String), 'foreground',
       )
     })
     await vi.waitFor(() => { expect(state.getSnapshot().draft).toBe('') })

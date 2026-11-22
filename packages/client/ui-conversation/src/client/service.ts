@@ -234,6 +234,7 @@ export class ConversationController extends Service implements IConversation {
    * @param mode - queue or steer delivery selected by composer policy.
    * @param signal - optional cancellation for the complete Host admission.
    * @param accept - called inside the Session's acceptance, before the echo renders, so the composer settles with it.
+   * @param interaction - explicit foreground composer intent.
    * @returns the Host admission outcome; local attachment preparation failures reject.
    */
   async sendSession(
@@ -243,6 +244,7 @@ export class ConversationController extends Service implements IConversation {
     mode: InputSubmitMode,
     signal?: AbortSignal,
     accept?: () => void,
+    interaction?: 'foreground',
   ): Promise<SubmitOutcome> {
     const attachments = this.resolveDraftAttachments(attachmentIds)
     if (attachments.length !== attachmentIds.length) {
@@ -311,7 +313,10 @@ export class ConversationController extends Service implements IConversation {
     }
     // An Inbox row can show the acceptance before the receipt; a receipt that fails afterwards changes
     // nothing here because the Host already holds the message.
-    const result = await Promise.race([session.prompt(content, mode, signal, submission.requestId), acceptance.promise])
+    const prompt = interaction === undefined
+      ? session.prompt(content, mode, signal, submission.requestId)
+      : session.prompt(content, mode, signal, submission.requestId, interaction)
+    const result = await Promise.race([prompt, acceptance.promise])
     if (result !== undefined && !result.ok) return { kind: 'error' }
     ownership.accepted = true
     // An accepted prompt whose echo already retired unobserved, as when its queue entry was removed.

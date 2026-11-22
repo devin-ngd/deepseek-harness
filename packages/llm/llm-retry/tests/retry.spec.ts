@@ -8,6 +8,7 @@ import type {
   AlwaysRetryPolicyConfig,
   BackoffConfig,
   GenerateOptions,
+  LlmFailure,
   NormalRetryPolicyConfig,
   ResolvedRetryPolicy,
   RetryPolicyConfig,
@@ -25,6 +26,7 @@ import type { Agent, RequestErrorAction } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import type { Config as retryConfig, RetryInternals as retryRetryInternals } from '../src/index.ts'
 import * as retry from '../src/index.ts'
+import { toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
 type ScriptEntry = Error | Iterable<StreamChunk> | AsyncIterable<StreamChunk>
 
@@ -62,6 +64,32 @@ class ScriptedAdapter extends LlmAdapter {
   override providerRetryPolicy(provider: string): ResolvedRetryPolicy | undefined {
     return this.retryPolicies[provider]
   }
+}
+
+async function* stalledResponse(
+  signalOf: () => AbortSignal,
+  entered: PromiseWithResolvers<undefined>,
+  onExit: () => void,
+  onAbort?: () => void,
+): AsyncGenerator<StreamChunk> {
+  const signal = signalOf()
+  entered.resolve(undefined)
+  try {
+    await new Promise<void>((_resolve, reject) => {
+      const abort = () => {
+        onAbort?.()
+        reject(signal.reason instanceof Error ? signal.reason : new Error('fixture aborted'))
+      }
+      if (signal.aborted) abort()
+      else signal.addEventListener('abort', abort, { once: true })
+    })
+  } finally { onExit() }
+}
+
+function terminalFailure(agent: Agent): LlmFailure {
+  const ending = agent.session.snapshotEvents().at(-1)
+  if (ending?.type !== 'turn/end' || ending.data.reason.kind !== 'error') throw new Error('expected a failed turn')
+  return ending.data.reason.error
 }
 
 async function* partialToolFailure(error: Error): AsyncGenerator<StreamChunk> {
@@ -204,6 +232,349 @@ describe('retry projection', () => {
 })
 
 describe('provider-routed retry policy', () => {
+  it('ends explicit foreground rate-limit recovery at 45 seconds with its continuable failure', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter(Array.from({ length: 8 }, () => new LlmError('busy', 'RATE_LIMIT', { status: 429 })))
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      maxRetries: 30, backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-budget'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.inject(createUserMessage({ content: [{ type: 'text', text: 'injected context' }], source: { kind: 'time-context' } as never }))
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first
+    await vi.advanceTimersByTimeAsync(45_000)
+    await agent.whenIdle()
+    expect(adapter.requests).toHaveLength(6)
+    expect(terminalFailure(agent).code).toBe('RATE_LIMIT')
+    expect(terminalFailure(agent).message).toContain('Continue generating')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(adapter.requests).toHaveLength(6)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each([
+    { code: 'TRANSPORT', failure: new LlmError('offline', 'TRANSPORT') },
+    { code: 'RATE_LIMIT', failure: new LlmError('busy', 'RATE_LIMIT', { providerRetryAfterMs: 1_000 }) },
+  ])('aborts a stalled foreground retry and preserves $code', async ({ code, failure }) => {
+    vi.useFakeTimers()
+    const entered = Promise.withResolvers<undefined>()
+    let exited = false
+    const adapter: ScriptedAdapter = new ScriptedAdapter([failure,
+      stalledResponse(() => adapter.requests.at(-1)!.signal!, entered, () => { exited = true })])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-stalled'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first
+    await vi.advanceTimersByTimeAsync(1_000); await entered.promise
+    await vi.advanceTimersByTimeAsync(44_000); await agent.whenIdle()
+    expect(exited).toBe(true)
+    expect(adapter.requests).toHaveLength(2)
+    const ending = agent.session.snapshotEvents().at(-1)
+    expect(ending).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'error', error: { code } } } })
+    if (code === 'RATE_LIMIT') expect(terminalFailure(agent).message).toContain('provider requested a 1 second cooldown')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not start a retry before a provider cooldown longer than the foreground budget', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter([new LlmError('busy', 'RATE_LIMIT', { providerRetryAfterMs: 60_000 })])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      backoff: { initialDelayMs: 1_000, maxDelayMs: 90_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-cooldown'), { provider: 'mock', model: 'mock' })
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await agent.whenIdle()
+    expect(adapter.requests).toHaveLength(1)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'llm/retry')).toHaveLength(0)
+    expect(terminalFailure(agent)).toMatchObject({ code: 'RATE_LIMIT', providerRetryAfterMs: 60_000 })
+    expect(terminalFailure(agent).message).toContain('60 seconds')
+  })
+
+  it('stops the deadline at visible text and allows a long healthy output', async () => {
+    vi.useFakeTimers()
+    const started = Promise.withResolvers<undefined>()
+    async function* slowSuccess(): AsyncGenerator<StreamChunk> {
+      yield { type: 'block-start', index: 0, blockType: 'reasoning' }
+      yield { type: 'reasoning-delta', index: 0, text: 'thinking' }
+      yield { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'thinking' } }
+      started.resolve(undefined)
+      await new Promise(resolve => setTimeout(resolve, 20_000))
+      yield { type: 'block-start', index: 1, blockType: 'text' }
+      yield { type: 'text-delta', index: 1, text: 'visible' }
+      await new Promise(resolve => setTimeout(resolve, 60_000))
+      yield { type: 'block-end', index: 1, block: { type: 'text', text: 'visible' } }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    }
+    const adapter = new ScriptedAdapter([new LlmError('busy', 'RATE_LIMIT'), slowSuccess()])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-long-output'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first; await vi.advanceTimersByTimeAsync(1_000); await started.promise
+    await vi.advanceTimersByTimeAsync(20_000)
+    await vi.advanceTimersByTimeAsync(60_000); await agent.whenIdle()
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'completed' } } })
+    expect(adapter.requests).toHaveLength(2)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not limit a slow first attempt before any retryable failure', async () => {
+    vi.useFakeTimers()
+    const started = Promise.withResolvers<undefined>()
+    async function* firstAttempt(): AsyncGenerator<StreamChunk> {
+      started.resolve(undefined)
+      await new Promise(resolve => setTimeout(resolve, 90_000))
+      yield* textResponse('done')
+    }
+    const adapter = new ScriptedAdapter([firstAttempt()])
+    ;({ ctx: context } = await harness(adapter))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-first-slow'), { provider: 'mock', model: 'mock' })
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await started.promise; await vi.advanceTimersByTimeAsync(90_000); await agent.whenIdle()
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'completed' } } })
+    expect(adapter.requests).toHaveLength(1)
+  })
+
+  it('does not treat reasoning and empty text as usable retry output', async () => {
+    vi.useFakeTimers()
+    const entered = Promise.withResolvers<undefined>()
+    async function* thinking(): AsyncGenerator<StreamChunk> {
+      yield { type: 'block-start', index: 0, blockType: 'reasoning' }
+      yield { type: 'reasoning-delta', index: 0, text: 'thinking' }
+      yield { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'thinking' } }
+      yield { type: 'block-start', index: 1, blockType: 'text' }
+      yield { type: 'text-delta', index: 1, text: ' ' }
+      const signal = adapter.requests.at(-1)!.signal!
+      entered.resolve(undefined)
+      await new Promise<void>((_resolve, reject) => {
+        if (signal.aborted) reject(signal.reason instanceof Error ? signal.reason : new Error('fixture aborted'))
+        else signal.addEventListener('abort', () => { reject(signal.reason instanceof Error ? signal.reason : new Error('fixture aborted')) }, { once: true })
+      })
+    }
+    const adapter = new ScriptedAdapter([new LlmError('busy', 'RATE_LIMIT'), thinking()])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-thinking'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first; await vi.advanceTimersByTimeAsync(1_000); await entered.promise
+    await vi.advanceTimersByTimeAsync(44_000); await agent.whenIdle()
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'error', error: { code: 'RATE_LIMIT' } } } })
+    expect(adapter.requests).toHaveLength(2)
+  })
+
+  it('keeps user cancellation distinct from a foreground retry deadline', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter([new LlmError('offline', 'TRANSPORT'), textResponse('must not start')])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      backoff: { initialDelayMs: 10_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-cancel'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first; await vi.advanceTimersByTimeAsync(3_000); agent.cancel({ kind: 'user' }); await agent.whenIdle()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(adapter.requests).toHaveLength(1)
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'aborted', reason: { kind: 'user' } } } })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('drains a cancelled foreground retry without starting another request', async () => {
+    vi.useFakeTimers()
+    const entered = Promise.withResolvers<undefined>()
+    let exited = false
+    const adapter: ScriptedAdapter = new ScriptedAdapter([new LlmError('offline', 'TRANSPORT'),
+      stalledResponse(() => adapter.requests.at(-1)!.signal!, entered, () => { exited = true })])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-inflight-cancel'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first; await vi.advanceTimersByTimeAsync(1_000); await entered.promise
+    await vi.advanceTimersByTimeAsync(4_000); agent.cancel({ kind: 'user' }); await agent.whenIdle()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(exited).toBe(true)
+    expect(adapter.requests).toHaveLength(2)
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'aborted', reason: { kind: 'user' } } } })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('retains the configured provider backoff beyond 45 seconds until user cancellation', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter(Array.from({ length: 8 }, () => new LlmError('busy', 'RATE_LIMIT', { status: 429 })))
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      maxRetries: 30, backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('retry-audit-baseline'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await first
+    await vi.advanceTimersByTimeAsync(45_000)
+    expect(adapter.requests).toHaveLength(6)
+    expect(agent.status).toBe('running')
+    const events = agent.session.snapshotEvents()
+    expect(events.filter(event => event.type === 'llm/retry')).toHaveLength(6)
+    expect(events.filter(event => event.type === 'llm/retry-started')).toHaveLength(5)
+    agent.cancel({ kind: 'user' })
+    await agent.whenIdle()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(adapter.requests).toHaveLength(6)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not apply the foreground budget to a subagent', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter(Array.from({ length: 8 }, () => new LlmError('busy', 'RATE_LIMIT')))
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      maxRetries: 30, backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const { agent } = await context.agents.create({ sessionId: brandString<SessionId>('foreground-child'),
+      meta: { origin: 'subagent', parentSession: brandString<SessionId>('foreground-parent'), delegationDepth: 1 },
+      agentOptions: { provider: 'mock', model: 'mock' } })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first; await vi.advanceTimersByTimeAsync(45_000)
+    expect(agent.status).toBe('running')
+    expect(adapter.requests).toHaveLength(6)
+    agent.cancel({ kind: 'user' }); await agent.whenIdle()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('keeps the provider policy when scheduled input is admitted with a foreground message', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter(Array.from({ length: 8 }, () => new LlmError('busy', 'RATE_LIMIT')))
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      maxRetries: 30, backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-with-schedule'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    agent.inject(createUserMessage({
+      content: [{ type: 'text', text: 'scheduled context' }], source: { kind: 'schedule' } as never,
+    }))
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first; await vi.advanceTimersByTimeAsync(45_000)
+    expect(agent.status).toBe('running')
+    expect(adapter.requests).toHaveLength(6)
+    agent.cancel({ kind: 'user' }); await agent.whenIdle()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('stops applying the foreground deadline after scheduled input enters a later step', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter([
+      toolCallResponse('inject-schedule', 'inject_schedule', {}),
+      ...Array.from({ length: 8 }, () => new LlmError('busy', 'RATE_LIMIT')),
+    ])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      maxRetries: 30, backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    context.tools.register(defineContentToolFixture({
+      name: 'inject_schedule', description: 'Add a scheduled fixture input.', parameters: {},
+      async execute(_args, exec) {
+        if (exec.agent === undefined) throw new Error('fixture requires an agent')
+        exec.agent.inject(createUserMessage({
+          content: [{ type: 'text', text: 'scheduled context' }], source: { kind: 'schedule' } as never,
+        }))
+        return [{ type: 'text', text: 'done' }]
+      },
+    }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-later-schedule'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first; await vi.advanceTimersByTimeAsync(45_000)
+    expect(agent.status).toBe('running')
+    expect(adapter.requests).toHaveLength(7)
+    agent.cancel({ kind: 'user' }); await agent.whenIdle()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['schedule', 'unknown-fixture'])('releases the deadline when %s input arrives during backoff', async (kind) => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter(Array.from({ length: 8 }, () => new LlmError('busy', 'RATE_LIMIT')))
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      maxRetries: 30, backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-queued-schedule'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first; await vi.advanceTimersByTimeAsync(5_000)
+    agent.inject(createUserMessage({
+      content: [{ type: 'text', text: 'scheduled context' }], source: { kind } as never,
+    }))
+    await vi.advanceTimersByTimeAsync(45_000)
+    expect(agent.status).toBe('running')
+    expect(adapter.requests).toHaveLength(6)
+    agent.cancel({ kind: 'user' }); await agent.whenIdle()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('keeps the original failure when scheduled input races an expired deadline', async () => {
+    vi.useFakeTimers()
+    const entered = Promise.withResolvers<undefined>()
+    const adapter: ScriptedAdapter = new ScriptedAdapter([new LlmError('busy', 'RATE_LIMIT'),
+      stalledResponse(() => adapter.requests.at(-1)!.signal!, entered, () => {}, () => {
+        agent.inject(createUserMessage({
+          content: [{ type: 'text', text: 'scheduled context' }], source: { kind: 'schedule' } as never,
+        }))
+      })])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('foreground-schedule-race'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source }))
+    await first; await vi.advanceTimersByTimeAsync(1_000); await entered.promise
+    await vi.advanceTimersByTimeAsync(44_000); await agent.whenIdle()
+    expect(terminalFailure(agent).code).toBe('RATE_LIMIT')
+    expect(adapter.requests).toHaveLength(2)
+  })
+
+  it('leaves a stalled retry in flight past 45 seconds until cancellation', async () => {
+    vi.useFakeTimers()
+    const entered = Promise.withResolvers<undefined>()
+    let exited = false
+    const adapter: ScriptedAdapter = new ScriptedAdapter([new LlmError('busy', 'RATE_LIMIT', { status: 429 }),
+      stalledResponse(() => adapter.requests.at(-1)!.signal!, entered, () => { exited = true })])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
+      backoff: { initialDelayMs: 1_000, maxDelayMs: 30_000, jitterRatio: 0 },
+    }) }))
+    const agent = await context.agentLoop.create(brandString<SessionId>('retry-audit-stalled'), { provider: 'mock', model: 'mock' })
+    const first = waitForRetry(context, agent, 1)
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await first
+    await vi.advanceTimersByTimeAsync(1_000)
+    await entered.promise
+    await vi.advanceTimersByTimeAsync(45_000)
+    expect(agent.status).toBe('running')
+    expect(adapter.requests).toHaveLength(2)
+    agent.cancel({ kind: 'user' })
+    await agent.whenIdle()
+    expect(exited).toBe(true)
+    expect(adapter.requests).toHaveLength(2)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('records the scheduled delay before retrying the request', async () => {
     vi.useFakeTimers()
     const adapter = new ScriptedAdapter([

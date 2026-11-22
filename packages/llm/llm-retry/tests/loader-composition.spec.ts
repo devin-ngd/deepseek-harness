@@ -88,6 +88,37 @@ async function loadYaml(lines: readonly string[]): Promise<Context> {
 }
 
 describe('real Loader composition', () => {
+  it('applies the foreground deadline in the loaded loop without another provider call', { timeout: 60_000 }, async () => {
+    const loaded = await loadYaml([
+      "- name: '@deepseek-ai/dsh-llm'", "- name: '@deepseek-ai/dsh-session'",
+      "- name: '@deepseek-ai/dsh-session-projection'", "- name: '@deepseek-ai/dsh-system-prompt'",
+      "- name: '@deepseek-ai/dsh-tools'", "- name: '@deepseek-ai/dsh-tool-executor-native'",
+      "- name: '@deepseek-ai/dsh-agent'", "- name: '@deepseek-ai/dsh-llm-retry'",
+      "- name: '@deepseek-ai/dsh-agent-loop'", '  config:', '    foregroundRetryBudgetMs: 50',
+    ])
+    class LimitedAdapter extends LlmAdapter {
+      requests = 0
+      override providerRetryPolicy(): ResolvedRetryPolicy {
+        return resolveRetryPolicy({ mode: 'normal', maxRetries: 5,
+          backoff: { initialDelayMs: 2_000, maxDelayMs: 2_000, jitterRatio: 0 } }, 'fixture')
+      }
+      async *stream(_options: GenerateOptions): AsyncIterable<StreamChunk> {
+        this.requests++
+        throw new LlmError('busy', 'RATE_LIMIT', { status: 429 })
+      }
+    }
+    const adapter = new LimitedAdapter()
+    loaded.llm.registerAdapter(['mock'], adapter)
+    const agent = await loaded.agentLoop.create(brandString<SessionId>('loader-foreground'), { provider: 'mock', model: 'mock' })
+    const source = { kind: 'user' as const, interaction: 'foreground' as const }
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'recover' }], source }))
+    await agent.whenIdle()
+    expect(adapter.requests).toBe(1)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'llm/retry')).toHaveLength(1)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'llm/retry-started')).toHaveLength(0)
+    expect(agent.session.snapshotEvents().at(-1)).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'error', error: { code: 'RATE_LIMIT' } } } })
+  })
+
   // Real-Loader composition resolves workspace packages through tsx at test
   // time; first resolution after the host/client program split is slow enough
   // to trip the default 5s budget on cold caches.

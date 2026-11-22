@@ -103,6 +103,8 @@ export interface Config {
 ```ts config-catalog
 /** Agent-loop plugin configuration. */
 export interface Config {
+  /** Maximum foreground recovery time before usable output, in milliseconds. */
+  foregroundRetryBudgetMs: number
   /**
    * Maximum parallel-safe calls in flight per agent step. `1` is serial;
    * omission defaults to {@link DEFAULT_MAX_PARALLEL_TOOL_CALLS}.
