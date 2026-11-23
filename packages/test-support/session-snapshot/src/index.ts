@@ -104,6 +104,7 @@ export {
   stabilizeFixtureMessageIds,
   stabilizeRefreshLog,
   systemPromptPrecedesRequests,
+  unknownToolCallIds,
   type Scenario,
   type SnapshotSuiteOptions,
 } from './suite.ts'

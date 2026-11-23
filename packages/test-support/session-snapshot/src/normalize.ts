@@ -163,7 +163,11 @@ function replaceCwdSpelling(value: string, spelling: string, replacement: string
 /** Replace every known cwd spelling with one stable token. */
 function replaceCwd(value: string, ctx: NormalizeContext, replacement: string): string {
   let out = value
-  for (const spelling of cwdSpellings(ctx)) out = replaceCwdSpelling(out, spelling, replacement)
+  for (const spelling of cwdSpellings(ctx)) {
+    const quoted = JSON.stringify(spelling).slice(1, -1)
+    if (quoted !== spelling) out = replaceCwdSpelling(out, quoted, replacement)
+    out = replaceCwdSpelling(out, spelling, replacement)
+  }
   return out
 }
 

@@ -338,6 +338,15 @@ describe('normalizeSessionLog', () => {
     expect(out).not.toContain(ctx.cwd)
   })
 
+  it('scrubs JSON-quoted Windows cwd in runtime context without changing longer paths', () => {
+    const windowsCtx: NormalizeContext = { sessionIds: [], cwd: String.raw`C:\work\snapshot` }
+    const text = `Workspace ${JSON.stringify(windowsCtx.cwd)}; other ${JSON.stringify(`${windowsCtx.cwd}-other`)}.`
+    const input = `${header({ cwd: windowsCtx.cwd })}\n${event({ type: 'user/message', data: { text } })}\n`
+    const result = normalizeSessionLog(input, windowsCtx).trimEnd().split('\n')
+      .map(line => JSON.parse(line) as { data?: { text?: string } })
+    expect(result[1]?.data?.text).toBe(`Workspace "{{cwd}}"; other ${JSON.stringify(`${windowsCtx.cwd}-other`)}.`)
+  })
+
   it('scrubs cwd at file URI and chained-punctuation boundaries in event data', () => {
     const ev = JSON.stringify({
       type: 'tool/result',
