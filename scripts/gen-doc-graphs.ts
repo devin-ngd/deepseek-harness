@@ -1252,13 +1252,6 @@ const EVENT_API_METHODS = new Set(['on', 'once', 'emit', 'parallel', 'serial', '
 
 /**
  * Collect event dispatch/listener relations from real cross-file receiver types.
- *
- * TODO: the program is seeded from the host aggregate alone (ts-project.ts
- * documents why: one program cannot hold both faces' Context merges), so a
- * Client package enters only when a host file imports it. Client-face
- * listeners on client-face events are therefore under-reported —
-   * `connection/reset` omits `ui-skill`/`ui-agent-preset`. Closing it needs a
-   * second Client program whose relations merge into these, not a wider seed.
  */
 export class EventRelationCollector {
   private readonly relations = new Map<string, EventRelation>()
@@ -1620,14 +1613,36 @@ function unionSets<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): Set<T> {
 export function collectPackageSources(project: TypeScriptProject): PackageSource[] {
   return project.sourceFiles().flatMap((sourceFile): PackageSource[] => {
     const rel = project.relativePath(sourceFile)
-    const match = /^packages\/[^/]+\/([^/]+)\/src\/.+\.ts$/.exec(rel)
+    const match = /^packages\/[^/]+\/([^/]+)\/src\/.+\.tsx?$/.exec(rel)
     return match?.[1] ? [{ rel, pkg: match[1], sourceFile }] : []
   }).sort((left, right) => left.rel.localeCompare(right.rel))
 }
 
+/**
+ * Merge independently typed Host and Client event relationships.
+ * @param target - accumulated relationships, updated in place.
+ * @param source - relationships from one compiler face.
+ */
+export function mergeEventRelations(target: Map<string, EventRelation>, source: ReadonlyMap<string, EventRelation>): void {
+  for (const [event, relation] of source) {
+    const current = target.get(event) ?? { dispatchers: new Map<string, Set<string>>(), listeners: new Set<string>() }
+    for (const [pkg, methods] of relation.dispatchers) {
+      const known = current.dispatchers.get(pkg) ?? new Set<string>()
+      for (const method of methods) known.add(method)
+      current.dispatchers.set(pkg, known)
+    }
+    for (const listener of relation.listeners) current.listeners.add(listener)
+    target.set(event, current)
+  }
+}
+
 function collectEventRelations(): Map<string, EventRelation> {
-  const project = new TypeScriptProject(root)
-  return new EventRelationCollector(project, collectPackageSources(project)).collect()
+  const relations = new Map<string, EventRelation>()
+  for (const face of ['host', 'client'] as const) {
+    const project = new TypeScriptProject(root, face)
+    mergeEventRelations(relations, new EventRelationCollector(project, collectPackageSources(project)).collect())
+  }
+  return relations
 }
 
 function relationPackages(map: Map<string, Set<string>>, pkgsByShort: Map<string, Pkg>): string {
@@ -1662,10 +1677,8 @@ function renderEventRelations(pkgs: Pkg[], events: readonly EventEntry[]): strin
   lines.push(renderGeneratedRegion('event-producer-consumer:events', rows.join('\n')))
   // Every declared event needs a dispatcher: zero means dead vocabulary or an
   // unrecognized semantic dispatch form. Listener-free extension points remain
-  // valid. Client-declared events are exempt: the relation scan seeds the HOST
-  // aggregate program only (host+client cannot share one program — the cordis
-  // Context merges collide), so client dispatch sites are structurally
-  // invisible here; their rows stay in the table for the declarations' sake.
+  // valid. Client declarations remain exempt where the semantic scan does not
+  // yet recognize their dispatch form.
   const undispatched = [...events]
     .filter(event => !event.source.startsWith('packages/client/'))
     .filter(event => (relations.get(event.name)?.dispatchers.size ?? 0) === 0)
