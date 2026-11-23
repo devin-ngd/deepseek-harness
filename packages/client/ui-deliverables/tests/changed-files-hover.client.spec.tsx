@@ -24,7 +24,7 @@ function mount(fileCount = 2) {
   const subscribe = diffs.state.subscribe.bind(diffs.state)
   const getSnapshot = diffs.state.getSnapshot.bind(diffs.state)
   const changes = { seq: 5, files: files.slice(0, fileCount), total: fileCount, added: fileCount, deleted: fileCount }
-  const view = render(<ChangedFiles changes={changes}
+  const view = render(<ChangedFiles changes={changes} compact={false}
     cwd="/workspace" sessionId={sessionId} t={makeTranslate(en)} openReview={openReview}
     loadChangesDiff={loadChangesDiff}
     useChangesDiff={select => select(useSyncExternalStore(subscribe, getSnapshot))} />)

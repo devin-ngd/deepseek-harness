@@ -25,6 +25,8 @@ interface ProducedPath {
   readonly argumentPath?: string
 }
 
+type MutationCall = { kind: 'file'; path: string } | { kind: 'patch' }
+
 /** The latest `workspace/changes` announcement of one Turn; the Host serves its summary by this sequence. */
 export interface ChangesTurnData {
   readonly seq: number
@@ -46,18 +48,18 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
 
 interface DeliverablesState extends DeliverablesTurnData {
   readonly turn: number
-  readonly calls: ReadonlyMap<string, string | null>
+  readonly calls: ReadonlyMap<string, MutationCall | null>
 }
 
 /**
- * Extract the path from a supported first-party mutation call. Session
+ * Extract a supported first-party mutation call. Session
  * `tool/call` events are root calls; PTC dispatch children do not enter this
  * Definition independently.
  * @param name - wire tool name.
  * @param argsRaw - model-produced JSON arguments.
- * @returns the mutation path, or null when the call is not a supported mutation.
+ * @returns the mutation call, or null when it is not supported.
  */
-function mutationPath(name: string, argsRaw: string): string | null {
+function mutationCall(name: string, argsRaw: string): MutationCall | null {
   let args: unknown
   try {
     args = JSON.parse(argsRaw) as unknown
@@ -65,16 +67,22 @@ function mutationPath(name: string, argsRaw: string): string | null {
     return null
   }
   if (!isRecord(args)) return null
+  if (name === 'apply_patch') return typeof args.input === 'string' ? { kind: 'patch' } : null
+  let path: string | null
   switch (name) {
     case 'write':
-      return typeof args.content === 'string' ? pathValue(args.file_path) : null
+      path = typeof args.content === 'string' ? pathValue(args.file_path) : null
+      break
     case 'edit':
-      return validEditArgs(args) ? pathValue(args.file_path) : null
+      path = validEditArgs(args) ? pathValue(args.file_path) : null
+      break
     case 'str_replace_editor':
-      return editorMutationPath(args)
+      path = editorMutationPath(args)
+      break
     default:
       return null
   }
+  return path === null ? null : { kind: 'file', path }
 }
 
 /** Validate the fields that an `edit` execution requires. */
@@ -132,7 +140,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Files produced by one Turn data value.
  *
  * The source is successful `write`, `edit`, and mutating `str_replace_editor`
- * calls and their recorded absolute targets; legacy results use arguments. A produced file must be
+ * calls and their recorded absolute targets, plus recorded `apply_patch` targets; legacy results use arguments. A produced file must be
  * listed whether or not the model remembered to name it. Reads, unsupported
  * tools, malformed calls, and failed results contribute nothing. Paths keep
  * first-seen order and appear once, so a file written and then edited in the
@@ -201,17 +209,22 @@ export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesStat
     }
     if (match.event.type === 'tool/call') {
       const calls = new Map(context.state.calls)
-      calls.set(
-        String(match.event.data.callId),
-        mutationPath(match.event.data.name, match.event.data.arguments),
-      )
+      const { name, arguments: args } = match.event.data
+      calls.set(String(match.event.data.callId), mutationCall(name, args))
       return { ...context.state, calls }
     }
     if (match.event.type !== 'tool/result') return context.state
     if (match.event.data.message.isError === true) return context.state
     const callId = String(match.event.data.message.source.callId)
-    const argumentPath = context.state.calls.get(callId)
-    if (argumentPath === null || argumentPath === undefined) return context.state
+    const call = context.state.calls.get(callId)
+    if (call === null || call === undefined) return context.state
+    if (call.kind === 'patch') {
+      const meta = match.event.data.meta
+      if (!isRecord(meta) || !Array.isArray(meta.producedPaths)
+        || !meta.producedPaths.every((path): path is string => typeof path === 'string' && isAbsoluteWorkspacePath(path))) return context.state
+      return { ...context.state, produced: [...context.state.produced, ...meta.producedPaths.map(path => ({ path }))] }
+    }
+    const argumentPath = call.path
     const path = mutationResultPath(argumentPath, match.event.data.meta)
     return path === null
       ? context.state

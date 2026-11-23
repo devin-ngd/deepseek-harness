@@ -1,18 +1,18 @@
-/** Session-scoped contributions to compact live execution without changing transcript settings. */
+/** Reversible preferences for individual parts of the Session transcript. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 
 /** A presentation contribution follows its own settings or selected Session mode. */
-export interface LiveProcessContribution {
-  /** @param sessionId - viewed Session. @returns whether its live process may fold. */
+export interface SessionPresentationContribution {
+  /** @param sessionId - viewed Session. @returns whether compact presentation is requested. */
   enabled(sessionId: SessionId): boolean
   /** @param listener - invalidation callback. @returns subscription disposer. */
   subscribe(listener: () => void): () => void
 }
 
-/** Live process policy registry; contributions and subscriptions unwind with their owners. */
-export class ChatLiveProcess {
-  private readonly contributions = new Set<LiveProcessContribution>()
+/** Contributions and their subscriptions unwind with their owners. */
+export class ChatSessionPresentation {
+  private readonly contributions = new Set<SessionPresentationContribution>()
   private readonly listeners = new Set<() => void>()
 
   /**
@@ -20,7 +20,7 @@ export class ChatLiveProcess {
    * @param contribution - Session decision and its change notifications.
    * @returns idempotent removal, including its change subscription.
    */
-  register(contribution: LiveProcessContribution): () => void {
+  register(contribution: SessionPresentationContribution): () => void {
     this.contributions.add(contribution)
     const off = contribution.subscribe(() => { this.notify() })
     this.notify()
@@ -45,7 +45,7 @@ export class ChatLiveProcess {
 
   private notify(): void {
     for (const listener of this.listeners) {
-      try { listener() } catch (error) { console.error('Live process subscriber failed', error) }
+      try { listener() } catch (error) { console.error('Chat presentation subscriber failed', error) }
     }
   }
 }
@@ -53,6 +53,8 @@ export class ChatLiveProcess {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Reversible Session-specific live process presentation. */
-    chatLiveProcess: ChatLiveProcess
+    chatLiveProcess: ChatSessionPresentation
+    /** Reversible Session-specific preference for a collapsed edited-files list. */
+    chatChangedFiles: ChatSessionPresentation
   }
 }

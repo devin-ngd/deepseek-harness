@@ -43,7 +43,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required services for the tail-slot and tab-type registrations and their dictionaries. */
-export const inject = ['slots', 'locale', 'uiConversation', 'remote', 'remote.session', 'sidebarRightTabs', 'sidebarRight', 'configForms']
+export const inject = ['slots', 'locale', 'uiConversation', 'remote', 'remote.session', 'sidebarRightTabs', 'sidebarRight', 'configForms', 'chatChangedFiles']
 
 /**
  * Client plugin body: register the dictionaries, the turn-tail entry, and the comparison tab type.
@@ -68,9 +68,9 @@ export function apply(ctx: ClientContext): void {
       id: '@deepseek-ai/dsh-client-ui-deliverables',
       locale: NS,
       children: { 'deliverables.file.actions': { kind: 'list', scope: 'session' } },
-      inject: (): DeliverablesInjected => ({
+      inject: (sessionId): DeliverablesInjected => ({
         hooks: { changesDiff: diffs.state, presentedOpen: opener.state, presentedHost: opener.host, changesSummary: summaries.state,
-          showCodeDiff: ctx.configForms.developerTools.enabled },
+          showCodeDiff: ctx.configForms.developerTools.enabled, compactChangedFiles: ctx.chatChangedFiles.forSession(sessionId) },
         loadChangesDiff: (sessionId, seq, index) => diffs.load(sessionId, seq, index),
         reloadPresentedHost: () => opener.loadHost(),
         loadChangesSummary: (sessionId, seq) => summaries.load(sessionId, seq),

@@ -34,7 +34,9 @@ export type { ChatStoreState, ToolCallId, TurnProcessViewEntry } from './contrac
 export type { TranscriptViewRowInjected, TranscriptViewRowProps } from './settings/TranscriptViewRow.tsx'
 export type { TranscriptViewMode } from '../chat-settings.ts'
 export type { ChatPresentationPolicy } from './presentation-policy.ts'
-export type { ChatLiveProcess, LiveProcessContribution } from './live-process.ts'
+export type {
+  ChatSessionPresentation as ChatLiveProcess, SessionPresentationContribution as LiveProcessContribution,
+} from './live-process.ts'
 export type {
   AssistantActionOwnerProps, ChatFileMentions, ChatNodeHookContext, ChatNodeInjected, ChatNodeOwnerProps,
   ChatNodeViewProps, ChatScrollPosition, ChatStore, ChatViewInjected, ChatViewSlotProps,

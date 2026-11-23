@@ -87,6 +87,7 @@ function openProps(controller = new PresentedOpenController(), summaries = new C
     useChangesDiff: <T,>(select: (state: ReturnType<typeof diffs.state.getSnapshot>) => T): T => select(diffs.state.getSnapshot()),
     loadChangesDiff: vi.fn((...args: Parameters<ChangesDiffStore['load']>) => diffs.load(...args)),
     useShowCodeDiff: <T,>(select: (value: boolean) => T): T => select(true),
+    useCompactChangedFiles: <T,>(select: (value: boolean) => T): T => select(false),
     useSessions: <T,>(select: (state: SessionListState) => T): T => select(sessions),
     reloadPresentedHost: vi.fn(() => controller.loadHost()),
     useChangesSummary: <T,>(select: (state: ReturnType<typeof summaries.state.getSnapshot>) => T): T =>
@@ -254,6 +255,25 @@ function deliverablesOf(value: ConversationNodeAssembler, turn = 1): Readonly<De
 }
 
 describe('produced-file Turn data', () => {
+  it('uses only recorded absolute patch targets and ignores unavailable or malformed metadata', () => {
+    const value = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      call(2, 'patch', 'apply_patch', { input: 'patch' }),
+      result(3, 'patch', false, 1, { producedPaths: ['/project/new.txt', '/project/moved.txt'] }),
+      call(4, 'old', 'apply_patch', { input: 'old' }),
+      result(5, 'old', false, 1, { diffs: [] }),
+      call(6, 'invalid', 'apply_patch', { input: 'invalid' }),
+      result(7, 'invalid', false, 1, { producedPaths: ['/project/good.txt', 'relative.txt'] }),
+      call(8, 'failed', 'apply_patch', { input: 'failed' }),
+      result(9, 'failed', true, 1, { producedPaths: ['/project/failed.txt'] }),
+    ])
+    const paths = producedForClosing(deliverablesOf(value))
+    expect(paths).toEqual(['/project/new.txt', '/project/moved.txt'])
+    const opened = vi.fn()
+    producedFileMentions(paths, opened, path => path).resolve('moved.txt')?.open()
+    expect(opened).toHaveBeenCalledWith('/project/moved.txt')
+  })
+
   it('deduplicates paths in first-seen order across the whole turn', () => {
     const data = produced('out/index.html', 'out/app.css', 'out/index.html', 'after.txt')
     expect(producedForClosing(data)).toEqual(['out/index.html', 'out/app.css', 'after.txt'])
@@ -615,6 +635,24 @@ describe('ChangedFiles card', () => {
     return { props, openFile, view }
   }
 
+  it('shows just the file count in compact mode until the full list is opened', () => {
+    const props = openProps(new PresentedOpenController(), servedStore())
+    const sessionId = brandString<SessionId>('child-session')
+    const view = render(<Deliverables {...props} matched={{ changes, presented: [] }} openFile={vi.fn()}
+      sessionId={sessionId} t={makeTranslate(zh)} useCompactChangedFiles={select => select(true)} />)
+    const toggle = view.getByRole('button', { name: '已编辑 11 个文件' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(view.queryByRole('list')).toBeNull()
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(view.getAllByRole('listitem')).toHaveLength(files.length)
+    fireEvent.click(view.getByRole('button', { name: '查看 ~/.zshrc 的改动' }))
+    expect(props.openChangesReview).toHaveBeenCalledExactlyOnceWith({ sessionId, seq: 5, turn: 1 }, 4)
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(view.queryByRole('list')).toBeNull()
+  })
+
   it.each([en, zh])('shows one edited filename without a list and opens its review', (locale) => {
     const single = servedStore({ turn: 1, files: [changedFile('src/example.scss', 3, 1)], total: 1, added: 3, deleted: 1 })
     const { props, view } = renderCard(new PresentedOpenController(), locale, { changes, presented: [] }, single)
@@ -904,6 +942,7 @@ describe('plugin registration', () => {
     } as never)
     ctx.provide('remote.session', session as never)
     ctx.provide('configForms', { developerTools: { enabled: createSnapshotStore(true) }, get: () => stubConfigForm().scope } as never)
+    ctx.provide('chatChangedFiles', { forSession: () => createSnapshotStore(false) })
     await ctx.plugin({ inject: localeInject, apply: applyLocale }).await()
 
     const fiber = ctx.plugin({ inject: [...inject], apply })

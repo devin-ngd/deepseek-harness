@@ -45,8 +45,17 @@ button.header:disabled { cursor: progress; }
   .toggle:hover { background: var(--dsw-alias-interactive-bg-hover); }
 }
 .toggle svg { flex: none; width: 14px; height: 14px; }
+
+.compactHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.disclosure { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 2px 8px; border: 0; border-radius: var(--dsw-radius-sm); background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; font: inherit; font-size: 12px; line-height: 18px; text-align: left; }
+.disclosure svg { flex: none; }
+.disclosure:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: -2px; }
+[data-changed-files='compact'] > .card > .list { border-top: 0; }
+@media (hover: hover) {
+  .disclosure:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+}
 @media (pointer: coarse) {
-  .row, .toggle { min-height: 44px; }
+  .row, .toggle, .disclosure { min-height: 44px; }
 }
 
 .preview { max-height: 100%; overflow: hidden; }

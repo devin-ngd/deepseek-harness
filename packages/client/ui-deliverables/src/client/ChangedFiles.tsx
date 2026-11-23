@@ -30,13 +30,15 @@ function Counts({ added, deleted, t }: { added: number; deleted: number } & Prop
 /**
  * Render one turn's changed files. The header opens the turn's review in the
  * right Sidebar on its first file. A single file uses only the header; it and
- * multi-file rows preview their comparison after a 500ms hover.
+ * multi-file rows preview their comparison after a 500ms hover. Compact mode
+ * puts the whole card behind a file-count button and expands all rows together.
  * @param props - the recorded summary, the review opener, and localized copy.
  * @returns the card.
  */
-export function ChangedFiles({ changes, cwd, openReview, t, sessionId, useChangesDiff, loadChangesDiff }: {
+export function ChangedFiles({ changes, compact, cwd, openReview, t, sessionId, useChangesDiff, loadChangesDiff }: {
   /** The served summary with the sequence of the event that announced it. */
   changes: Pick<ChangesSummary, 'files' | 'total' | 'added' | 'deleted'> & { seq: number }
+  compact: boolean
   cwd: string | undefined
   /** Open the turn's review on the file at an original summary index. */
   openReview: (index: number) => void
@@ -44,10 +46,10 @@ export function ChangedFiles({ changes, cwd, openReview, t, sessionId, useChange
   const cardRef = useRef<HTMLDivElement>(null)
   const pathDescriptionId = useId()
   const [expanded, setExpanded] = useState(false)
-  const singleFile = changes.total === 1 ? changes.files[0] : undefined
-  const foldable = changes.files.length > COLLAPSED_ROWS
+  const singleFile = !compact && changes.total === 1 ? changes.files[0] : undefined
+  const foldable = !compact && changes.files.length > COLLAPSED_ROWS
   const rows = foldable && !expanded ? changes.files.slice(0, COLLAPSED_ROWS) : changes.files
-  const header = <button type="button" className={css.header}
+  const header = compact ? null : <button type="button" className={css.header}
     aria-label={singleFile === undefined ? t('changes.openReview') : t('changes.viewDiff', { name: singleFile.display })}
     aria-describedby={singleFile === undefined ? undefined : pathDescriptionId}
     onClick={() => { openReview(0) }}>
@@ -66,14 +68,15 @@ export function ChangedFiles({ changes, cwd, openReview, t, sessionId, useChange
       </span>
     </span>
   </button>
-  return <div ref={cardRef} className={css.card} data-changed-files data-single={singleFile !== undefined || undefined}>
-    {singleFile === undefined ? header : <>
+  const card = !compact || expanded ? <div ref={cardRef} className={css.card}
+    data-changed-files={!compact || undefined} data-single={singleFile !== undefined || undefined}>
+    {!compact && (singleFile === undefined ? header : <>
       <HoverCard variant="preview" widthAnchorRef={cardRef} openDelayMs={500} anchor={header}
         content={<ChangedFilePreview sessionId={sessionId} seq={changes.seq} index={0}
           display={resolveWorkspacePath(cwd, singleFile.path)} useChangesDiff={useChangesDiff}
           loadChangesDiff={loadChangesDiff} t={t} />} />
       <span id={pathDescriptionId} hidden>{resolveWorkspacePath(cwd, singleFile.path)}</span>
-    </>}
+    </>)}
     {singleFile === undefined && <ul className={css.list}>
       {rows.map((file, index) => (
         <li key={file.display}>
@@ -102,6 +105,18 @@ export function ChangedFiles({ changes, cwd, openReview, t, sessionId, useChange
       <span>{t(expanded ? 'changes.collapse' : 'changes.all', { count: String(changes.files.length) })}</span>
       {expanded ? <IconChevronUpOutlineRegular /> : <IconChevronDownOutlineRegular />}
     </button>}
+  </div> : null
+  if (!compact) return card
+  return <div data-changed-files="compact">
+    <div className={css.compactHeader}>
+      <button type="button" className={css.disclosure} aria-expanded={expanded}
+        onClick={() => { setExpanded(value => !value) }}>
+        {changes.total === 1 ? t('changes.singleCount') : t('changes.title', { count: String(changes.total) })}
+        {expanded ? <IconChevronUpOutlineRegular size={14} /> : <IconChevronDownOutlineRegular size={14} />}
+      </button>
+      {expanded && <span className={`${css.stat} ${css.statCounts}`}><Counts t={t} added={changes.added} deleted={changes.deleted} /></span>}
+    </div>
+    {card}
   </div>
 }
 
