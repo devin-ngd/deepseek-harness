@@ -11,11 +11,14 @@
  */
 
 import { globSync, readFileSync } from 'node:fs'
-import { dirname, relative, resolve } from 'node:path'
+import { realpathSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { Script } from 'node:vm'
 import ts from 'typescript'
 import type { DshBundleManifest } from '../packages/util/package-manifest/src/types.ts'
 import { bundlePatchFiles, bundlePatchPaths } from '../packages/boot/app-boot/src/profile.ts'
+import { BACKEND_PACKAGES, SURFACE_PACKAGES } from '../packages/host/directory-picker-auto/src/index.ts'
 import { cordisConfigFiles } from './cordis-config-files.ts'
 import { isAgentPresetEntry, presetDefinitions, isCordisGroupEntry, isJsExpr, loadCordisYaml } from './cordis-yaml.ts'
 
@@ -44,18 +47,11 @@ const metadataFields = ['id', 'name', 'group', 'inject', 'intercept', 'isolate']
 const CHOOSER_PACKAGE = '@deepseek-ai/dsh-host-directory-picker-auto'
 
 /**
- * The packages the chooser mounts by runtime string (mirror of its exported
- * `BACKEND_PACKAGES` and `SURFACE_PACKAGES`), invisible to yml-row scanning: a
+ * The packages the chooser mounts by runtime string, invisible to yml-row scanning: a
  * composition mounting the chooser must resolve every one, or keyless Linux CI
  * (which only ever resolves `browse`) hides a dropped `-native` dependency
  * until a macOS boot.
  */
-const CHOOSER_BACKEND_PACKAGES = [
-  '@deepseek-ai/dsh-host-directory-picker-native',
-  '@deepseek-ai/dsh-host-directory-picker-browse',
-  '@deepseek-ai/dsh-client-ui-directory-picker-browse',
-  '@deepseek-ai/dsh-client-ui-directory-picker-native',
-]
 const errors: string[] = []
 const pluginReferences: PluginReference[] = []
 
@@ -63,7 +59,7 @@ if (import.meta.main) {
   const files = cordisConfigFiles(root)
 
   for (const file of files) {
-    const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+    const document = loadCordisConfigDocument(root, file)
     if (!isUnknownArray(document)) {
       errors.push(`${file}: root must be a Loader entry array`)
       continue
@@ -86,6 +82,35 @@ if (import.meta.main) {
     process.exitCode = 1
   } else {
     console.log(`verify-cordis-config: ${files.length} config files passed.`)
+  }
+}
+
+/**
+ * Load a config, including an unchanged Git symlink checkout on Windows without symlink support.
+ * @param repoRoot Repository root.
+ * @param file Repository-relative Loader config path.
+ * @returns Parsed config; invalid or unresolvable placeholders remain scalar values.
+ */
+export function loadCordisConfigDocument(repoRoot: string, file: string): unknown {
+  const path = resolve(repoRoot, file)
+  const text = readFileSync(path, 'utf8')
+  const document: unknown = loadCordisYaml(text)
+  if (typeof document !== 'string' || document !== text) return document
+  let target: string
+  try {
+    const index = execFileSync('git', ['ls-files', '--stage', '-z', '--', file], { cwd: repoRoot, encoding: 'utf8' })
+    const entry = /^120000 ([0-9a-f]+) 0\t[^\0]+\0$/u.exec(index)
+    if (entry?.[1] === undefined) return document
+    target = execFileSync('git', ['cat-file', 'blob', entry[1]], { cwd: repoRoot, encoding: 'utf8' })
+    if (target !== text || isAbsolute(target)) return document
+    const base = realpathSync(repoRoot)
+    const destination = realpathSync(resolve(dirname(path), target))
+    const within = relative(base, destination)
+    if (within === '..' || within.startsWith(`..${sep}`) || isAbsolute(within) || destination === realpathSync(path)) return document
+    return loadCordisYaml(readFileSync(destination, 'utf8'))
+  } catch {
+    // A missing Git index, target, or cyclic link cannot establish a valid config.
+    return document
   }
 }
 
@@ -168,7 +193,7 @@ function validatePresetPlaneSeparation(): string[] {
 
 /** Every entry of one config file, or an empty list when it is not an entry array. */
 function loadEntries(file: string): unknown[] {
-  const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+  const document = loadCordisConfigDocument(root, file)
   return isUnknownArray(document) ? document : []
 }
 
@@ -476,7 +501,7 @@ function missingPluginDependencies(
     if (packageName === undefined) continue
     require(packageName, reference.file)
     if (packageName === CHOOSER_PACKAGE) {
-      for (const backend of CHOOSER_BACKEND_PACKAGES) require(backend, reference.file)
+      for (const backend of [...Object.values(BACKEND_PACKAGES), ...Object.values(SURFACE_PACKAGES)]) require(backend, reference.file)
     }
   }
   return [...requiredPackages].flatMap(([packageName, locations]) => packageName in dependencies
