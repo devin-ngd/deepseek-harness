@@ -76,6 +76,34 @@ function stageInstallation(
   return join(appDir, 'package.json')
 }
 
+it.each([false, true])('preserves a rich-inline profile override when its bundle is renamed (disabled=%s)', (disabled) => {
+  const oldName = '@deepseek-ai/dsh-experimental-rich-inline'
+  const newName = '@deepseek-ai/dsh-rich-inline'
+  const richPatch = (name: string) => `- insert:\n  - id: rich-inline\n    name: '${name}'\n`
+  const anchor = stageInstallation({
+    base: { patch: '- insert:\n  - id: base-entry\n    name: base-entry\n' },
+    [oldName]: { patch: richPatch(oldName) },
+    [newName]: { patch: richPatch(newName) },
+    after: { patch: '- insert:\n  - id: after-entry\n    name: after-entry\n' },
+  })
+  const dir = join(tmp(), 'profile')
+  initProfile(dir, ['base', oldName, 'after'])
+  const override = (name: string) => `- id: rich-inline\n  name: '${name}'\n  disabled: ${String(disabled)}\n  config:\n    htmlQuestions: true\n    theme: cyber\n`
+  const patchPath = join(dir, PROFILE_PATCH_FILENAME)
+  writeFileSync(patchPath, override(oldName))
+  const effective = () => {
+    const profile = loadProfileDirectory('test', dir, anchor)
+    return composeEntries([...profile.layers.map(layer => layer.patches), profile.patches])
+  }
+  const before = effective()
+  const manifest = readProfileManifest('test', dir)
+  writeProfileManifest(dir, { ...manifest, dsh: { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: ['base', newName, 'after'] } } })
+  writeFileSync(patchPath, override(newName))
+  const after = effective()
+  expect(after).toEqual(before.map(entry => entry.id === 'rich-inline' ? { ...entry, name: newName } : entry))
+  expect(after.filter(entry => entry.id === 'rich-inline')).toHaveLength(1)
+})
+
 it('skips an unsupported saved bundle before composing any runtime overrides and retains the selection', () => {
   const unsupported = process.platform === 'darwin' ? 'win32' : 'darwin'
   const anchor = stageInstallation({

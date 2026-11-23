@@ -1,7 +1,8 @@
 /** Installed metadata and shared bundle activation across profile package operations. */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { readProfilePlugins, reconcileProfilePlugins, writeProfileBundles, type ProfilePluginLocation } from '../src/profile-plugins.ts'
 
@@ -30,6 +31,47 @@ function installed(location: ProfilePluginLocation, name: string, bundle = true)
     name, version: '1.0.0', ...(bundle ? { dsh: { bundle: { patch: 'unbuilt.yml' } } } : {}),
   })
 }
+
+it.each([false, true])('reconciles a local tarball rename and restores selection (selected=%s)', (selected) => {
+  const location = fixture()
+  const root = dirname(location.profileDir)
+  const pnpm = resolve(import.meta.dirname, '../../../../node_modules/pnpm/bin/pnpm.mjs')
+  const oldName = '@deepseek-ai/dsh-experimental-rich-inline'
+  const newName = '@deepseek-ai/dsh-rich-inline'
+  const run = (cwd: string, args: string[]) => {
+    const result = spawnSync(process.execPath, [pnpm, ...args], { cwd, encoding: 'utf8', timeout: 60_000 })
+    expect(result.error).toBeUndefined()
+    expect(result.signal).toBeNull()
+    expect(result.status, result.stdout + result.stderr).toBe(0)
+  }
+  for (const [directory, name] of [['old', oldName], ['new', newName]] as const) {
+    const source = join(root, directory)
+    writeManifest(source, { name, version: '1.0.0', files: ['cordis.patch.yml'], dsh: { bundle: { patch: 'cordis.patch.yml' } } })
+    writeFileSync(join(source, 'cordis.patch.yml'), `- insert:\n  - id: rich-inline\n    name: '${name}'\n`)
+    run(source, ['pack', '--pack-destination', root])
+  }
+  writeManifest(location.profileDir, { name: 'migration-fixture', private: true, custom: { keep: true } })
+  const add = (file: string) => { run(location.profileDir, ['add', `file:${join(root, file).replaceAll('\\', '/')}`, '--offline', '--ignore-scripts', '--store-dir', join(root, 'store')]) }
+  let before = readProfilePlugins(location)
+  add('deepseek-ai-dsh-experimental-rich-inline-1.0.0.tgz')
+  let current = reconcileProfilePlugins({ ...location, before, preserveDisabled: true }).plugins
+  expect(current.manifest.dsh?.profile?.bundles).toEqual([oldName])
+  writeProfileBundles(location.profileDir, current.manifest, selected ? ['before', oldName, 'after'] : ['before', 'after'])
+  before = readProfilePlugins(location)
+  run(location.profileDir, ['remove', oldName, '--config.offline=true', '--config.ignore-scripts=true', `--config.store-dir=${join(root, 'store')}`])
+  current = reconcileProfilePlugins({ ...location, before, preserveDisabled: true }).plugins
+  expect(current.manifest.dsh?.profile?.bundles).toEqual(['before', 'after'])
+  before = current
+  add('deepseek-ai-dsh-rich-inline-1.0.0.tgz')
+  current = reconcileProfilePlugins({ ...location, before, preserveDisabled: true }).plugins
+  expect(current.manifest.dsh?.profile?.bundles).toEqual(['before', 'after', newName])
+  const expected = selected ? ['before', newName, 'after'] : ['before', 'after']
+  const updated = writeProfileBundles(location.profileDir, current.manifest, expected)
+  expect(updated.dsh?.profile?.bundles).toEqual(expected)
+  expect(updated).toMatchObject({ custom: { keep: true } })
+  expect(typeof updated.dependencies?.[newName]).toBe('string')
+  expect(updated.dependencies).not.toHaveProperty(oldName)
+}, 120_000)
 
 it('refuses automatic activation on an unsupported Host without changing the bundle selection', () => {
   const location = fixture()
