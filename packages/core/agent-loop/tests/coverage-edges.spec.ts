@@ -117,8 +117,8 @@ describe('tool JSON parse', () => {
 })
 
 describe('thrown-value propagation', () => {
-  it('preserves non-Error throws from pre-commit dispatch validation', async () => {
-    const adapter = new MockAdapter([textResponse('ok')])
+  it('preserves non-Error throws from pre-commit dispatch validation and resumes on waking input', async () => {
+    const adapter = new MockAdapter([textResponse('first recovered'), textResponse('next recovered')])
     const ctx = await harness(adapter)
     const agent = await ctx.agentLoop.create(brandString<SessionId>('a1'), { provider: 'mock', model: 'mock' })
 
@@ -140,14 +140,17 @@ describe('thrown-value propagation', () => {
     await waitForIdle(ctx, agent)
     expect(errors).toHaveLength(1)
     expect(errors[0]).toBe('naked string error')
-    expect(adapter.requests).toHaveLength(0)
+    expect(adapter.requests).toHaveLength(2)
     const starts = agent.session.snapshotEvents().filter(event => event.type === 'turn/start')
     const ends = agent.session.snapshotEvents().filter(event => event.type === 'turn/end')
     const messages = agent.session.snapshotEvents().filter(event => event.type === 'user/message')
-    expect(starts).toHaveLength(0)
-    expect(ends).toHaveLength(0)
-    expect(messages).toHaveLength(0)
-    expect(agent.inbox.nextTurn).toHaveLength(2)
+    expect(starts.map(event => event.type === 'turn/start' ? event.data.turn : 0)).toEqual([1, 2])
+    expect(ends).toHaveLength(2)
+    expect(messages.map(event => event.type === 'user/message' ? event.data.content : [])).toEqual([
+      [{ type: 'text', text: 'fails before turn start' }],
+      [{ type: 'text', text: 'survives as the next item' }],
+    ])
+    expect(agent.inbox.nextTurn).toHaveLength(0)
   })
 
   it('preserves non-Error throws from the agent/request waterfall', async () => {

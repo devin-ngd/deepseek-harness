@@ -77,6 +77,26 @@ function userTexts(agent: Agent): string[] {
 }
 
 describe('agent loop', () => {
+  it.each(['steer', 'inject'] as const)('delivers %s queued during turn retirement before becoming idle', async (delivery) => {
+    const adapter = new MockAdapter([textResponse('first'), textResponse('second')])
+    const ctx = await harness(adapter)
+    const agent = await ctx.agentLoop.create(brandString<SessionId>(`retiring-${delivery}`), { provider: 'mock', model: 'mock' })
+    let queued = false
+    ctx.on('session/event', (session, event) => {
+      if (session !== agent.session || event.type !== 'turn/end' || queued) return
+      queued = true
+      queueMicrotask(() => {
+        agent[delivery](createUserMessage({ content: [{ type: 'text', text: 'late input' }], source: { kind: 'test' } }))
+      })
+    })
+
+    send(agent, 'first input')
+    await agent.whenIdle()
+
+    expect(adapter.requests).toHaveLength(2)
+    expect(userTexts(agent)).toEqual(['first input', 'late input'])
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/end')).toHaveLength(2)
+  })
   it('publishes one dense live attempt and commits one v2 message with the exact embedded stream', async () => {
     const ctx = await harness(new MockAdapter([textResponse('live')]))
     const agent = await ctx.agentLoop.create(brandString<SessionId>('live-assistant-attempt'), {
