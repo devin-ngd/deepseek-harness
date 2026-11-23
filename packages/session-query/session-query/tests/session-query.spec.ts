@@ -3,7 +3,7 @@ import type { ContextFormed, MessageSource } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it, vi } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
-import SessionStore, { SessionLogOffset, SessionSeq, SESSION_FORMAT_VERSION, type SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionLogOffset, SessionSeq, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent, SessionHeader, SessionId as SessionIdType } from '@deepseek-ai/dsh-session'
 import SessionPersistence, {
@@ -478,6 +478,23 @@ describe.each(cancellableExactReads.filter(read => read.inspects))(
 )
 
 describe('session-query exact reads', () => {
+  it('captures a detached live log before returning control to the caller', async () => {
+    const ctx = await liveContext()
+    try {
+      const session = ctx.sessions.create(SessionId('live-exact-captured-cut'))
+      session.append('turn/start', { turn: 1 })
+      const pending = ctx.sessionQuery.readSession(session.id)
+      session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+
+      const snapshot = await pending
+      expect(snapshot.events.map(event => event.type)).toEqual(['turn/start'])
+      Object.assign(snapshot.events[0]!, { time: 999 })
+      expect((await ctx.sessionQuery.readSession(session.id)).events[0]?.time).not.toBe(999)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('returns a detached replay-valid full log and rejects a corrupt persisted seed', async () => {
     const valid = header('valid-log', 2)
     const corrupt = header('corrupt-log', 1)
@@ -609,6 +626,49 @@ describe('session-query exact reads', () => {
     expect(TestPersistence.readCalls).toEqual([second.id, first.id])
     expect(TestPersistence.listSignals).toEqual([signal])
     expect(TestPersistence.readSignals).toEqual([signal, signal])
+  })
+
+  it('captures all live titles before returning control to the caller', async () => {
+    const ctx = await liveContext()
+    try {
+      const first = ctx.sessions.create(SessionId('live-title-cut-first'))
+      const second = ctx.sessions.create(SessionId('live-title-cut-second'))
+      first.append('session/title', { title: 'First', messageSeqs: [], source: { kind: 'fallback' } })
+      second.append('session/title', { title: 'Second', messageSeqs: [], source: { kind: 'fallback' } })
+      const pending = ctx.sessionQuery.readTitleSnapshots([first.id, second.id])
+      first.append('session/title', { title: 'First later', messageSeqs: [], source: { kind: 'fallback' } })
+      second.append('session/title', { title: 'Second later', messageSeqs: [], source: { kind: 'fallback' } })
+
+      expect(await pending).toMatchObject([
+        { sessionId: first.id, status: 'fulfilled', value: { title: { title: 'First' } } },
+        { sessionId: second.id, status: 'fulfilled', value: { title: { title: 'Second' } } },
+      ])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('reads titles from restored live events with opaque extension fields', async () => {
+    const ctx = await liveContext()
+    const id = SessionId('live-title-restored-extension')
+    const event: SessionEvent<'turn/start'> = {
+      type: 'turn/start', seq: SessionSeq(0), time: 1,
+      data: Object.assign({ turn: 1 }, { opaque: undefined }),
+    }
+    const session = ctx.sessions.prepare(id, {
+      seed: [event], meta: header(id), inheritedEventCount: SessionLogOffset(0), eventState: 'detached',
+    })
+    const detach = ctx.sessions.enter(session)
+    try {
+      ctx.sessions.announce(session)
+      session.append('session/title', { title: 'Restored', messageSeqs: [], source: { kind: 'fallback' } })
+      await expect(ctx.sessionQuery.readTitleSnapshots([id])).resolves.toMatchObject([
+        { sessionId: id, status: 'fulfilled', value: { title: { title: 'Restored' } } },
+      ])
+    } finally {
+      detach()
+      await ctx.fiber.dispose()
+    }
   })
 
   it('bounds persisted title inspection concurrency while preserving ordered results', async () => {

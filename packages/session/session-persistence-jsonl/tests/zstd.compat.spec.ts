@@ -6,6 +6,21 @@ import { NodePrivateZstdFrameDecoder } from '../src/zstd-private-decoder.ts'
 import { PublicZstdFrameDecoder } from '../src/zstd-public-decoder.ts'
 
 describe('JSONL Zstandard compatibility', () => {
+  it('rejects a bad checksum with both decoders', async () => {
+    const encoded = await compressZstdFrame('retained session data\n')
+    encoded[encoded.length - 1] = encoded[encoded.length - 1]! ^ 1
+    const { frames, tornStart } = scanZstdFrames(encoded)
+    expect(tornStart).toBeUndefined()
+    expect(frames).toHaveLength(1)
+    for (const decoder of [createZstdFrameDecoder(), new PublicZstdFrameDecoder()]) {
+      try {
+        expect(() => Array.from(decoder.decode(encoded, frames))).toThrow(/corrupt Zstandard session log/)
+      } finally {
+        decoder.close()
+      }
+    }
+  })
+
   it('round-trips concatenated checksummed frames through the built-in Node API', async () => {
     const encoded = Buffer.concat([
       await compressZstdFrame('{"type":"session","version":0,"id":"compat","createdAt":1}\n'),

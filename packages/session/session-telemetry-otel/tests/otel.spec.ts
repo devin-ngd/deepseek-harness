@@ -18,7 +18,7 @@ import { getOrCreateAnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { recordFeedback } from '@deepseek-ai/dsh-command-feedback'
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SESSION_FORMAT_VERSION, Session, type SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import MessageFeedbackService from '@deepseek-ai/dsh-message-feedback'
 import * as JsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import OpenTelemetrySessionBackend, { Config, DEFAULT_TELEMETRY_MODE, SessionTelemetryMode } from '../src/index.ts'
@@ -378,6 +378,29 @@ describe('OpenTelemetrySessionBackend wire', () => {
     })
     const envelope = { seq: SessionSeq(session.seq), time: Date.now() }
     ctx.emit('session/event', session, { ...envelope, type: 'feedback/record', data: { text: 'not committed' } })
+    await fiber.dispose()
+
+    expect(warn).toHaveBeenCalledWith(
+      'session telemetry ignored an event absent from the canonical session log',
+    )
+    expect(captures).toEqual([])
+  })
+
+  it('rejects a copied feedback event even when its sequence and payload match the canonical log', async () => {
+    const { url, captures } = await mockCollector()
+    const ctx = new Context()
+    ctx.plugin(OTel)
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create(SessionId('copied-feedback'), { meta: {} })
+    session.append('turn/start', { turn: 1 })
+    const canonical = session.append('feedback/record', { text: 'earlier feedback' })
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    const fiber = await ctx.plugin(OpenTelemetrySessionBackend, {
+      mode: SessionTelemetryMode.FEEDBACK_ONLY,
+      exporter: { url },
+    })
+
+    ctx.emit('session/event', session, structuredClone(canonical))
     await fiber.dispose()
 
     expect(warn).toHaveBeenCalledWith(

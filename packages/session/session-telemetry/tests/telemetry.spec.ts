@@ -246,6 +246,26 @@ describe('SessionTelemetryCoordinator capture', () => {
 })
 
 describe('SessionTelemetryCoordinator on-demand capture', () => {
+  it('captures a fixed prefix when the backend appends during handoff', async () => {
+    const { ctx, backend, coordinator } = await setup(new FakeBackend(), 'on-demand')
+    const session = liveSession(ctx, 'on-demand-reentrant-append')
+    appendTurn(session)
+    const emit = backend.emit.bind(backend)
+    let appended = false
+    vi.spyOn(backend, 'emit').mockImplementation((record) => {
+      emit(record)
+      if (!appended) {
+        appended = true
+        session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+      }
+    })
+
+    coordinator.captureSession(session)
+    expect(backend.ledger().map(record => record.attributes['event.seq'])).toEqual([0, 1])
+    coordinator.captureSession(session)
+    expect(backend.ledger().map(record => record.attributes['event.seq'])).toEqual([0, 1, 2])
+  })
+
   it('captures one canonical-log prefix at a time without following later events', async () => {
     const { ctx, backend, coordinator } = await setup(new FakeBackend(), 'on-demand')
     const session = liveSession(ctx, 'on-demand-prefix')

@@ -7,7 +7,7 @@ import type { FileHandle } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { scheduler } from 'node:timers/promises'
-import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq, type SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
@@ -374,6 +374,20 @@ runLiveWritePathContract('jsonl', LIVE_WRITE_BATCH_MAX_DELAY_MS, async () => {
     return ctx
   }
   return { ctx: await mount(), remount: mount }
+})
+
+it('does not persist a store-created session without an acquired write handle', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-jsonl-store-only-'))
+  dirs.push(dir)
+  const ctx = new Context()
+  liveContexts.push(ctx)
+  await ctx.plugin(SessionStore)
+  await ctx.plugin(JsonlSessionPersistence, { root: dir, compression: 'none' })
+  const session = ctx.sessions.create(SessionId('store-only'))
+  session.append('turn/start', { turn: 1 })
+
+  await expect(ctx.sessions.flush(session)).resolves.toBe(true)
+  await expect(ctx.sessionPersistence.stat(session.id)).resolves.toBeUndefined()
 })
 
 describe('JsonlSessionPersistence: format helpers', () => {
