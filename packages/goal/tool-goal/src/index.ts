@@ -23,10 +23,11 @@ import {
   goalToolExecution,
   requireDirectHuman,
 } from './authority.ts'
+import { goalAuthorityProjection } from './authority-projection.ts'
 import { renderWrapupContext } from './wrapup.ts'
 
 export const name = 'tool-goal'
-export const inject = ['agents', 'goals', 'tools', 'systemPrompt']
+export const inject = ['agents', 'goals', 'tools', 'systemPrompt', 'sessionProjections']
 
 /** Model policy and hard lower bounds for goal-state updates. */
 export interface Config {
@@ -183,9 +184,22 @@ function present(title: string, kind: 'read' | 'other', rawInput?: unknown): Gen
   return { card: 'generic', title, kind, ...rawInput === undefined ? {} : { rawInput } }
 }
 
-/** Register the three Codex-shaped goal tools and their shared policy section. */
-export function apply(ctx: Context, config: Config): void {
+/**
+ * Register the goal authority projection, tools, and their shared policy section.
+ * @param ctx - plugin context with its required services.
+ * @param config - goal-tool policy configuration.
+ * @returns the activation promise after the authority projection is ready.
+ * @throws synchronously when the supplied configuration is invalid.
+ */
+export const apply = (ctx: Context, config: Config): Promise<void> => {
   const resolved = resolveConfig(config)
+  return register(ctx, resolved)
+}
+
+async function register(ctx: Context, resolved: ResolvedConfig): Promise<void> {
+  const authority = await ctx.sessionProjections.register(goalAuthorityProjection)
+  ctx.fiber.assertActive()
+  const readAuthority = (session: Parameters<typeof authority.stateOf>[0]) => authority.stateOf(session)
   ctx.systemPrompt.section({
     name: 'tool:goal',
     order: ctx.systemPrompt.getSectionOrder('TOOL_GOAL'),
@@ -198,7 +212,7 @@ export function apply(ctx: Context, config: Config): void {
     parameters: {},
     output: GOAL_OUTPUT,
     execute(_args, exec) {
-      const execution = goalToolExecution(ctx, exec)
+      const execution = goalToolExecution(ctx, exec, readAuthority)
       return Promise.resolve(goalValue(ctx.goals.get(execution.agent)))
     },
     presentCall: () => present('Read current goal', 'read'),
@@ -220,7 +234,7 @@ export function apply(ctx: Context, config: Config): void {
     },
     output: GOAL_OUTPUT,
     execute(args, exec) {
-      const execution = goalToolExecution(ctx, exec)
+      const execution = goalToolExecution(ctx, exec, readAuthority)
       requireDirectHuman(ctx, execution)
       const goal = ctx.goals.create(execution.agent, {
         objective: args.objective,
@@ -253,7 +267,7 @@ export function apply(ctx: Context, config: Config): void {
     },
     output: GOAL_OUTPUT,
     execute(args, exec) {
-      const execution = goalToolExecution(ctx, exec)
+      const execution = goalToolExecution(ctx, exec, readAuthority)
       const ref = goalRef(args.goal_id, args.revision)
       if (args.action === 'edit') {
         requireDirectHuman(ctx, execution)

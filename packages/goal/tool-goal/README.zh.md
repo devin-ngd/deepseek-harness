@@ -68,7 +68,8 @@ kind: "package-reference"
 
 ### 设计
 
-- **执行时权限。** 插件依赖 `agents`，并通过 `turnBoundaryOf(session)` 读取轮次状态。每次调用都解析精确活跃 agent、其继承的 `AgentRegistry` initiator、running 状态与开放轮次；`create`、`edit`、`pause` 和 `resume` 还要求运行时根 agent 的当前轮次中存在已接受的 `{ kind: 'user' }` 消息或 steering 事件。持久的 paused goal 会让 `resume` 以 `GOAL_TOOL_RESUME_PAUSED` 失败；面向用户的命令或 Web 控件拥有该转换。`origin: 'subagent'` 的 Session 不能提供直接人类权限；带有 `parentSession` 的历史普通 fork 仍可提供。
+- **执行时权限。** 插件依赖 `agents` 和 `sessionProjections`，激活时等待权限投影注册，并通过 `turnBoundaryOf(session)` 读取轮次状态。每次调用都解析精确活跃 agent、其继承的 `AgentRegistry` initiator、running 状态与开放轮次；`create`、`edit`、`pause` 和 `resume` 还要求运行时根 agent 的当前轮次中存在已接受的 `{ kind: 'user' }` 消息或 steering 事件。持久的 paused goal 会让 `resume` 以 `GOAL_TOOL_RESUME_PAUSED` 失败；面向用户的命令或 Web 控件拥有该转换。`origin: 'subagent'` 的 Session 不能提供直接人类权限；带有 `parentSession` 的历史普通 fork 仍可提供。
+- **当前轮权限投影。** 仅宿主使用的投影为开放轮次中的每个不同 goal 来源保留一个三元组，并记录是否有人类直接输入。若有 k 个不同三元组，状态和检查点占用 O(k) 空间，每条 goal 消息的去重开销为 O(k)。轮次结束时清空三元组；检查点缺失或不兼容时，会在读取前从 Session 日志重建。
 - **人类输入的宿主证明。** `Agent.followup()` 与 `steer()` 会在调用方省略 source 时分配 `{ kind: 'user' }`，因此插件、调度器与其他非人类生产方必须传入自己的 source，不能继承人类权限。
 - **带配置阈值的系统提示词指引。** 本包注册一个 `tool:goal` 系统提示词章节，其固定文本插入 `blockedAfterConsecutiveRounds`；同一数值就是执行时强制执行的硬下限。
 - **终局 Round 的结束上下文。** 成功的自主 `complete` 或 `blocked` 会延后一条 `<goal_complete>` 或 `<goal_blocked>` 结束指令，让模型在轮次结束前向用户做一次交代；人类直接变更绝不会延后该上下文。
