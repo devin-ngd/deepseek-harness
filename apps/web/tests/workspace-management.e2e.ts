@@ -442,6 +442,8 @@ describe('web e2e: workspace management (create / rename / grouping / hover affo
     // at the cwd collapses the breadcrumb ancestry into the Home crumb — no
     // machine-specific path segments or real $HOME contents enter the golden.
     const staged = join(scaffold.workspaceCwd, 'browse-golden')
+    await Promise.all(['adopted', 'alpha-ws', 'beta-ws', 'same-name'].map(name =>
+      mkdir(join(scaffold.workspaceCwd, name), { recursive: true })))
     await mkdir(join(staged, 'alpha'), { recursive: true })
     await mkdir(join(staged, 'beta'), { recursive: true })
     // homedir() reads HOME on POSIX and USERPROFILE on Windows: root both
