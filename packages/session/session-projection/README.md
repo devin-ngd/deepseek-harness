@@ -63,6 +63,10 @@ const state = todoProjectionHandle.stateOf(session)
 const { asOfSeq, values } = ctx.sessionProjections.snapshot(session)
 ```
 
+A host-only owner that can await preparation may use `registerPrepared(definition)`, then await `handle.prepare(session, { pageSize, signal })` before a synchronous read. Recovery folds bounded copies through a fixed cut and catches up events appended while it runs; simultaneous callers share the fold but cancel independently. A live Session continues advancing through its event feed. An independent Session must be prepared again after it appends; a missing, stale, or in-progress state fails explicitly instead of synchronously reading history. Disposal cancels and drains the final registration’s recovery. Checkpoint writes retain any previously prepared row but omit a Session without one. Cold `restore` and `hydrate` omit these host-only units, so their failures cannot block unrelated reads; their owners prepare them separately.
+
+`handle.stateIfReady(session)` returns `{ ready: true, state }` at the current cut and `{ ready: false }` when preparation is missing, stale, or in progress; stored preparation failures still throw. It never starts recovery or reads history.
+
 <a id="bind-several-states-to-one-session"></a>
 ### Bind several states to one Session
 
@@ -87,7 +91,7 @@ A domain that owns projected state declares `sessionProjections` as a Cordis ser
 
 Legacy synchronous `return register(...)`, `ctx.effect(() => register(...))`, and synchronous generator yields retain cleanup ownership. Returning the registration from an async function assimilates the thenable into a handle, which Cordis rejects as `Invalid effect`. Yielding it from an async generator also yields the handle: that effect fails with `Invalid effect` when disposed and never adopts the registration, while the plugin stays active and its fiber releases the registration on unload. Async plugins and effects await registration and return `void`; the owning fiber releases the registration automatically.
 
-Legacy `stateOf(session, key)` is deprecated and returns `unknown`. Reading a registered key materializes every registered unit at the Session cursor without producing unrelated wire views. An unregistered or fully released key returns `undefined`, while retained handles remain readable. Compatibility covers runtime calls; TypeScript consumers migrate their type declarations.
+Legacy `stateOf(session, key)` is deprecated and returns `unknown`. Reading a registered key materializes every ordinary registered unit at the Session cursor without producing unrelated wire views; explicitly prepared units are read only when requested. An unregistered or fully released key returns `undefined`, while retained handles remain readable. Compatibility covers runtime calls; TypeScript consumers migrate their type declarations.
 
 The first legacy `stateOf(session, key)` read of each key logs one `ctx.logger.warn` deprecation warning per registry instance. Registration, calls to its result, handle methods, and owner cleanup do not warn.
 
@@ -97,7 +101,7 @@ Definitions install synchronously, and handle delivery remains asynchronous. Reg
 
 ### Persisted checkpoints
 
-Every unit's state is checkpointed — client-visible and host-only alike — through `checkpoint(session)`, and the sibling [session-projection-cache](../session-projection-cache/README.md) persists those checkpoints so cold reads skip full log loads. Checkpoint watermarks use `SessionSeqCursor` (`-1` for an empty log), while replay starts use `SessionLogOffset`; `restoreFloor` and `restore` implement the read recipe without conflating an existing event with a log gap. `restore` folds only live units, so its refreshed rows omit released units, and a write-back of them drops their stored rows.
+Every unit's state is checkpointed — client-visible and host-only alike — through `checkpoint(session)`, and the sibling [session-projection-cache](../session-projection-cache/README.md) persists those checkpoints so cold reads skip full log loads. Checkpoint watermarks use `SessionSeqCursor` (`-1` for an empty log), while replay starts use `SessionLogOffset`; `restoreFloor` and `restore` implement the read recipe without conflating an existing event with a log gap. `restore` folds only live units, so its refreshed rows omit released units, and a write-back of them drops their stored rows. For an unpublished Session, `prepare(session, rows, events)` folds each registered unit from its usable row and the active canonical construction cut supplied by `SessionStore.prepare`; missing, incompatible, or malformed rows rebuild that unit. It does not evaluate wire views. A fold failure is retained for that unit’s next read or live drive without preventing other units from preparing.
 
 ### Session summaries
 

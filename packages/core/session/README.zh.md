@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在必须存在会话的任何地方挂载 `dsh-session`。它在内存中创建并持有事件溯源的 `Session` 实例；持久存储由订阅 `session/event` 流的持久化插件叠加。
+在必须存在会话的任何地方挂载 `dsh-session`。它在内存中创建并持有事件溯源的 `Session` 实例。只有 agent 生命周期取得写句柄后，持久化插件才会存储事件；仅挂载插件不会持久化直接通过 Store 创建的会话。
 
 ### 创建与检查会话
 
@@ -33,13 +33,15 @@ kind: "package-reference"
 
 `ctx.sessions.create()` 构建绑定到调用方 fiber 的实时会话；`get(id)` 与 `list()` 查找会话，`fork()` 从实时会话的精确前缀创建独立会话。它复制历史、`cwd`、`isSeeded` 和继承事件数，不记录来源关系。`parentSession` 记录子代理的直接创建者；历史普通 fork 可能仍在此字段保留来源，因此分类使用 `origin`。
 
-独立的 `Session.create()` 和 `Session.fromRestore()` 实例接受事件和插件记录，但不发送 `session/event`。`SessionStore` 通过 `prepare()` 或 `enter()` 接管实例；此后只有实例仍在 Store 中且同步 `session/created` 宣告已完成时才能写入。创建监听器只能读取，并能看到全部已有历史；独立实例进入 Store 时不会把已有历史重放为 `session/event`。宣告失败或移除后仍禁止写入。只有开始过 `session/created` 宣告的实例在移除时发出 `session/disposed`，宣告失败也不例外；进入 Store 但从未宣告的实例不发出这两个通知。
+独立的 `Session.create()` 和 `Session.fromRestore()` 实例接受事件和插件记录，但不发送 `session/event`。`SessionStore` 通过 `prepare()` 或 `enter()` 接管实例；此后只有实例仍在 Store 中且同步 `session/created` 宣告已完成时才能写入。`prepare()` 可向同步准备回调提供不可变数组，其中包含准确的规范构造截面及构造器写入的 seed 标记；回调在 Session 进入 Store 之前运行；投影准备仅在该回调期间接受此截面。创建监听器只能读取，并能看到全部已有历史；独立实例进入 Store 时不会把已有历史重放为 `session/event`。宣告失败或移除后仍禁止写入。只有开始过 `session/created` 宣告的实例在移除时发出 `session/disposed`，宣告失败也不例外；进入 Store 但从未宣告的实例不发出这两个通知。
 
 ```text
 const session = ctx.sessions.create(sessionId, { meta: { cwd: '/workspace' } })
 ctx.sessions.get(sessionId)      // the live session
 ctx.sessions.list()              // every live session, in creation order
 ```
+
+`session.readHistoryPages({ pageSize, fromSeq?, toSeqExclusive?, signal? })` 在调用时捕获半开历史范围，返回只能消费一次的冻结分页异步迭代器。每个事件都是已分离、深度冻结的无损 JSON 副本，其对象身份不同于日志事件。`pageSize` 限制事件数量而非字节数；复制单个大事件时仍同步执行。读取器在页间让出事件循环，并在事件之间及页间响应取消。无法无损复制恢复事件时，迭代以 `SessionHistoryCopyError` 拒绝，其 `seq` 标识该事件。
 
 ### 追加与派生
 
@@ -65,7 +67,7 @@ session.deriveMessages()         // the derived model history
 
 ### 读取日志
 
-`session.seq` 无需物化数组即可读取当前日志长度，`session.eventAt(seq)` 按序列号读取单个已接受且深度冻结的事件。`session.snapshotEvents(fromSeq?, toSeqExclusive?)` 会物化半开区间的冻结稳定快照；当前完整快照会缓存到下一次追加。`eventAt()`、`snapshotEvents()` 和 `ownEvents()` 已弃用：现有逻辑可以暂不迁移，但禁止新增生产调用。仓库测试文件可以在限定范围的 lint 豁免下使用这三个读取方法（[策略](../../../.agents/notes/implemented/architecture/2026-09-09-deprecate-synchronous-session-event-reads.zh.md)）。只需要长度的调用方使用 `seq`。
+`session.seq` 无需物化数组即可读取当前日志长度，`session.eventAt(seq)` 按序列号读取单个已接受且深度冻结的事件。`session.snapshotEvents(fromSeq?, toSeqExclusive?)` 会物化半开区间的冻结稳定快照；当前完整快照会缓存到下一次追加。`eventAt()`、`snapshotEvents()` 和 `ownEvents()` 已弃用：现有逻辑可以暂不迁移，但禁止新增生产调用。指纹基线会拒绝为新增生产调用复制 lint 豁免；用 `pnpm run verify-session-history-waivers --prune` 删除已退役条目。仓库测试文件可以在限定范围的 lint 豁免下使用这三个读取方法（[策略](../../../.agents/notes/implemented/architecture/2026-09-09-deprecate-synchronous-session-event-reads.zh.md)）。只需要长度的调用方使用 `seq`。
 
 会话日志位置使用两种数字类型。`SessionSeq` 标识已有事件或包含端点的事件水位；`SessionLogOffset` 标识间隙、前缀长度或读取边界，并且可以等于事件数量。`SessionSeqCursor` 添加 `-1` 这个“尚无事件”值，`OptionalSessionSeq` 则在缺失本身属于数据时使用 `null`。构造函数会校验非负安全整数，brand 在运行时会被擦除，因此持久 JSON 与 wire 值仍是普通数字。
 
@@ -91,7 +93,7 @@ session.deriveMessages()         // the derived model history
 
 ### 刷新持久状态
 
-`ctx.sessions.flush(session)` 分发需等待完成的持久性检查点：每个持久化监听器都会刷新，调用在所有监听器结算后完成。需要立即持久性屏障的生产方应等待它，而不是假定延后写入已经排空。
+`ctx.sessions.flush(session)` 分发需等待完成的检查点，并在所有监听器结算后完成。返回的布尔值表示是否有监听器参与，不能证明该会话已有写句柄或已持久化。对于已取得写句柄的会话，应等待它，而不是假定延后写入已经排空。
 
 -----
 

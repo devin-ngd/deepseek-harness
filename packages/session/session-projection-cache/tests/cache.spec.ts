@@ -19,7 +19,7 @@ import { z } from 'zod'
 import SessionStore, {
   SESSION_FORMAT_VERSION,
   Session,
-  type SessionId,
+  SessionId,
   SessionLogOffset,
   SessionSeq,
 } from '@deepseek-ai/dsh-session'
@@ -660,7 +660,7 @@ describe('SessionProjectionCache listing read', () => {
     })
     const { ctx, cache } = await harness({ root })
     // The marks3 unit ships semantics version 2 and salvages what version 1 proved.
-    ctx.sessionProjections.register({
+    void ctx.sessionProjections.register({
       ...marks3Unit,
       stateVersion: 2,
       migrate: (state, version) => (version === 1 && state !== null ? state : undefined),
@@ -836,6 +836,29 @@ describe('SessionProjectionCache cold-read seeding', () => {
     })
     return events
   }
+
+  it('prepares matching, malformed and missing rows without affecting other Sessions', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
+    roots.push(root)
+    await seedRecord(root, 'prepare-matching', {
+      'cache-test/marks': { ver: 1, seq: SessionSeq(1), val: { marks: ['cached'] } },
+    })
+    await seedRecord(root, 'prepare-malformed', {
+      'cache-test/marks': { ver: 1, seq: SessionSeq(1), val: { marks: 'invalid' } },
+    })
+    const { cache, ctx } = await harness({ root })
+    for (const [id, expected] of [
+      ['prepare-matching', ['cached']],
+      ['prepare-malformed', ['fresh']],
+      ['prepare-missing', ['fresh']],
+    ] as const) {
+      const header = headerOf(SessionId(id))
+      const session = ctx.sessions.prepare(header.id, { seed: storedLog([['fresh']]), meta: header }, (subject, events) => {
+        cache.prepare(subject, events)
+      })
+      expect(ctx.sessionProjections.snapshot(session).values['cache-test/marks']).toEqual({ marks: expected })
+    }
+  })
 
   it('hydratePrepared seeds from a matching row and retries from the exact log on a malformed one', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))

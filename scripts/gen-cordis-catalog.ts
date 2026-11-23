@@ -1034,6 +1034,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   WorkflowStartRequest: 'workflow.md',
   ProjectionDefinition: 'session-projection.md',
   ProjectionHandle: 'session-projection.md',
+  PreparedProjectionHandle: 'session-projection.md',
   SessionProjectionMap: 'session-projection.md',
   ProjectionKeySelection: 'session-projection.md',
   ProjectionChangeListener: 'session-projection.md',

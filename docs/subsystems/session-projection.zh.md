@@ -314,6 +314,16 @@ cachedPredecessorTitle(meta: SessionHeader): ProjectionSnapshot | undefined
 hydratePrepared( session: Session, events: readonly SessionEvent[], ): ProjectionSnapshot
 
 /**
+ * Prepare each registered unit independently from a matching checkpoint and
+ * the complete canonical log of an unpublished Session. Unit failures remain
+ * scoped to that unit's later reads and live drive.
+ * @param session - exact unpublished Session.
+ * @param events - active canonical cut supplied by SessionStore.prepare.
+ * @throws if the cut is not from this Session's active preparation callback.
+ */
+prepare(session: Session, events: readonly SessionEvent[]): void
+
+/**
  * Durably checkpoint one live session NOW (all mandatory points call
  * this; tests and carriers may too). The registry cut is snapshotted at
  * this boundary (states are live references), then the session's record is
@@ -369,6 +379,14 @@ register<K extends keyof SessionProjectionMap, S>( definition: Omit<ProjectionDe
  * @returns an awaitable yielding a ready handle; the callable runtime value is deprecated.
  */
 register<K extends string, S>( definition: ProjectionDefinition<K, S> & { key: Exclude<K, keyof SessionProjectionMap> }, ): Promise<ProjectionHandle<S>>
+
+/**
+ * Register a host-only unit whose live and independent Sessions are prepared
+ * explicitly before reading. Await registration before exposing its reader.
+ * @param definition - host-only projection definition.
+ * @returns a handle with asynchronous Session preparation.
+ */
+registerPrepared<K extends string, S>( definition: ProjectionDefinition<K, S> & { key: Exclude<K, keyof SessionProjectionMap>; wire?: never }, ): Promise<PreparedProjectionHandle<S>>
 
 /**
  * Subscribe to the change feed. The registration is an effect on the
@@ -448,8 +466,8 @@ checkpoint(session: Session): ProjectionCheckpoint
  * re-read.
  * @param checkpoint - persisted rows for one session (possibly stale or empty).
  * @returns the offset for the stored-log suffix read (`SessionHandle.read`),
- *   or `undefined` when no live unit is registered (released predecessors do not count; no read needed —
- *   {@link restore} would serve empty values regardless).
+ *   or `undefined` when no ordinary live unit is registered. Released and
+ *   explicitly prepared units are excluded from {@link restore}.
  */
 restoreFloor(checkpoint: ProjectionCheckpoint): SessionLogOffset | undefined
 
@@ -491,10 +509,22 @@ viewCheckpoint( checkpoint: ProjectionCheckpoint, keys?: ProjectionKeySelection,
  * @returns the snapshot cut at the supplied log end (`asOfSeq` is the last
  *   supplied event's seq, `baseSeq - 1` for an empty tail) plus the
  *   refreshed checkpoint rows at that cut, ready for a durable write-back.
- *   The rows cover live units only: a released unit has no cell for a log
- *   folded without a live `Session`, so a write-back of them omits it.
+ *   The rows omit released and explicitly prepared units; a write-back of
+ *   these rows therefore omits them too.
  */
 restore( checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[], baseSeq: SessionLogOffset, header: SessionHeader, inheritedEventCount: SessionLogOffset, ): { snapshot: ProjectionSnapshot; checkpoint: ProjectionCheckpoint }
+
+/**
+ * Prepare registered cells from the exact complete log of an unpublished Session.
+ * Invalid checkpoint rows are discarded independently. A unit that cannot fold
+ * the log retains its failure for that unit's next read or live drive; it does
+ * not prevent other units from being prepared. Wire views are not evaluated.
+ * @param session - unpublished Session owning the supplied events.
+ * @param checkpoint - optional disposable rows for this Session lifecycle.
+ * @param events - active canonical event cut supplied by SessionStore.prepare.
+ * @throws if the cut is not from this Session's active preparation callback.
+ */
+prepare(session: Session, checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[]): void
 
 /**
  * Restore an exact cut and install its states on the supplied prepared Session.

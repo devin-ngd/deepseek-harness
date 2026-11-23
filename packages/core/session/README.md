@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount `dsh-session` wherever a session must exist. It creates and holds event-sourced `Session` instances in memory; durable storage is layered on by a persistence plugin that subscribes to the `session/event` feed.
+Mount `dsh-session` wherever a session must exist. It creates and holds event-sourced `Session` instances in memory. A persistence plugin stores events only when the agent lifecycle has acquired a write handle; mounting the plugin alone does not persist sessions created directly through the store.
 
 ### Create and inspect sessions
 
@@ -33,13 +33,15 @@ Mount `dsh-session` wherever a session must exist. It creates and holds event-so
 
 `ctx.sessions.create()` builds a live session bound to the calling fiber; `get(id)` and `list()` find sessions, and `fork()` creates an independent session from a stable prefix of a live one. It copies history, `cwd`, `isSeeded`, and the inherited event count without recording a source relationship. `parentSession` records a subagent’s direct creator; historical ordinary forks may retain their source there, so classification uses `origin`.
 
-Independent `Session.create()` and `Session.fromRestore()` instances accept events and plugin records without sending `session/event`. A `SessionStore` takes ownership through `prepare()` or `enter()`; writes then require store membership and a completed synchronous `session/created` announcement. Creation listeners are read-only and see all existing history; entering an independent instance does not replay that history as `session/event`. Failed announcement or removal leaves writes disabled. Removal emits `session/disposed` only if `session/created` began, including a failed announcement; an entered but never announced instance emits neither notification.
+Independent `Session.create()` and `Session.fromRestore()` instances accept events and plugin records without sending `session/event`. A `SessionStore` takes ownership through `prepare()` or `enter()`; writes then require store membership and a completed synchronous `session/created` announcement. `prepare()` optionally passes its synchronous preparation callback an immutable array of the exact canonical construction cut, including constructor-owned seed markers, before the Session enters the store; projection preparation accepts this cut only during that callback. Creation listeners are read-only and see all existing history; entering an independent instance does not replay that history as `session/event`. Failed announcement or removal leaves writes disabled. Removal emits `session/disposed` only if `session/created` began, including a failed announcement; an entered but never announced instance emits neither notification.
 
 ```text
 const session = ctx.sessions.create(sessionId, { meta: { cwd: '/workspace' } })
 ctx.sessions.get(sessionId)      // the live session
 ctx.sessions.list()              // every live session, in creation order
 ```
+
+`session.readHistoryPages({ pageSize, fromSeq?, toSeqExclusive?, signal? })` captures a half-open history range when called and returns a single-use asynchronous iterable of frozen pages. Each event is a detached, deeply frozen lossless-JSON copy; its object identity is not the log event's. `pageSize` limits event count, not bytes: copying one large event is synchronous. The reader yields to the event loop between pages and observes cancellation between events and pages. A restored event that cannot be copied losslessly rejects with `SessionHistoryCopyError`, whose `seq` identifies the event.
 
 ### Append and derive
 
@@ -65,7 +67,7 @@ Append, seed/restore, and event adoption/snapshot reject any `header.system` and
 
 ### Read the log
 
-`session.seq` reads the current log length without materializing an array, and `session.eventAt(seq)` reads one accepted, deeply frozen event by sequence number. `session.snapshotEvents(fromSeq?, toSeqExclusive?)` materializes a frozen, stable snapshot of a half-open range; a complete current snapshot is cached until the next append. `eventAt()`, `snapshotEvents()`, and `ownEvents()` are deprecated: existing logic may remain unmigrated for now, but new production calls are prohibited. Repository test files may use these three readers under their scoped lint allowance ([policy](../../../.agents/notes/implemented/architecture/2026-09-09-deprecate-synchronous-session-event-reads.md)). Callers that only need a length use `seq`.
+`session.seq` reads the current log length without materializing an array, and `session.eventAt(seq)` reads one accepted, deeply frozen event by sequence number. `session.snapshotEvents(fromSeq?, toSeqExclusive?)` materializes a frozen, stable snapshot of a half-open range; a complete current snapshot is cached until the next append. `eventAt()`, `snapshotEvents()`, and `ownEvents()` are deprecated: existing logic may remain unmigrated for now, but new production calls are prohibited. A fingerprint baseline rejects copied lint waivers for new production calls; remove retired entries with `pnpm run verify-session-history-waivers --prune`. Repository test files may use these three readers under their scoped lint allowance ([policy](../../../.agents/notes/implemented/architecture/2026-09-09-deprecate-synchronous-session-event-reads.md)). Callers that only need a length use `seq`.
 
 Session log positions use two numeric types. `SessionSeq` identifies an existing event or inclusive event watermark; `SessionLogOffset` identifies a gap, prefix length, or read boundary and may equal the event count. `SessionSeqCursor` adds the `-1` “no event yet” value, while `OptionalSessionSeq` uses `null` when absence is data. The constructors validate non-negative safe integers, and the brands disappear at runtime, so durable JSON and wire values remain ordinary numbers.
 
@@ -91,7 +93,7 @@ The logical `SessionHeader.isSeeded` field reports whether fork history exists w
 
 ### Flush durable state
 
-`ctx.sessions.flush(session)` dispatches the awaited durability checkpoint: every persistence listener flushes and the call settles after all of them. A producer that needs an immediate durability barrier awaits it instead of assuming the write-behind drained.
+`ctx.sessions.flush(session)` dispatches an awaited checkpoint and settles after all listeners. Its boolean reports whether any listener participated; it does not confirm that this session has a write handle or was persisted. For a session with an acquired write handle, await it rather than assuming the write-behind drained.
 
 -----
 

@@ -576,3 +576,15 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/not-found': { readonly sessionId: SessionId }
   }
 }
+
+/** Bounded asynchronous reading of one fixed Session history cut. */
+export interface SessionHistoryReadOptions {
+  /** Maximum number of events in each page; must be a positive safe integer. */
+  readonly pageSize: number
+  /** Inclusive starting offset; omission starts at the beginning. */
+  readonly fromSeq?: SessionLogOffset
+  /** Exclusive ending offset; omission captures the Session's current length. */
+  readonly toSeqExclusive?: SessionLogOffset
+  /** Cancel the read before any page or between pages. */
+  readonly signal?: AbortSignal
+}

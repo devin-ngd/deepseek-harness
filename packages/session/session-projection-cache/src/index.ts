@@ -248,6 +248,19 @@ export class SessionProjectionCache extends Service {
   }
 
   /**
+   * Prepare each registered unit independently from a matching checkpoint and
+   * the complete canonical log of an unpublished Session. Unit failures remain
+   * scoped to that unit's later reads and live drive.
+   * @param session - exact unpublished Session.
+   * @param events - active canonical cut supplied by SessionStore.prepare.
+   * @throws if the cut is not from this Session's active preparation callback.
+   */
+  prepare(session: Session, events: readonly SessionEvent[]): void {
+    const record = this.recordFor(session.id, identityOf(session.header, session.inheritedEventCount))
+    this.ctx.sessionProjections.prepare(session, record?.rows ?? {}, events)
+  }
+
+  /**
    * Durably checkpoint one live session NOW (all mandatory points call
    * this; tests and carriers may too). The registry cut is snapshotted at
    * this boundary (states are live references), then the session's record is

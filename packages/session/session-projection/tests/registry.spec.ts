@@ -13,7 +13,7 @@ import { z } from 'zod'
 import SessionStore, {
   SESSION_FORMAT_VERSION,
   Session,
-  type SessionId,
+  SessionId,
   SessionLogOffset,
   SessionSeq,
 } from '@deepseek-ai/dsh-session'
@@ -724,6 +724,102 @@ describe('SessionProjectionRegistry drive', () => {
     expect(() => ctx.sessionProjections.snapshot(session)).toThrow('unselected unit failed')
   })
 
+  it('prepares each unit independently and defers its failure to that unit', async () => {
+    const { ctx, session } = await harness()
+    onTestFinished(() => ctx.fiber.dispose())
+    mark(session, ['seed'])
+    const view = vi.fn((state: StableViewState) => state.value)
+    const marks = await ctx.sessionProjections.register(marksUnit())
+    const broken = await ctx.sessionProjections.register({
+      ...stableViewUnit(view),
+      apply: (): StableViewState => { throw new Error('broken projection') },
+    })
+    const prepared = ctx.sessions.prepare(SessionId('isolated-preparation'), { seed: session.snapshotEvents() }, (subject, events) => {
+      const readHistory = vi.spyOn(subject, 'snapshotEvents')
+      ctx.sessionProjections.prepare(subject, {}, events)
+      expect(readHistory).not.toHaveBeenCalled()
+      expect(() => { ctx.sessionProjections.prepare(subject, {}, [...events]) }).toThrow('active canonical Session cut')
+      expect(() => { ctx.sessionProjections.prepare(session, {}, events) }).toThrow('active canonical Session cut')
+      readHistory.mockRestore()
+    })
+
+    expect(view).not.toHaveBeenCalled()
+    expect(marks.stateOf(prepared)).toEqual({ marks: ['seed'] })
+    expect(() => broken.stateOf(prepared)).toThrow('broken projection')
+    expect(marks.stateOf(session)).toEqual({ marks: ['seed'] })
+    const warn = vi.spyOn(ctx.logger, 'warn')
+    const detach = ctx.sessions.enter(prepared)
+    ctx.sessions.announce(prepared)
+    prepared.append('turn/start', { turn: 2 })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('session/event listener threw: Error: broken projection'))
+    expect(marks.stateOf(prepared)).toEqual({ marks: ['seed'] })
+    detach()
+  })
+
+  it('uses valid checkpoint suffixes and rebuilds incompatible rows independently', async () => {
+    const { ctx, session } = await harness()
+    onTestFinished(() => ctx.fiber.dispose())
+    mark(session, ['first'])
+    mark(session, ['second'])
+    const markDefinition = marksUnit()
+    const countDefinition = countUnit()
+    const markApply = vi.fn((state: MarksState, event: SessionEvent) => markDefinition.apply(state, event))
+    const countApply = vi.fn((state: number, event: SessionEvent) => countDefinition.apply(state, event))
+    const marks = await ctx.sessionProjections.register({ ...marksUnit(), apply: markApply })
+    const count = await ctx.sessionProjections.register({ ...countUnit(), apply: countApply })
+    let eventCount = 0
+    const prepared = ctx.sessions.prepare(SessionId('checkpoint-preparation'), { seed: session.snapshotEvents() }, (subject, events) => {
+      eventCount = events.length
+      ctx.sessionProjections.prepare(subject, {
+        'test/marks': { ver: 1, seq: SessionSeq(0), val: { marks: ['first'] } },
+        'test/count': { ver: 0, seq: SessionSeq(0), val: 999 },
+      }, events)
+    })
+
+    expect(marks.stateOf(prepared)).toEqual({ marks: ['second'] })
+    expect(count.stateOf(prepared)).toBe(eventCount)
+    expect(markApply).toHaveBeenCalledTimes(eventCount - 1)
+    expect(countApply).toHaveBeenCalledTimes(eventCount)
+  })
+
+  it('keeps a failed preparation with its released registration when a key is replaced', async () => {
+    const { ctx, session } = await harness()
+    onTestFinished(() => ctx.fiber.dispose())
+    mark(session, ['seed'])
+    const original = await ctx.sessionProjections.register({
+      ...countUnit(), apply: (): number => { throw new Error('old unit failed') },
+    })
+    let savedEvents: readonly SessionEvent[] = []
+    const prepared = ctx.sessions.prepare(SessionId('replacement-preparation'), { seed: session.snapshotEvents() }, (subject, events) => {
+      savedEvents = events
+      ctx.sessionProjections.prepare(subject, {}, events)
+    })
+    await original.dispose()
+    const replacement = await ctx.sessionProjections.register({ ...countUnit(), stateVersion: 2 })
+    expect(() => { ctx.sessionProjections.prepare(prepared, {}, savedEvents) }).toThrow('active canonical Session cut')
+    expect(() => { ctx.sessionProjections.prepare(prepared, {}, undefined as never) }).toThrow('active canonical Session cut')
+    expect(replacement.stateOf(prepared)).toBe(savedEvents.length)
+    expect(() => original.stateOf(prepared)).toThrow('old unit failed')
+    await replacement.dispose()
+  })
+
+  it('revokes the preparation cut when its callback throws', async () => {
+    const { ctx } = await harness()
+    onTestFinished(() => ctx.fiber.dispose())
+    let attemptedSession: Session | undefined
+    let attemptedEvents: readonly SessionEvent[] | undefined
+    expect(() => ctx.sessions.prepare(SessionId('failed-callback'), undefined, (session, events) => {
+      attemptedSession = session
+      attemptedEvents = events
+      throw new Error('preparation stopped')
+    })).toThrow('preparation stopped')
+    const subject = attemptedSession
+    const events = attemptedEvents
+    if (subject === undefined || events === undefined) throw new Error('preparation callback was not reached')
+    expect(() => { ctx.sessionProjections.prepare(subject, {}, events) }).toThrow('active canonical Session cut')
+    expect(ctx.sessions.get(SessionId('failed-callback'))).toBeUndefined()
+  })
+
   it('checkpoints every persisted unit with its stateVersion and per-cell watermark', async () => {
     const { ctx, session } = await harness()
     await ctx.sessionProjections.register(marksUnit())
@@ -861,7 +957,7 @@ describe('SessionProjectionRegistry drive', () => {
     const { ctx } = await harness()
     const migrate = vi.fn((state: MarksState, version: number): MarksState | undefined =>
       version === 1 && state !== null ? state : undefined)
-    ctx.sessionProjections.register({ ...marksUnit(), stateVersion: 2, migrate })
+    void ctx.sessionProjections.register({ ...marksUnit(), stateVersion: 2, migrate })
     const decided = {
       'test/marks': { ver: 1, seq: SessionSeq(4), val: { marks: ['legacy'] } },
     }

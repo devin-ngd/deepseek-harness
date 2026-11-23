@@ -19,7 +19,7 @@
 
 import { Context, FiberState, Service } from '@deepseek-ai/cordis'
 import type { ZodType } from 'zod'
-import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import { assertSessionPreparationCut, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type {
   Session,
   SessionEvent,
@@ -68,6 +68,43 @@ export interface ProjectionHandle<S> {
   /**
    * Unregister from global drives and snapshots without invalidating this reader.
    * @returns a promise that resolves when this registration is released.
+   */
+  dispose(): Promise<void>
+}
+
+/** A host-only reader whose Session state is prepared explicitly before use. */
+export interface PreparedProjectionHandle<S> {
+  /**
+   * Recover one Session through its current committed event cut.
+   * @param session - exact live or independent Session.
+   * @param options - maximum events per page and optional caller cancellation.
+   * @returns resolution when a synchronous read is ready.
+   */
+  prepare(session: Session, options: { pageSize: number; signal?: AbortSignal }): Promise<void>
+  /**
+   * Read a prepared state without folding history. A missing, stale, or in-progress
+   * state throws until preparation completes; the returned value is read-only.
+   * @param session - exact Session whose state was prepared.
+   * @returns its current projection state.
+   */
+  stateOf(session: Session): S
+  /**
+   * Inspect readiness without starting recovery or reading history.
+   * @param session - exact Session whose state may have been prepared.
+   * @returns the state at the current cut, or an explicit not-ready result.
+   * @throws the unit's stored preparation failure, if any.
+   */
+  stateIfReady(session: Session): { ready: true; state: S } | { ready: false }
+  /**
+   * Bind this reader to one Session without preparing it.
+   * @param session - exact Session to read.
+   * @returns a callback with the same readiness and errors as `stateOf`.
+   */
+  readerFor(session: Session): () => S
+  /**
+   * Release registration and await its final recovery work. A retained reader
+   * can inspect an unchanged prepared state but cannot prepare after disposal.
+   * @returns resolution after owned recovery work has stopped.
    */
   dispose(): Promise<void>
 }
@@ -250,6 +287,27 @@ interface UnitCell {
   readonly views: [unknown, unknown]
 }
 
+interface PendingRecovery {
+  readonly controller: AbortController
+  promise: Promise<void>
+  waiters: number
+  finished: boolean
+}
+
+/** Wait independently so one cancelled caller cannot cancel another caller's recovery. */
+async function waitForRecovery(promise: Promise<void>, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted()
+  let rejectAbort: ((reason: unknown) => void) | undefined
+  const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject })
+  const onAbort = (): void => { rejectAbort?.(signal.reason) }
+  signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    await Promise.race([promise, aborted])
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
 /**
  * One shared unit and its per-session cells. After the final release the entry
  * stays in the table as a released predecessor until its key registers again,
@@ -266,6 +324,10 @@ interface UnitCell {
 interface Registration {
   readonly def: ErasedDefinition
   readonly cells: WeakMap<Session, UnitCell>
+  readonly preparationFailures: WeakMap<Session, { readonly error: unknown }>
+  readonly preparedOnly: boolean
+  readonly recoveries: WeakMap<Session, PendingRecovery>
+  readonly activeRecoveries: Set<PendingRecovery>
   /**
    * Live registrants sharing this unit. `0` marks a released predecessor: only
    * `checkpoint()` reads its cells through the registry, while a retained handle
@@ -315,11 +377,17 @@ export class SessionProjectionRegistry extends Service {
       for (const registration of this.registrations.values()) {
         if (registration.refs === 0) continue
         if (registration.cells.has(session)) continue
-        registration.cells.set(session, {
-          state: registration.def.init(session.header, session.inheritedEventCount),
-          observedSeq: -1,
-          views: [undefined, undefined],
-        })
+        if (registration.preparedOnly && registration.preparationFailures.has(session)) continue
+        try {
+          registration.cells.set(session, {
+            state: registration.def.init(session.header, session.inheritedEventCount),
+            observedSeq: -1,
+            views: [undefined, undefined],
+          })
+        } catch (error: unknown) {
+          if (!registration.preparedOnly) throw error
+          registration.preparationFailures.set(session, { error })
+        }
       }
     })
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
@@ -391,11 +459,27 @@ export class SessionProjectionRegistry extends Service {
     return Object.assign(dispose, promise)
   }
 
+  /**
+   * Register a host-only unit whose live and independent Sessions are prepared
+   * explicitly before reading. Await registration before exposing its reader.
+   * @param definition - host-only projection definition.
+   * @returns a handle with asynchronous Session preparation.
+   */
+  registerPrepared<K extends string, S>(
+    definition: ProjectionDefinition<K, S> & { key: Exclude<K, keyof SessionProjectionMap>; wire?: never },
+  ): Promise<PreparedProjectionHandle<S>> {
+    if (Object.hasOwn(definition, 'wire')) {
+      return Promise.reject(new TypeError('explicit Session preparation supports host-only projections'))
+    }
+    return this.acquire(definition, () => {}, true)
+  }
+
   /** Install one unit; `onEffect` receives its release before the asynchronous handoff. */
   private async acquire<K extends string, S>(
     definition: ProjectionDefinition<K, S>,
     onEffect: (release: () => Promise<void>) => void,
-  ): Promise<ProjectionHandle<S>> {
+    preparedOnly = false,
+  ): Promise<PreparedProjectionHandle<S>> {
     const wire = definition.wire as {
       viewSchema: ZodType
       view(state: S): unknown
@@ -430,14 +514,21 @@ export class SessionProjectionRegistry extends Service {
       throw new Error(`session projection ${JSON.stringify(definition.key)} stateVersion must be a non-negative integer, got ${String(definition.stateVersion)}`)
     }
     let registration!: Registration
+    const lifetime = new AbortController()
     const dispose = this.ctx.effect(() => {
       const key = erased.key
       const existing = this.registrations.get(key)
       if (existing === undefined || existing.refs === 0) {
-        registration = { def: erased, cells: new WeakMap(), refs: 1 }
+        registration = {
+          def: erased, cells: new WeakMap(), preparationFailures: new WeakMap(), preparedOnly,
+          recoveries: new WeakMap(), activeRecoveries: new Set(), refs: 1,
+        }
         this.registrations.set(key, registration)
         this.summaryKeySet = undefined
       } else {
+        if (existing.preparedOnly !== preparedOnly) {
+          throw new Error(`session projection key ${JSON.stringify(key)} is already registered with different preparation semantics`)
+        }
         if (existing.def.stateVersion !== erased.stateVersion) {
           throw new Error(`session projection key ${JSON.stringify(key)} is already registered at stateVersion ${String(existing.def.stateVersion)}; refusing to share it with stateVersion ${String(erased.stateVersion)}`)
         }
@@ -448,9 +539,13 @@ export class SessionProjectionRegistry extends Service {
         registration = existing
       }
       return () => {
+        lifetime.abort(new Error(`session projection ${JSON.stringify(key)} registration disposed`))
         registration.refs -= 1
         if (registration.refs === 0) {
+          const pending = [...registration.activeRecoveries]
+          for (const recovery of pending) recovery.controller.abort(lifetime.signal.reason)
           this.summaryKeySet = undefined
+          if (pending.length > 0) return Promise.allSettled(pending.map(recovery => recovery.promise)).then(() => {})
         }
       }
     }, 'sessionProjections.register()')
@@ -458,21 +553,32 @@ export class SessionProjectionRegistry extends Service {
     // Observe disposal during the asynchronous registration handoff before exposing a reader.
     await Promise.resolve()
     this.ctx.fiber.assertActive()
-    const handle: ProjectionHandle<S> = {
+    const handle: PreparedProjectionHandle<S> = {
       async dispose() {
         await dispose()
       },
       stateOf: (session) => {
         return this.cellFor(registration, session).state as S
       },
+      stateIfReady: (session) => {
+        const failure = registration.preparationFailures.get(session)
+        if (failure !== undefined) throw failure.error
+        const cell = registration.cells.get(session)
+        if (cell === undefined || registration.recoveries.has(session) || cell.observedSeq !== cursorBefore(session.seq)) {
+          return { ready: false }
+        }
+        return { ready: true, state: cell.state as S }
+      },
       readerFor: session => () => handle.stateOf(session),
+      prepare: (session, options) => this.prepareCell(registration, session, options, lifetime.signal),
     }
     return handle
   }
 
   /**
-   * Read a currently registered unit after materializing every registered
-   * unit at the Session cursor. Unrelated wire views are not produced.
+   * Read a currently registered unit after materializing every ordinary
+   * registered unit at the Session cursor. Explicitly prepared units are read
+   * only when requested. Unrelated wire views are not produced.
    * The returned state is live; do not mutate it. A released key has no value.
    * The first read of each key logs one deprecation warning per registry.
    * @param session - Session whose committed events are folded.
@@ -632,7 +738,7 @@ export class SessionProjectionRegistry extends Service {
   checkpoint(session: Session): ProjectionCheckpoint {
     const rows: ProjectionCheckpoint = {}
     for (const registration of this.registrations.values()) {
-      const cell = registration.refs === 0
+      const cell = registration.refs === 0 || registration.preparedOnly
         ? registration.cells.get(session)
         : this.cellFor(registration, session)
       if (cell === undefined) continue
@@ -658,13 +764,13 @@ export class SessionProjectionRegistry extends Service {
    * re-read.
    * @param checkpoint - persisted rows for one session (possibly stale or empty).
    * @returns the offset for the stored-log suffix read (`SessionHandle.read`),
-   *   or `undefined` when no live unit is registered (released predecessors do not count; no read needed —
-   *   {@link restore} would serve empty values regardless).
+   *   or `undefined` when no ordinary live unit is registered. Released and
+   *   explicitly prepared units are excluded from {@link restore}.
    */
   restoreFloor(checkpoint: ProjectionCheckpoint): SessionLogOffset | undefined {
     let floor: number | undefined
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0) continue
+      if (registration.refs === 0 || registration.preparedOnly) continue
       const row = checkpoint[registration.def.key]
       const need = row !== undefined && row.ver === registration.def.stateVersion
         ? Math.max(row.seq + 1, 0)
@@ -739,8 +845,8 @@ export class SessionProjectionRegistry extends Service {
    * @returns the snapshot cut at the supplied log end (`asOfSeq` is the last
    *   supplied event's seq, `baseSeq - 1` for an empty tail) plus the
    *   refreshed checkpoint rows at that cut, ready for a durable write-back.
-   *   The rows cover live units only: a released unit has no cell for a log
-   *   folded without a live `Session`, so a write-back of them omits it.
+   *   The rows omit released and explicitly prepared units; a write-back of
+   *   these rows therefore omits them too.
    */
   restore(
     checkpoint: ProjectionCheckpoint,
@@ -751,42 +857,92 @@ export class SessionProjectionRegistry extends Service {
   ):
   { snapshot: ProjectionSnapshot; checkpoint: ProjectionCheckpoint } {
     const endSeq: SessionSeqCursor = events.at(-1)?.seq ?? cursorBefore(baseSeq)
-    const beforeBase = cursorBefore(baseSeq)
     const values: Record<string, unknown> = {}
     const refreshed: ProjectionCheckpoint = {}
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0) continue
+      if (registration.refs === 0 || registration.preparedOnly) continue
       const def = registration.def
-      const row = checkpoint[def.key]
-      const usable = row !== undefined
-        && row.ver === def.stateVersion
-        && row.seq >= beforeBase
-        && row.seq <= endSeq
-      if (!usable && baseSeq > 0) {
-        throw new Error(
-          `session projection ${JSON.stringify(def.key)} cannot restore from seq ${baseSeq}: `
-          + 'its checkpoint row is missing, version-mismatched, or beyond the supplied log end; re-read from seq 0',
-        )
-      }
-      let state = usable
-        ? def.stateSchema.parse(row.val)
-        : def.init(header, inheritedEventCount)
-      const from = usable ? row.seq : beforeBase
-      const startIndex = from - baseSeq + 1
-      for (let index = startIndex; index < events.length; index++) {
-        const event = events[index]
-        const expectedSeq = SessionSeq(baseSeq + index)
-        if (event === undefined || event.seq !== expectedSeq) {
-          throw new Error(`session projection ${JSON.stringify(def.key)} cannot restore across missing seq ${String(expectedSeq)}`)
-        }
-        state = def.apply(state, event)
-      }
+      const state = this.restoreUnit(def, checkpoint[def.key], events, baseSeq, header, inheritedEventCount, false)
       if (def.wire !== undefined) values[def.key] = def.wire.viewSchema.parse(def.wire.view(state))
       refreshed[def.key] = { ver: def.stateVersion, seq: endSeq, val: state }
     }
     return {
       snapshot: { asOfSeq: endSeq, values: values },
       checkpoint: refreshed,
+    }
+  }
+
+  /** Restore one unit using its validated row or the complete supplied history. */
+  private restoreUnit(
+    def: ErasedDefinition,
+    row: ProjectionCheckpointRow | undefined,
+    events: readonly SessionEvent[],
+    baseSeq: SessionLogOffset,
+    header: SessionHeader,
+    inheritedEventCount: SessionLogOffset,
+    discardMalformedRow: boolean,
+  ): unknown {
+    const endSeq: SessionSeqCursor = events.at(-1)?.seq ?? cursorBefore(baseSeq)
+    const beforeBase = cursorBefore(baseSeq)
+    const usable = row !== undefined && row.ver === def.stateVersion && Number.isSafeInteger(row.seq)
+      && row.seq >= beforeBase && row.seq <= endSeq
+    if (!usable && baseSeq > 0) {
+      throw new Error(
+        `session projection ${JSON.stringify(def.key)} cannot restore from seq ${baseSeq}: `
+        + 'its checkpoint row is missing, version-mismatched, or beyond the supplied log end; re-read from seq 0',
+      )
+    }
+    let state: unknown
+    let from = beforeBase
+    if (usable) {
+      try {
+        state = def.stateSchema.parse(row.val)
+        from = row.seq
+      } catch (error: unknown) {
+        if (!discardMalformedRow || baseSeq > 0) throw error
+        state = def.init(header, inheritedEventCount)
+      }
+    } else {
+      state = def.init(header, inheritedEventCount)
+    }
+    for (let index = from - baseSeq + 1; index < events.length; index++) {
+      const event = events[index]
+      const expectedSeq = SessionSeq(baseSeq + index)
+      if (event === undefined || event.seq !== expectedSeq) {
+        throw new Error(`session projection ${JSON.stringify(def.key)} cannot restore across missing seq ${String(expectedSeq)}`)
+      }
+      state = def.apply(state, event)
+    }
+    return state
+  }
+
+  /**
+   * Prepare registered cells from the exact complete log of an unpublished Session.
+   * Invalid checkpoint rows are discarded independently. A unit that cannot fold
+   * the log retains its failure for that unit's next read or live drive; it does
+   * not prevent other units from being prepared. Wire views are not evaluated.
+   * @param session - unpublished Session owning the supplied events.
+   * @param checkpoint - optional disposable rows for this Session lifecycle.
+   * @param events - active canonical event cut supplied by SessionStore.prepare.
+   * @throws if the cut is not from this Session's active preparation callback.
+   */
+  prepare(session: Session, checkpoint: ProjectionCheckpoint, events: readonly SessionEvent[]): void {
+    assertSessionPreparationCut(session, events)
+    const endSeq = cursorBefore(session.seq)
+    for (const registration of this.registrations.values()) {
+      if (registration.refs === 0) continue
+      const current = registration.cells.get(session)
+      if (current !== undefined && current.observedSeq >= endSeq) continue
+      const def = registration.def
+      const row = checkpoint[def.key]
+      try {
+        const state = this.restoreUnit(def, row, events, SessionLogOffset(0), session.header, session.inheritedEventCount, true)
+        registration.cells.set(session, { state, observedSeq: endSeq, views: [undefined, undefined] })
+        registration.preparationFailures.delete(session)
+      } catch (error: unknown) {
+        registration.cells.delete(session)
+        registration.preparationFailures.set(session, { error })
+      }
     }
   }
 
@@ -809,7 +965,7 @@ export class SessionProjectionRegistry extends Service {
     const endSeq: SessionSeqCursor = events.at(-1)?.seq ?? cursorBefore(baseSeq)
     let complete = true
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0) continue
+      if (registration.refs === 0 || registration.preparedOnly) continue
       const current = registration.cells.get(session)
       if (current?.observedSeq !== endSeq) {
         complete = false
@@ -819,7 +975,7 @@ export class SessionProjectionRegistry extends Service {
     if (complete) {
       const values: Record<string, unknown> = {}
       for (const registration of this.registrations.values()) {
-        if (registration.refs === 0) continue
+        if (registration.refs === 0 || registration.preparedOnly) continue
         if (registration.def.wire === undefined) continue
         const current = registration.cells.get(session) as UnitCell
         values[registration.def.key] = this.viewCell(registration, current)
@@ -834,7 +990,7 @@ export class SessionProjectionRegistry extends Service {
       session.inheritedEventCount,
     )
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0) continue
+      if (registration.refs === 0 || registration.preparedOnly) continue
       const row = restored.checkpoint[registration.def.key]
       /* v8 ignore next -- restore() writes a row for every registration in the same synchronous pass. */
       if (row === undefined) continue
@@ -845,14 +1001,15 @@ export class SessionProjectionRegistry extends Service {
         observedSeq: row.seq,
         views: [undefined, undefined],
       })
+      registration.preparationFailures.delete(session)
     }
     return restored.snapshot
   }
 
-  /** Materialize every registered unit cell at the Session's current cursor. */
+  /** Materialize ordinary registered unit cells at the Session's current cursor. */
   private materializeCells(session: Session): void {
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0) continue
+      if (registration.refs === 0 || registration.preparedOnly) continue
       this.cellFor(registration, session)
     }
   }
@@ -869,9 +1026,111 @@ export class SessionProjectionRegistry extends Service {
     return { state, observedSeq: (events.at(-1)?.seq ?? -1), views: [undefined, undefined] }
   }
 
+  /** Prepare one host-only unit, sharing work while retaining independent cancellation. */
+  private async prepareCell(
+    registration: Registration,
+    session: Session,
+    options: { pageSize: number; signal?: AbortSignal },
+    lifetime: AbortSignal,
+  ): Promise<void> {
+    if (!registration.preparedOnly) throw new Error('session projection was not registered for explicit preparation')
+    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1) {
+      throw new RangeError('session projection preparation pageSize must be a positive safe integer')
+    }
+    const signal = options.signal === undefined ? lifetime : AbortSignal.any([lifetime, options.signal])
+    signal.throwIfAborted()
+    for (;;) {
+      const existing = registration.cells.get(session)
+      const pending = registration.recoveries.get(session)
+      if (pending === undefined && existing?.observedSeq === cursorBefore(session.seq)
+        && registration.preparationFailures.get(session) === undefined) return
+      if (pending?.controller.signal.aborted === true) {
+        try {
+          await waitForRecovery(pending.promise, signal)
+        } catch (_error: unknown) {
+          signal.throwIfAborted()
+          // The abandoned recovery is discarded before this caller retries.
+        }
+        continue
+      }
+      let recovery = pending
+      if (recovery === undefined) {
+        const controller = new AbortController()
+        const started: PendingRecovery = { controller, promise: Promise.resolve(), waiters: 0, finished: false }
+        registration.recoveries.set(session, started)
+        registration.activeRecoveries.add(started)
+        started.promise = Promise.resolve().then(async () => {
+          try {
+            await this.recoverCell(registration, session, options.pageSize, controller.signal)
+          } catch (error: unknown) {
+            if (!controller.signal.aborted) {
+              registration.cells.delete(session)
+              registration.preparationFailures.set(session, { error })
+            }
+            throw error
+          } finally {
+            started.finished = true
+            if (registration.recoveries.get(session) === started) registration.recoveries.delete(session)
+            registration.activeRecoveries.delete(started)
+          }
+        })
+        recovery = started
+      }
+      recovery.waiters += 1
+      try {
+        await waitForRecovery(recovery.promise, signal)
+        continue
+      } finally {
+        recovery.waiters -= 1
+        if (recovery.waiters === 0 && !recovery.finished) {
+          recovery.controller.abort(new Error('session projection preparation has no remaining callers'))
+          try {
+            await recovery.promise
+          } catch (_error: unknown) {
+            // The cancelled caller retains its own outcome after recovery stops.
+          }
+        }
+      }
+    }
+  }
+
+  /** Fold bounded event pages and atomically install a state at the current Session cut. */
+  private async recoverCell(registration: Registration, session: Session, pageSize: number, signal: AbortSignal): Promise<void> {
+    const previous = registration.cells.get(session)
+    let state = previous === undefined
+      ? registration.def.init(session.header, session.inheritedEventCount)
+      : previous.state
+    let offset = previous === undefined ? 0 : previous.observedSeq + 1
+    for (;;) {
+      signal.throwIfAborted()
+      const end = session.seq
+      for await (const page of session.readHistoryPages({
+        fromSeq: SessionLogOffset(offset), toSeqExclusive: end, pageSize, signal,
+      })) {
+        for (const event of page) state = registration.def.apply(state, event)
+        offset += page.length
+      }
+      signal.throwIfAborted()
+      if (offset !== session.seq) continue
+      registration.cells.set(session, {
+        state, observedSeq: cursorBefore(SessionLogOffset(offset)), views: [undefined, undefined],
+      })
+      registration.preparationFailures.delete(session)
+      return
+    }
+  }
+
   /** Read (or lazily build, folding the full in-memory log) one unit's cell. */
   private cellFor(registration: Registration, session: Session): UnitCell {
+    const failure = registration.preparationFailures.get(session)
+    if (failure !== undefined) throw failure.error
     let cell = registration.cells.get(session)
+    if (registration.preparedOnly) {
+      if (cell === undefined || registration.recoveries.has(session) || cell.observedSeq !== cursorBefore(session.seq)) {
+        throw new Error(`session projection ${JSON.stringify(registration.def.key)} requires Session preparation`)
+      }
+      return cell
+    }
     if (cell === undefined) {
       cell = this.buildCell(
         registration.def,
@@ -924,6 +1183,12 @@ export class SessionProjectionRegistry extends Service {
     try {
       for (const registration of this.registrations.values()) {
         if (registration.refs === 0) continue
+        const failure = registration.preparationFailures.get(session)
+        if (registration.preparedOnly) {
+          const prepared = registration.cells.get(session)
+          if (failure !== undefined || registration.recoveries.has(session) || prepared === undefined
+            || prepared.observedSeq !== (event.seq === 0 ? -1 : event.seq - 1)) continue
+        } else if (failure !== undefined) throw failure.error
         let cell = registration.cells.get(session)
         if (cell !== undefined && cell.observedSeq >= event.seq) continue
         if (cell === undefined) {
@@ -946,7 +1211,16 @@ export class SessionProjectionRegistry extends Service {
           )
         }
         const previousState = cell.state
-        const next = registration.def.apply(previousState, event)
+        let next: unknown
+        try {
+          next = registration.def.apply(previousState, event)
+        } catch (error: unknown) {
+          if (!registration.preparedOnly) throw error
+          registration.cells.delete(session)
+          registration.preparationFailures.set(session, { error })
+          this.ctx.logger.warn(`session projection ${JSON.stringify(registration.def.key)} failed for session ${JSON.stringify(session.id)}`, error)
+          continue
+        }
         const changed = !Object.is(next, previousState)
         cell.state = next
         cell.observedSeq = event.seq

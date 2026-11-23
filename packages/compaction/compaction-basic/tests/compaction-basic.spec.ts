@@ -326,6 +326,7 @@ describe('compact configuration and defaults', () => {
       maxOverflowRetries: 1,
       modelPolicies: [],
       auto: true,
+      recoveryPageSize: 128,
     })
     expect(Object.isFrozen(resolved)).toBe(true)
   })
