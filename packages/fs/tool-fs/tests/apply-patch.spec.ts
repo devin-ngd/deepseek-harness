@@ -62,7 +62,7 @@ it('returns exact native values and applied metadata for all four operation kind
   ], affectedPaths: ['edit', 'created', 'delete', 'destination', 'source'].map(path) })
   expect(result.content).toEqual([{ type: 'text', text: `Success. Updated the following files:\nA ${path('created')}\nM ${path('edit')}\nM ${path('destination')}\nD ${path('delete')}` }])
   // Creations store no diff, as for write; removals store the provider's bounded basis.
-  expect(result.meta).toEqual({ stopped: false, diffs: [
+  expect(result.meta).toEqual({ stopped: false, producedPaths: [path('edit'), path('created'), path('destination')], diffs: [
     { path: path('edit'), oldText: 'old', newText: 'new' },
     { path: path('delete'), oldText: 'gone\n', newText: '' },
     { path: path('source'), oldText: 'old\n', newText: '' },
@@ -76,7 +76,7 @@ it('returns the empty patch confirmation', async () => {
   const t = await setup()
   const result = await call(t, patch())
   expect(result).toMatchObject({ isError: false, value: { phase: 'commit', cancelled: false, operations: [], affectedPaths: [] },
-    content: [{ type: 'text', text: 'Success. No operations in patch.' }], meta: { diffs: [], stopped: false } })
+    content: [{ type: 'text', text: 'Success. No operations in patch.' }], meta: { diffs: [], stopped: false, producedPaths: [] } })
 })
 
 it('throws typed syntax and aggregated unread-file refusals without diffs', async () => {
@@ -121,7 +121,7 @@ it('keeps a partial move as a value with its destination diff and exact stop tex
   expect(result.content).toEqual([{ type: 'text', text: `Patch stopped after 1 of 3 operations.\nCompleted:\nA ${path('first')}\nFailed:\n`
     + `- operation 2 (move ${path('a')} -> ${path('b')}, patch line 4): source removal denied\n`
     + `  destination ${path('b')} was written; source ${path('a')} remains\nNot executed:\n- operation 3 (add ${path('last')})` }])
-  expect(result.meta).toEqual({ stopped: true, diffs: [] })
+  expect(result.meta).toEqual({ stopped: true, diffs: [], producedPaths: [path('first'), path('b')] })
   expect(await t.bytes('a')).toBe('old\n')
   expect(await t.bytes('b')).toBe('new\n')
   await expect(t.bytes('last')).rejects.toMatchObject({ code: 'ENOENT' })
@@ -139,7 +139,7 @@ it('reports uncertain writes with no invented diff and the reread remedy', async
   expect(result.content).toEqual([{ type: 'text', text: 'Patch stopped after 0 of 2 operations.\nOutcome unknown:\n'
     + `- operation 1 (add ${resolve(t.workspace, 'a')}, patch line 2): connection lost — re-read the affected files before retrying\n`
     + `Not executed:\n- operation 2 (add ${resolve(t.workspace, 'b')})` }])
-  expect(result.meta).toEqual({ diffs: [], stopped: true })
+  expect(result.meta).toEqual({ diffs: [], stopped: true, producedPaths: [] })
 })
 
 it('advertises escalation only for a confining backend and throws the sandbox refusal', async () => {
@@ -200,7 +200,7 @@ it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('retains com
     expect(result.content).toEqual([{ type: 'text', text: `Patch stopped after 1 of 3 operations.\nCompleted:\nA ${first}\nFailed:\n`
       + `- operation 2 (add ${denied}, patch line 4): cannot write "${denied}": permission denied\nNot executed:\n`
       + `- operation 3 (add ${resolve(t.workspace, 'last')})` }])
-    expect(result.meta).toEqual({ stopped: true, diffs: [] })
+    expect(result.meta).toEqual({ stopped: true, diffs: [], producedPaths: [] })
     expect(await t.bytes('first')).toBe('new\n')
     await expect(t.bytes('last')).rejects.toMatchObject({ code: 'ENOENT' })
   } finally { await chmod(locked, 0o755) }

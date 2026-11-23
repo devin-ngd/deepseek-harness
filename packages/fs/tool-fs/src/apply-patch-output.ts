@@ -131,19 +131,24 @@ export function renderPatch(value: PatchToolValue): string {
  * Derive hunks only from known completed effects, including a partial move destination.
  * Creations store no diff, as for `write`; a removal without a bounded basis stores none either.
  * @param value - canonical commit value containing the provider's bounded baselines.
- * @returns serializable diff hunks and an explicit stopped flag; no whole-file change records.
+ * @returns serializable diff hunks, known surviving mutation targets, and a stopped flag.
  */
 export function patchPresentationMeta(value: PatchToolValue): {
   diffs: { path: string; oldText: string | null; newText: string }[]
   stopped: boolean
+  producedPaths: string[]
 } {
+  const producedPaths = new Set<string>()
   const diffs = value.operations.flatMap((operation) => {
     if (operation.status !== 'completed' && operation.status !== 'failed') return []
     return (operation.changes ?? []).flatMap(({ path, before, after }): FileDiff[] => {
+      if (after === null) producedPaths.delete(path)
+      else producedPaths.add(path)
       if (before === null) return []
       if (after === null) return [{ path, oldText: before, newText: '' }]
       return computeHunkDiffs(path, before, after)
     })
   })
-  return { diffs: diffs.map(({ path, oldText, newText }) => ({ path, oldText, newText })), stopped: patchStopped(value) }
+  return { diffs: diffs.map(({ path, oldText, newText }) => ({ path, oldText, newText })),
+    stopped: patchStopped(value), producedPaths: [...producedPaths] }
 }

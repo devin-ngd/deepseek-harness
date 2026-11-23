@@ -51,7 +51,7 @@ it('stores no diff for creations or for removals without a bounded basis', () =>
     { index: 3, kind: 'update', path: 'b', patchLine: 6, status: 'failed', code: 'FS_PERMISSION_DENIED', message: 'denied' },
     { index: 4, kind: 'add', path: 'c', patchLine: 7, status: 'skipped' },
   ] }
-  expect(patchPresentationMeta(value)).toEqual({ stopped: true, diffs: [{ path: 'e', oldText: 'gone\n', newText: '' }] })
+  expect(patchPresentationMeta(value)).toEqual({ stopped: true, producedPaths: ['d'], diffs: [{ path: 'e', oldText: 'gone\n', newText: '' }] })
   expect(renderPatch(value)).toBe('Patch stopped after 3 of 5 operations.\nCompleted:\nA d\nD a\nD e\nFailed:\n'
     + '- operation 4 (update b, patch line 6): denied\nNot executed:\n- operation 5 (add c)')
 })
@@ -63,4 +63,12 @@ it('reports cancellation and a move failure with no written destination', () => 
   ] }
   expect(renderPatch(value)).toBe('Patch stopped after 0 of 2 operations.\nFailed:\n'
     + '- operation 1 (move a -> b, patch line 2): cancelled\nNot executed:\n- operation 2 (delete c)')
+})
+
+it('omits paths deleted later in the same patch', () => {
+  const value: PatchToolValue = { phase: 'commit', cancelled: false, affectedPaths: ['/a'], operations: [
+    { index: 0, kind: 'add', path: '/a', patchLine: 2, status: 'completed', changes: [{ path: '/a', before: null, after: 'new' }] },
+    { index: 1, kind: 'delete', path: '/a', patchLine: 4, status: 'completed', changes: [{ path: '/a', before: 'new', after: null }] },
+  ] }
+  expect(patchPresentationMeta(value).producedPaths).toEqual([])
 })
