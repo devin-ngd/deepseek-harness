@@ -12,7 +12,7 @@ import { createUserMessage, type ToolCallId, type Message } from '@deepseek-ai/d
 import type { ContextFormed, MessageSource } from '@deepseek-ai/dsh-llm'
 import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import {
-  SESSION_FORMAT_VERSION, Session, type SessionId, type SessionEvent, type UserMessage,
+  SESSION_FORMAT_VERSION, Session, SessionId, type SessionEvent, type UserMessage,
 } from '@deepseek-ai/dsh-session'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -713,6 +713,78 @@ describe('dsh-tool-skill', () => {
 
     expect(catalogMessages(session)).toHaveLength(2)
     expect(JSON.stringify(catalogMessages(session).at(-1)?.data.content)).toContain('first-skill')
+  })
+
+  it('uses an earlier visible catalog when compaction hides the latest one', async () => {
+    const home = await tempDir('tool-catalog-visible-predecessor')
+    const ctx = await setup(home)
+    ctx.skills.register({
+      name: 'first-skill',
+      description: 'First skill',
+      source: 'runtime',
+      content: 'First body.',
+    })
+    const session = Session.create(SessionId('catalog-visible-predecessor'))
+    const agent = sessionAgent(session)
+    openMessageTurn(session)
+    await composePrefixForAgent(ctx, agent)
+    const initial = catalogMessages(session)[0]
+    if (initial === undefined) throw new Error('expected initial catalog')
+    const stale = session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'stale catalog' }],
+      source: {
+        kind: 'skill-catalog',
+        form: 'catalog',
+        entries: [{ name: 'other-skill', description: 'Other skill' }],
+      },
+    }), { surfaceOp: 'append' })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'compacted history' }],
+      source: checkpointSource('skill-compaction'),
+    }), {
+      surfaceOp: { op: 'replace', startSeq: stale.seq, endSeq: stale.seq },
+      sourceEventSeqs: [stale.seq],
+    })
+
+    await fireStep(ctx, agent, 1, 1)
+
+    expect(session.surface.nodes).toContain(initial.seq)
+    expect(catalogMessages(session)).toHaveLength(2)
+  })
+
+  it('retains prior publication when the remaining visible catalog is malformed', async () => {
+    const home = await tempDir('tool-catalog-hidden-valid')
+    const ctx = await setup(home)
+    ctx.skills.register({
+      name: 'live-skill',
+      description: 'Live skill',
+      source: 'runtime',
+      content: 'Live body.',
+    })
+    const session = Session.create(SessionId('catalog-hidden-valid'))
+    const agent = sessionAgent(session)
+    openMessageTurn(session)
+    await composePrefixForAgent(ctx, agent)
+    const initial = catalogMessages(session)[0]
+    if (initial === undefined) throw new Error('expected initial catalog')
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'compacted history' }],
+      source: checkpointSource('hidden-valid'),
+    }), {
+      surfaceOp: { op: 'replace', startSeq: initial.seq, endSeq: initial.seq },
+      sourceEventSeqs: [initial.seq],
+    })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'unreadable catalog' }],
+      source: { kind: 'skill-catalog', form: 'catalog', entries: null } as never,
+    }), { surfaceOp: 'append' })
+
+    await fireStep(ctx, agent, 1, 1)
+
+    const catalogs = catalogMessages(session)
+    expect(catalogs).toHaveLength(3)
+    expect(catalogs.at(-1)?.data.source).toMatchObject({ kind: 'skill-catalog', update: true })
+    expect(JSON.stringify(catalogs.at(-1)?.data.content)).toContain('live-skill')
   })
 
   it('keeps body-only edits out of the catalog and loads the latest body on demand', async () => {

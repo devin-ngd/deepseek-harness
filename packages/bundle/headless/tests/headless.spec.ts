@@ -1090,6 +1090,25 @@ describe('headless runner', () => {
     await test.ctx.fiber.dispose()
   })
 
+  it('reports a malformed live preset record even when a later record is valid', async () => {
+    const test = await bench({
+      before(session) {
+        selectPreset(session, '')
+        selectPreset(session, 'minimal')
+      },
+      afterPrompt: () => {},
+    }, {
+      sessionId: 'session-exact',
+      prelive: true,
+      preliveMeta: { cwd: '/somewhere/else' },
+    })
+    const result = await test.run()
+    expect(result.code).toBe(1)
+    expect(result.err).toContain('malformed agent-preset/selected event')
+    expect(result.out).toBe('')
+    await test.ctx.fiber.dispose()
+  })
+
   it('rejects a preset appended after the observation snapshot was taken', async () => {
     const test = await bench({ afterPrompt: () => {} }, {
       sessionId: 'session-exact',
