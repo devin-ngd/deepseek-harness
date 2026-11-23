@@ -98,6 +98,22 @@ export function validateEscalationArgs(sandboxPermissions: string | undefined, j
 }
 
 /**
+ * Validate command escalation, allowing a repeated effective mode and an empty unused reason.
+ * @param sandboxPermissions - requested mode, if supplied.
+ * @param justification - reason for widening, if supplied.
+ * @param effectiveMode - mode already applying to the command.
+ */
+export function validateCommandEscalationArgs(
+  sandboxPermissions: string | undefined,
+  justification: string | undefined,
+  effectiveMode: SandboxMode | undefined,
+): void {
+  if (sandboxPermissions !== undefined && sandboxPermissions === effectiveMode) return
+  const reason = sandboxPermissions === undefined && justification?.trim() === '' ? undefined : justification
+  validateEscalationArgs(sandboxPermissions, reason)
+}
+
+/**
  * The model-facing denial marker — the one vocabulary both enforcing families
  * teach and report, so the model recognizes a policy denial identically
  * whether the kernel refused a bash file effect or the filesystem provider's

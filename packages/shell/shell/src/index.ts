@@ -51,8 +51,8 @@ declare module '@deepseek-ai/cordis' {
  *   Nonzero exits, timeout kills, and abort kills resolve with a descriptive
  *   result: first-cause `timedOut`/`aborted`, the spec's `timeoutMs` echoed.
  * - The handle is published after preparation. `done` settles at process close
- *   and never rejects; spawn failures settle as `killed` with the error on the read
- *   path, while `result()` carries the same failure as its rejection.
+ *   and never rejects; provider failures settle as `killed` with `failure: 'provider'`
+ *   and the error on the read path, while `result()` carries the same failure as its rejection.
  * - `onExpiry: 'none'` arms no deadline; `'kill'` kills at expiry. Expiry
  *   during preparation returns a settled timed-out handle without output.
  * - {@link ShellProcess.readOutput} is incremental: consecutive reads never

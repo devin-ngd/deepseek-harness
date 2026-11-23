@@ -26,6 +26,14 @@ function processHandle() {
 }
 
 describe('background job ownership during asynchronous shell startup', () => {
+  it('distinguishes provider failure from an ordinary killed process', () => {
+    const child = processHandle()
+    child.process.status = 'killed'
+    expect(processOutcome(child.process).status).toBe('killed')
+    child.process.failure = 'provider'
+    expect(processOutcome(child.process).status).toBe('failed')
+  })
+
   it('keeps observation empty during preparation and reads published output without consuming it', async () => {
     const child = processHandle()
     const prepared = Promise.withResolvers<ShellProcess>()

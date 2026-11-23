@@ -329,6 +329,7 @@ export class LocalBashExecutor extends ShellExecutor {
         }
         // Provider failures settle the handle as killed and surface on stderr for every reader.
         proc.status = 'killed'
+        proc.failure = 'provider'
         let detail = 'unprintable provider failure'
         try {
           detail = String(error)

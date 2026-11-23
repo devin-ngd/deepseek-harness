@@ -188,6 +188,8 @@ export interface ShellProcessRead {
 export interface ShellProcess {
   /** Process lifecycle state (settled exactly once). */
   status: ShellProcessStatus
+  /** Provider could not report a process outcome; available after settlement. */
+  failure?: 'provider'
   /** Exit code once finished (null = killed by signal / still running). */
   exitCode: number | null
   /** Terminating signal name, when signal-killed. */

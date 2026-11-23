@@ -719,9 +719,21 @@ describe('sandbox escalation through ctx.approval', () => {
 
   it.each(['workspace-write', 'danger-full-access'] as const)('runs a repeated %s request without approval', async (mode) => {
     const { ctx, bash } = await setupSandboxed()
-    const result = await call(ctx, 'pwsh', { ...escalate, sandbox_permissions: mode }, sandboxAgent(mode))
+    for (const justification of [undefined, '', ' \t\n']) {
+      const result = await call(ctx, 'pwsh', {
+        command: 'Write-Output ok', description: 'repeat current mode', sandbox_permissions: mode,
+        ...justification === undefined ? {} : { justification },
+      }, sandboxAgent(mode))
+      expect(result.isError).toBe(false)
+    }
+    expect(bash.modes).toEqual([mode, mode, mode])
+  })
+
+  it.each(['', ' \t\n'])('accepts blank justification without escalation: %j', async (justification) => {
+    const { ctx, bash } = await setupSandboxed()
+    const result = await call(ctx, 'pwsh', { command: 'Write-Output ok', description: 'ordinary', justification }, sandboxAgent())
     expect(result.isError).toBe(false)
-    expect(bash.modes).toEqual([mode])
+    expect(bash.modes).toEqual(['read-only'])
   })
 
   it('fails closed when approval cannot be routed', async () => {
@@ -1261,6 +1273,7 @@ describe('processOutcome', () => {
     const deniedWithoutEscalation = processOutcome(settled({ exitCode: 1, sandbox: { mode: 'read-only', denied: true } }))
     expect(deniedWithoutEscalation.detail).toBe(`exit code: 1; ${sandboxDenialMarker('read-only')}`)
     const runnerFailed = processOutcome(settled({ exitCode: 1, sandbox: { mode: 'read-only', denied: false, runnerFailed: true } }))
+    expect(runnerFailed.status).toBe('failed')
     expect(runnerFailed.detail).toContain('the sandbox runner itself failed under read-only mode')
     expect(processOutcome(settled({ sandbox: { mode: 'read-only', denied: false } })).detail).toBe('exit code: 0')
   })

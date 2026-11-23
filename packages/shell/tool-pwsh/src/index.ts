@@ -32,7 +32,7 @@ import type { JobId, JobRegistry, JobView } from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
-import { ESCALATION_TARGETS, approveEscalation, sandboxPermissionsDescription, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
+import { ESCALATION_TARGETS, approveEscalation, sandboxPermissionsDescription, validateCommandEscalationArgs } from '@deepseek-ai/dsh-sandbox'
 import { subprocessSpawnFailure } from '@deepseek-ai/dsh-subprocess'
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import type { ShellExecRequest, ShellExecSpec, ShellExecution, ShellRunResult } from '@deepseek-ai/dsh-shell'
@@ -134,7 +134,7 @@ function rejectUnadvertisedArgs(
   }
 }
 
-function validatePwshArgs(args: PwshToolArgs, advertised: AdvertisedArgs): void {
+function validatePwshArgs(args: PwshToolArgs, effectiveMode: SandboxMode | undefined, advertised: AdvertisedArgs): void {
   if (args.command.trim().length === 0) {
     throw new ToolArgsError(['invalid command: expected a non-empty string'])
   }
@@ -145,7 +145,7 @@ function validatePwshArgs(args: PwshToolArgs, advertised: AdvertisedArgs): void 
     throw new ToolArgsError([`invalid timeoutMs: expected a positive number, got ${JSON.stringify(args.timeoutMs)}`])
   }
   rejectUnadvertisedArgs(args, advertised)
-  validateEscalationArgs(args.sandbox_permissions, args.justification)
+  validateCommandEscalationArgs(args.sandbox_permissions, args.justification, effectiveMode)
 }
 /* jscpd:ignore-end */
 
@@ -544,9 +544,9 @@ export function apply(ctx: Context, config: Config = {}): void {
       },
       /* jscpd:ignore-start -- the execute path mirrors dsh-tool-bash's by design (see the pwsh-tool-and-executor Agent Note). */
       async execute(args: PwshToolArgs, exec) {
-        validatePwshArgs(args, { escalation: escalationModes.length > 0, background: backgroundEnabled })
         // Description is display metadata; workdir defaults to the caller's session.
         const standingPolicy = resolveSandboxPolicy(exec)
+        validatePwshArgs(args, standingPolicy?.mode, { escalation: escalationModes.length > 0, background: backgroundEnabled })
         const approvedMode = args.sandbox_permissions !== undefined && args.justification !== undefined
           ? await approvePwshEscalation(args.sandbox_permissions, args.justification, exec, standingPolicy)
           : undefined

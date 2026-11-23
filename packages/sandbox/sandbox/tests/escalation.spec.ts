@@ -15,6 +15,7 @@ import {
   escalationHintMarker,
   sandboxDenialMarker,
   sandboxPermissionsDescription,
+  validateCommandEscalationArgs,
   validateEscalationArgs,
 } from '@deepseek-ai/dsh-sandbox'
 import type { EscalationApprover, EscalationOutcome, SandboxEscalationErrorCode } from '@deepseek-ai/dsh-sandbox'
@@ -59,6 +60,16 @@ describe('validateEscalationArgs', () => {
       expect(error).toBeInstanceOf(SandboxEscalationError)
       expect(error).toEqual(escalationError('SANDBOX_ESCALATION_INVALID_ARGUMENT'))
     }
+  })
+})
+
+describe('validateCommandEscalationArgs', () => {
+  it('accepts repeated effective modes and blank unused justifications while still enforcing pairing otherwise', () => {
+    expect(() => { validateCommandEscalationArgs('workspace-write', undefined, 'workspace-write') }).not.toThrow()
+    expect(() => { validateCommandEscalationArgs('workspace-write', '   ', 'workspace-write') }).not.toThrow()
+    expect(() => { validateCommandEscalationArgs(undefined, ' \t\n', 'read-only') }).not.toThrow()
+    expect(() => { validateCommandEscalationArgs('workspace-write', undefined, 'read-only') }).toThrow(/requires a justification/)
+    expect(() => { validateCommandEscalationArgs(undefined, 'orphan reason', 'read-only') }).toThrow(/only valid together with sandbox_permissions/)
   })
 })
 

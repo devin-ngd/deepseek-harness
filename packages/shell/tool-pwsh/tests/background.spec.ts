@@ -3,7 +3,7 @@ import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Session, type SessionId } from '@deepseek-ai/dsh-session'
 import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session/types'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -48,9 +48,9 @@ function observableProcess(streams: { stdout: { text: string }; stderr: { text: 
   }
   return {
     proc,
-    finish() {
-      proc.status = 'completed'
-      proc.exitCode = 0
+    finish(exitCode: number | null = 0) {
+      proc.status = exitCode === null ? 'killed' : 'completed'
+      proc.exitCode = exitCode
       resolveDone()
     },
   }
@@ -123,6 +123,24 @@ async function until<T>(read: () => T | undefined, timeoutMs = 5_000): Promise<T
 }
 
 describe('background pwsh output', () => {
+  it('reports an unknown provider outcome through job_output', async () => {
+    const { ctx, pwsh } = await setup()
+    const scripted = observableProcess({ stdout: { text: '' }, stderr: { text: 'provider unavailable\n' } })
+    pwsh.backgroundHandler = () => scripted.proc
+    await call(ctx, { command: 'Write-Output example', description: 'test command', run_in_background: true })
+    const job = ctx.jobs.list()[0]!
+    scripted.proc.failure = 'provider'
+    scripted.finish(null)
+    await until(() => ctx.jobs.get(job.id).status === 'failed' ? true : undefined)
+    const result = await executeToolFixture(ctx, {
+      signal: testToolSignal,
+      callId: ToolCallId('pwsh-provider-failure-read'),
+      name: 'job_output',
+      arguments: { job_id: String(job.id) },
+    })
+    expect(JSON.stringify(result)).toContain('command outcome unknown, check effects before retrying')
+  })
+
   it('streams observed channels into the job ring and settles with the mapped outcome', async () => {
     const { ctx, pwsh } = await setup()
     const stdout = { text: '' }

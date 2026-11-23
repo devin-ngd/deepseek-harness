@@ -351,6 +351,7 @@ describe('LocalBashExecutor.start (background process handles)', () => {
     const proc = (await start(bash, bash.resolve({ command: 'true' })))
     await expect(proc.done).resolves.toBeUndefined()
     expect(proc.status).toBe('killed')
+    expect(proc.failure).toBe('provider')
     const output = proc.readOutput().delta
     expect(output).toContain('target stderr')
     expect(output).toContain('subprocess failed before reporting an outcome:')
@@ -383,6 +384,7 @@ describe('LocalBashExecutor.start (background process handles)', () => {
     await expect(ex.done).resolves.toBeUndefined()
     expect(ex.status).toBe('killed')
     await expect(ex.result()).resolves.toMatchObject({ aborted: true, timedOut: false, exitCode: null })
+    expect(ex.failure).toBeUndefined()
     expect(ex.readOutput().delta).toBe('')
   })
 
