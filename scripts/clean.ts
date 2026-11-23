@@ -4,8 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import { repositoryConfigHost } from './ts-project.ts'
-
-const knownOrphanEntries = new Set(['node_modules', 'lib', '.typecheck'])
+import { isGeneratedPackageResidue } from './package-residue.ts'
 
 function errorCode(error: unknown): unknown {
   return error instanceof Error && 'code' in error ? error.code : undefined
@@ -138,7 +137,7 @@ export class RepositoryCleaner {
         // A manifest-less package directory is stale only when every remaining
         // entry is known generated residue; unknown files make the whole clean fail.
         const entries = await readdir(packageDirectory)
-        const unknown = entries.filter(entry => !knownOrphanEntries.has(entry) && !entry.endsWith('.tsbuildinfo'))
+        const unknown = entries.filter(entry => !isGeneratedPackageResidue(entry))
         if (unknown.length > 0) {
           unsafeOrphans.push(...unknown.map(entry => repositoryPath(this.root, join(packageDirectory, entry))))
         } else {
