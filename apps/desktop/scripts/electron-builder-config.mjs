@@ -234,6 +234,9 @@ export function createElectronBuilderConfig(
       verifyMacOSSignatureAfterSign(context, macOSSigning ?? resolveMacOSSigningEnvironment(env))
     },
     artifactBuildCompleted: artifact => {
+      if (packagesWindows && hostPlatform === 'win32' && artifact.file.endsWith('.exe')) {
+        return promisify(execFile)('icacls.exe', [artifact.file, '/setintegritylevel', 'M'], { windowsHide: true })
+      }
       if (unsigned || !artifact.file.endsWith('.dmg')) return
       if (skipNotarization) {
         verifyMacOSDiskImageSignature(artifact.file, macOSSigning ?? resolveMacOSSigningEnvironment(env))

@@ -5,7 +5,19 @@ $ErrorActionPreference = 'Stop'
 $installerRoot = Join-Path $PSScriptRoot '../installer'
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $PSScriptRoot '../.desktop-build/targets/win-x64/installer-ui' }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
-New-Item -ItemType Directory -Force $output | Out-Null
+$targetRoot = Split-Path -Parent $output
+$integrityDirectories = if ((Split-Path -Leaf $output) -eq 'installer-ui' -and $targetRoot) {
+    @($targetRoot, $output, (Join-Path $targetRoot 'artifacts'), (Join-Path $targetRoot 'unsigned-artifacts'))
+} elseif ($targetRoot) {
+    @($targetRoot, $output)
+} else {
+    @($output)
+}
+foreach ($directory in $integrityDirectories) {
+    New-Item -ItemType Directory -Force $directory | Out-Null
+    & icacls.exe $directory /setintegritylevel '(OI)(CI)M' >$null
+    if ($LASTEXITCODE -ne 0) { throw "Failed to set Medium mandatory integrity level on $directory." }
+}
 $source = Join-Path $installerRoot 'window-frame.cpp'
 $library = Join-Path $output 'window-frame.dll'
 if ($env:DSH_DESKTOP_VCVARS32) {

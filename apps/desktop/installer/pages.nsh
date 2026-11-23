@@ -289,17 +289,20 @@ Function InstallerDrag
     SendMessage $HWNDPARENT ${WM_NCLBUTTONDOWN} 2 0
 FunctionEnd
 
-; NM_CUSTOMDRAW keeps native button focus, keyboard input and accessible text.
+; NM_CUSTOMDRAW retains native controls and preserves the interrupted script's registers.
 ; This NMCUSTOMDRAW layout is for the x86 NSIS stub, including on x64 Windows.
 Function InstallerPaintButton
+    System::Store "S"
     Pop $R0
     Pop $R1
     Pop $R2
     ${If} $R1 != -12
+        System::Store "L"
         Return
     ${EndIf}
     System::Call '*$R2(p, p, i, i .R3, p .R4, i .R5, i .R6, i .R7, i .R8, p, i .R9)'
     ${If} $R3 != 1
+        System::Store "L"
         Return
     ${EndIf}
     System::Call 'gdi32::SaveDC(p R4)'
@@ -371,6 +374,7 @@ Function InstallerPaintButton
     ${EndIf}
     System::Call 'gdi32::RestoreDC(p R4, i -1)'
     System::Free $R2
+    System::Store "L"
     ${NSD_Return} 4
 FunctionEnd
 

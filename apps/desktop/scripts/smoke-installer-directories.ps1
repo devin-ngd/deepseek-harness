@@ -17,6 +17,49 @@ function Invoke-Checked([string]$Executable, [string[]]$Arguments) {
   if ($LASTEXITCODE -ne 0) { throw "$Executable exited with $LASTEXITCODE" }
 }
 
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class DshMandatoryLabelProbe {
+  [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
+  private static extern uint GetNamedSecurityInfoW(string pObjectName, int ObjectType, uint SecurityInfo,
+    IntPtr psidOwner, IntPtr psidGroup, IntPtr pDacl, out IntPtr pSacl, out IntPtr ppSecurityDescriptor);
+  [DllImport("advapi32.dll")]
+  private static extern bool GetAce(IntPtr pAcl, uint dwAceIndex, out IntPtr pAce);
+  [DllImport("advapi32.dll")]
+  private static extern bool IsValidSid(IntPtr pSid);
+  [DllImport("advapi32.dll")]
+  private static extern IntPtr GetSidSubAuthorityCount(IntPtr pSid);
+  [DllImport("advapi32.dll")]
+  private static extern IntPtr GetSidSubAuthority(IntPtr pSid, uint nSubAuthority);
+  [DllImport("kernel32.dll")]
+  private static extern IntPtr LocalFree(IntPtr hMem);
+  public static uint GetLowestRid(string path) {
+    IntPtr sacl, sd;
+    if (GetNamedSecurityInfoW(path, 1, 0x10, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, out sacl, out sd) != 0) return 0xFFFFFFFF;
+    try {
+      uint lowest = 0x2000;
+      if (sacl == IntPtr.Zero) return lowest;
+      ushort count = (ushort)Marshal.ReadInt16(sacl, 4);
+      bool found = false;
+      for (uint i = 0; i < count; i++) {
+        IntPtr ace;
+        if (!GetAce(sacl, i, out ace)) break;
+        if (Marshal.ReadByte(ace, 0) != 0x11) continue;
+        IntPtr sid = IntPtr.Add(ace, 8);
+        if (!IsValidSid(sid)) continue;
+        byte subCount = Marshal.ReadByte(GetSidSubAuthorityCount(sid));
+        if (subCount == 0) continue;
+        uint rid = (uint)Marshal.ReadInt32(GetSidSubAuthority(sid, (uint)(subCount - 1)));
+        if (!found || rid < lowest) lowest = rid;
+        found = true;
+      }
+      return lowest;
+    } finally { if (sd != IntPtr.Zero) LocalFree(sd); }
+  }
+}
+"@
+
 try {
   $localeModule = [uri]::new((Join-Path $PSScriptRoot 'installer-locales.mjs')).AbsoluteUri
   $strings = Join-Path $scratch 'strings.nsh'
@@ -37,16 +80,18 @@ try {
     $caseRoot = Join-Path $scratch $mode
     $target = Join-Path $caseRoot 'Application'
     New-Item -ItemType Directory -Path $caseRoot | Out-Null
+    if ($mode -in @('first', 'upgrade', 'transient-lock')) {
+      & icacls $caseRoot /grant '*S-1-15-2-1:(OI)(CI)(RX)' | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "Cannot pollute $caseRoot with application-package access" }
+      & icacls $caseRoot /deny '*S-1-1-0:(OI)(CI)(IO)(DC)' | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "Cannot pollute $caseRoot with a deny-delete rule" }
+      & icacls $caseRoot /setintegritylevel '(OI)(CI)L' | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "Cannot pollute $caseRoot with a low mandatory integrity label" }
+    }
     if ($mode -eq 'access-denied') {
       # OWNER RIGHTS removes the staging owner's implicit WRITE_DAC while leaving payload IO and cleanup available.
-      $security = Get-Acl -LiteralPath $caseRoot
-      $security.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
-        [Security.Principal.SecurityIdentifier]::new('S-1-3-4'),
-        [Security.AccessControl.FileSystemRights]::ChangePermissions,
-        [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit',
-        [Security.AccessControl.PropagationFlags]::InheritOnly,
-        [Security.AccessControl.AccessControlType]::Deny))
-      Set-Acl -LiteralPath $caseRoot -AclObject $security
+      & icacls $caseRoot /deny '*S-1-3-4:(OI)(CI)(IO)(WDAC)' | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "Cannot deny staging permission changes under $caseRoot" }
     }
     if ($mode -ne 'first') {
       New-Item -ItemType Directory -Path $target | Out-Null
@@ -56,7 +101,7 @@ try {
       [IO.Directory]::CreateDirectory((Split-Path $oldDeep -Parent)) | Out-Null
       [IO.File]::WriteAllText($oldDeep, 'old long path asset')
     }
-    $probe = Join-Path $caseRoot 'probe.exe'
+    $probe = Join-Path $scratch "probe-$mode.exe"
     $caseArchive = if ($mode -eq 'broken') { $brokenArchive } else { $archive }
     $reportDir = Join-Path $caseRoot 'installer-logs'
     $compileArgs = @('/V2', "/DOUTPUT_FILE=$probe", "/DPAYLOAD_FILE=$caseArchive", "/DTARGET_DIR=$target", "/DDSH_SEVENZIP_PATH=$SevenZip")
@@ -73,7 +118,10 @@ try {
       if ($mode -in @('locked', 'transient-lock')) {
         $handle = [System.IO.File]::Open((Join-Path $target 'asset.txt'), 'Open', 'Read', 'Read')
       }
-      $process = Start-Process -FilePath $probe -ArgumentList '/S' -WindowStyle Hidden -PassThru
+      $startInfo = [Diagnostics.ProcessStartInfo]::new($probe, '/S')
+      $startInfo.UseShellExecute = $false
+      $startInfo.CreateNoWindow = $true
+      $process = [Diagnostics.Process]::Start($startInfo)
       if ($mode -eq 'transient-lock') {
         $deadline = [Diagnostics.Stopwatch]::StartNew()
         $observedFailure = $false
@@ -141,8 +189,12 @@ try {
     $expectObsolete = $mode -notin @('first', 'upgrade', 'transient-lock')
     if (-not $expectObsolete) {
       foreach ($entry in @($target, (Join-Path $target 'asset.txt'), (Join-Path $target ([IO.Path]::GetRelativePath($payload, $deepPayload))))) {
-        $rules = @((Get-Acl -LiteralPath $entry).GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | Where-Object { $_.IdentityReference.Value -eq 'S-1-15-2-1' -and $_.AccessControlType -eq 'Allow' })
-        if (@($rules | Where-Object { [int]$_.FileSystemRights -eq 1179817 }).Count -eq 0) { throw "Missing exact application-package RX on $entry" }
+        $rules = @((Get-Acl -LiteralPath $entry).GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | Where-Object {
+          $_.IdentityReference.Value -in @('S-1-15-2-1', 'S-1-1-0')
+        })
+        if ($rules.Count -ne 0) { throw "Polluted parent authorization remained on $entry" }
+        $labelRid = [DshMandatoryLabelProbe]::GetLowestRid($entry)
+        if ($labelRid -lt 0x2000 -or $labelRid -eq 0xFFFFFFFF) { throw "Low mandatory integrity label remained on $entry (rid=0x$($labelRid.ToString('X')))" }
       }
     }
     if ((Test-Path -LiteralPath (Join-Path $target 'obsolete.txt')) -ne $expectObsolete) {

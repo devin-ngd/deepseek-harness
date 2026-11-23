@@ -264,7 +264,9 @@ pwsh -NoProfile -File apps/desktop/scripts/smoke-windows.ps1 -Makensis $Makensis
 
 Windows 安装器在启动时和选定目标目录后检查应用是否正在运行，通过检查后才将新版本解压到安装目录旁边。通过同卷目录改名替换前，安装器会再次检查。运行中的应用会阻止安装；更新启动允许等待应用退出，最长十秒。同路径升级在替换成功前保留旧目录；解压失败时旧版不变，替换失败时尝试恢复旧目录。安装器在启动前清理旧版备份。强制结束安装器或断电可能留下 `.new-*` 或 `.old-*` 目录；不同安装位置或安装范围迁移仍使用 electron-builder 的旧卸载器流程。
 
-Windows 安装器在解压载荷前，为私有暂存目录设置 ALL APPLICATION PACKAGES 可继承的读取／执行权限。权限设置失败会在替换原目录前停止安装；用户数据权限不变。目录 smoke 必须通过 `-FrameLibrary` 传入已准备的 `window-frame.dll`，检查首次安装和升级后的权限继承，并覆盖权限拒绝。原生访问权限测试由 `prepare-windows-installer.ps1 -CompileProgressOnly` 编译，由 `-TestProgress` 执行。
+原生按钮和复选框的绘制回调在同步重绘时保留 NSIS 寄存器，包括用于核对已登记安装目录的值。
+
+Windows 打包会将目标输出目录设为可继承的 Medium 完整性标签，并在生成 `.exe` 安装包产物后显式标记为 Medium 完整性，避免被沙箱标为 Low 的工作区目录产出带低完整性标签的安装器。Windows 安装器在解压载荷前，将私有暂存目录继承的 DACL 替换为面向 owner、SYSTEM、Administrators 和 Users 的标准程序权限，并将继承的低或不受信任完整性标签替换为可继承的 Medium 标签。受保护 DACL 会阻断父目录继承的 AppContainer 与 deny 授权，Medium 标签保证受沙箱污染的父目录下解压出的可执行文件可正常启动。权限清理失败会在替换原目录前停止安装；用户数据权限不变。目录 smoke 必须通过 `-FrameLibrary` 传入已准备的 `window-frame.dll`，检查首次安装和升级后的清理效果，并覆盖父目录已污染和权限拒绝场景。原生访问权限测试由 `prepare-windows-installer.ps1 -CompileProgressOnly` 编译，由 `-TestProgress` 执行。
 
 目录改名、空目标目录删除和旧版恢复遇到 Windows 错误 5、32 或 33 时最多尝试十次，每次等待递增 250 毫秒（每个操作合计等待 11.25 秒）。其他错误立即停止。替换失败时，安装器将 Windows 错误、相关路径和恢复结果写入解压报告旁的 `directory-failure-<时间戳>.log`。如果恢复失败，安装器会清理未被占用的暂存文件并保留备份。上报此失败后，退出清理不再重试恢复。请保留报告所列的备份目录，并在重新安装前联系支持人员。静默安装保存相同的诊断，不显示弹窗。
 
@@ -288,7 +290,11 @@ Desktop [补丁策略](../scripts/runtime-patch-policy.ts) 将每份工作区补
 
 Desktop 依赖 overrides 在补丁策略模块中单独声明，不从补丁版本推导。pi-ai 约束使运行时版本保持在共享补丁已验证的版本。Desktop 仍会在每次构建时重新解析运行时锁文件，再通过 `--frozen-lockfile` 安装；不同构建之间的依赖解析尚不保证可复现。CLI 打包安装测试及其他交付流程保留各自的配置。
 
+准备好目标的包集合和解释器后，可运行 `pnpm --dir apps/desktop run prepare:dsh --offline --store-dir <absolute-pnpm-store> --cache-dir <absolute-registry-cache>`，从缓存依赖重建生产目录。锁文件解析和安装均以离线模式运行；缺少元数据或包字节会使构建失败。可选缓存路径要求同时启用离线模式，准备完成后保留，且不改变全局 pnpm 设置。其他打包阶段沿用原有的下载行为。
+
 Electron 归档使用锁定 `electron` npm 包自带的校验值进行验证，因此校验已有归档时无需另行下载校验列表。
+
+Host smoke 通过内置 CLI 和插件管理 API 安装本地插件 tarball，并移除 CLI 夹具。临时 Host、profile 和回环监听必须完成关闭和清理，准备阶段才算成功。
 
 每条打包命令都会构建仓库，打包以 dsh 和私有 Desktop Host 为根的第一方生产依赖闭包，并准备目标专用的 Electron 分发包和包含共享 pnpm CLI 的 primary-runtime。`prepare:dsh` 在构建时安装一次生产依赖图，准备物化包供 electron-builder 归档到 `app.asar/dsh`，移除包管理器元数据，并生成包含共享包版本和最终文件哈希的 `desktop-runtime.json`。macOS 签名构建先签名并验证原生文件，并在不重签的前提下校验已公证的 Computer Use helper 应用包，再生成清单；electron-builder 不对已签名的此目录重复进行嵌套签名。资源映射明确包含默认根目录过滤器会忽略的 `dsh/node_modules`；准备完成的运行时清单在原生签名后检查。原生可执行文件及库解包到 ASAR 旁；Python、独立 Node 和 pnpm 保留在外部 runtime 资源中。Windows 打包逐项检查准备好的 PE，确认其 ASAR 条目已标记为解包，且磁盘副本字节一致；未签名构建也执行此检查。Builder glob 规则用单字符通配符匹配 PE 文件名中的花括号，因此同目录中名称匹配的文件也可能被解包。准备好的运行时 smoke 沿用已验证的目标描述符，不使用构建宿主的架构。签名安装包、公证、已安装应用升级和各目标原生模块的验收需要发布环境。
 

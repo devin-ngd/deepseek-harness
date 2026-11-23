@@ -116,7 +116,7 @@ Var dshRecoveryStopped
     SetErrorLevel 2
     Quit
   ${EndIf}
-  System::Call '$PLUGINSDIR\window-frame.dll::InstallerGrantAppPackageRead(w "$dshNewDirectory") i.s ?c'
+  System::Call '$PLUGINSDIR\window-frame.dll::InstallerProtectDirectoryAcl(w "$dshNewDirectory") i.s ?c'
   Pop $dshDirectoryError
   ${If} $dshDirectoryError != 0
     Call dshRollbackDirectories

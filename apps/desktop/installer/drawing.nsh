@@ -44,16 +44,19 @@ Function InstallerDrawEditFrame
     System::Call 'gdiplus::GdipDisposeImage(p R5)'
 FunctionEnd
 
-; BS_AUTOCHECKBOX retains its native state, text, keyboard and accessibility role.
+; BS_AUTOCHECKBOX retains native behavior; repainting preserves the interrupted script's registers.
 Function InstallerPaintCheckbox
+    System::Store "S"
     Pop $R0
     Pop $R1
     Pop $R2
     ${If} $R1 != -12
+        System::Store "L"
         Return
     ${EndIf}
     System::Call '*$R2(p, p, i, i .R3, p .R4, i, i, i, i, p, i .R9)'
     ${If} $R3 != 1
+        System::Store "L"
         Return
     ${EndIf}
     System::Call 'gdi32::SaveDC(p R4)'
@@ -116,5 +119,6 @@ Function InstallerPaintCheckbox
     ${EndIf}
     System::Call 'gdi32::RestoreDC(p R4, i -1)'
     System::Free $R2
+    System::Store "L"
     ${NSD_Return} 4
 FunctionEnd

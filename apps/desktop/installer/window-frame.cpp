@@ -11,6 +11,7 @@
 #include <gdiplus.h>
 #include <new>
 #include <algorithm>
+#include <vector>
 static HRESULT ApplyInstallerDwmFrame(HWND window) {
     // DWM retains native transitions; WM_NCCALCSIZE removes the visible caption.
     SetWindowLongW(window, GWL_STYLE, GetWindowLongW(window, GWL_STYLE) | WS_THICKFRAME | WS_CAPTION);
@@ -37,34 +38,91 @@ static HRESULT ApplyInstallerDwmFrame(HWND window) {
 
 using namespace Gdiplus;
 
-// Apply inherited read/execute before promotion; a failure leaves the old installation in place.
-extern "C" __declspec(dllexport) DWORD __cdecl InstallerGrantAppPackageRead(LPCWSTR directory) {
+// Replace inherited sandbox authorization before promotion; a failure leaves the old installation in place.
+extern "C" __declspec(dllexport) DWORD __cdecl InstallerProtectDirectoryAcl(LPCWSTR directory) {
     const DWORD attributes = GetFileAttributesW(directory);
     if (attributes == INVALID_FILE_ATTRIBUTES) return GetLastError();
     if (!(attributes & FILE_ATTRIBUTE_DIRECTORY) || (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
         return ERROR_INVALID_PARAMETER;
-    BYTE sid[SECURITY_MAX_SID_SIZE];
-    DWORD sidSize = sizeof(sid);
-    if (!CreateWellKnownSid(WinBuiltinAnyPackageSid, nullptr, sid, &sidSize)) return GetLastError();
-    PACL previous = nullptr;
+    PSID owner = nullptr;
+    PACL existingSacl = nullptr;
     PSECURITY_DESCRIPTOR descriptor = nullptr;
-    DWORD result = GetNamedSecurityInfoW(directory, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
-        nullptr, nullptr, &previous, nullptr, &descriptor);
+    DWORD result = GetNamedSecurityInfoW(directory, SE_FILE_OBJECT,
+        OWNER_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION,
+        &owner, nullptr, nullptr, &existingSacl, &descriptor);
     if (result != ERROR_SUCCESS) return result;
-    if (!previous) { LocalFree(descriptor); return ERROR_INVALID_ACL; }
-    EXPLICIT_ACCESSW access{};
-    access.grfAccessPermissions = FILE_GENERIC_READ | FILE_GENERIC_EXECUTE;
-    access.grfAccessMode = GRANT_ACCESS;
-    access.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-    access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-    access.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
-    access.Trustee.ptstrName = reinterpret_cast<LPWSTR>(sid);
-    PACL updated = nullptr;
-    result = SetEntriesInAclW(1, &access, previous, &updated);
-    if (result == ERROR_SUCCESS)
-        result = SetNamedSecurityInfoW(const_cast<LPWSTR>(directory), SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION, nullptr, nullptr, updated, nullptr);
-    LocalFree(updated);
+    if (owner == nullptr) {
+        LocalFree(descriptor);
+        return ERROR_INVALID_ACL;
+    }
+    BYTE systemSid[SECURITY_MAX_SID_SIZE];
+    BYTE administratorsSid[SECURITY_MAX_SID_SIZE];
+    BYTE usersSid[SECURITY_MAX_SID_SIZE];
+    DWORD systemSidSize = sizeof(systemSid);
+    DWORD administratorsSidSize = sizeof(administratorsSid);
+    DWORD usersSidSize = sizeof(usersSid);
+    if (!CreateWellKnownSid(WinLocalSystemSid, nullptr, systemSid, &systemSidSize) ||
+        !CreateWellKnownSid(WinBuiltinAdministratorsSid, nullptr, administratorsSid, &administratorsSidSize) ||
+        !CreateWellKnownSid(WinBuiltinUsersSid, nullptr, usersSid, &usersSidSize)) {
+        result = GetLastError();
+        LocalFree(descriptor);
+        return result;
+    }
+    const struct Grant { PSID sid; ACCESS_MASK rights; } grants[] {
+        { owner, FILE_ALL_ACCESS },
+        { systemSid, FILE_ALL_ACCESS },
+        { administratorsSid, FILE_ALL_ACCESS },
+        { usersSid, FILE_GENERIC_READ | FILE_GENERIC_EXECUTE },
+    };
+    std::vector<BYTE> daclStorage(sizeof(ACL) + ARRAYSIZE(grants) * (sizeof(ACCESS_ALLOWED_ACE) + SECURITY_MAX_SID_SIZE));
+    PACL dacl = reinterpret_cast<PACL>(daclStorage.data());
+    result = ERROR_SUCCESS;
+    if (!InitializeAcl(dacl, static_cast<DWORD>(daclStorage.size()), ACL_REVISION)) result = GetLastError();
+    for (DWORD index = 0; result == ERROR_SUCCESS && index < ARRAYSIZE(grants); ++index) {
+        if (!AddAccessAllowedAceEx(dacl, ACL_REVISION, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+            grants[index].rights, grants[index].sid))
+            result = GetLastError();
+    }
+    if (result != ERROR_SUCCESS) {
+        LocalFree(descriptor);
+        return result;
+    }
+    result = SetNamedSecurityInfoW(const_cast<LPWSTR>(directory), SE_FILE_OBJECT,
+        DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+        nullptr, nullptr, dacl, nullptr);
+    bool hasLowLabel = false;
+    if (result == ERROR_SUCCESS && existingSacl != nullptr) {
+        for (DWORD index = 0; index < existingSacl->AceCount; ++index) {
+            void* ace = nullptr;
+            if (!GetAce(existingSacl, index, &ace)) break;
+            const auto* header = static_cast<const ACE_HEADER*>(ace);
+            if (header->AceType != SYSTEM_MANDATORY_LABEL_ACE_TYPE) continue;
+            const auto* labelAce = static_cast<const SYSTEM_MANDATORY_LABEL_ACE*>(ace);
+            PSID labelSid = const_cast<DWORD*>(&labelAce->SidStart);
+            if (!IsValidSid(labelSid)) continue;
+            const UCHAR count = *GetSidSubAuthorityCount(labelSid);
+            if (count == 0) continue;
+            if (*GetSidSubAuthority(labelSid, count - 1) < SECURITY_MANDATORY_MEDIUM_RID) {
+                hasLowLabel = true;
+                break;
+            }
+        }
+    }
+    if (result == ERROR_SUCCESS && hasLowLabel) {
+        BYTE mediumLabelSid[SECURITY_MAX_SID_SIZE];
+        DWORD mediumLabelSidSize = sizeof(mediumLabelSid);
+        std::vector<BYTE> labelStorage(sizeof(ACL) + sizeof(SYSTEM_MANDATORY_LABEL_ACE) + SECURITY_MAX_SID_SIZE);
+        PACL labelAcl = reinterpret_cast<PACL>(labelStorage.data());
+        if (!CreateWellKnownSid(WinMediumLabelSid, nullptr, mediumLabelSid, &mediumLabelSidSize) ||
+            !InitializeAcl(labelAcl, static_cast<DWORD>(labelStorage.size()), ACL_REVISION) ||
+            !AddMandatoryAce(labelAcl, ACL_REVISION, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+                SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, mediumLabelSid)) {
+            result = GetLastError();
+        } else {
+            result = SetNamedSecurityInfoW(const_cast<LPWSTR>(directory), SE_FILE_OBJECT,
+                LABEL_SECURITY_INFORMATION, nullptr, nullptr, nullptr, labelAcl);
+        }
+    }
     LocalFree(descriptor);
     return result;
 }
