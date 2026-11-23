@@ -58,7 +58,7 @@ One optional asynchronous provider may be registered through `ctx.sessionTitle.r
 
 ### Reading titles
 
-`get(session)` reads the latest folded title from one live or replayed session, and `foldSessionTitle(events)` is the pure fold over a log. The service requires `ctx.sessionProjections` and registers two units: the client-visible `title` unit (the accepted title string for client list rows) and the host-only `titleInput` unit, which folds the first and latest eligible messages plus their count so scheduling and fallback reads are O(1) through `stateOf()`; the full eligible prefix for one provider generation is scanned from the session log at execution time. An explicit `refresh(session)` materializes the fallback when needed, then explicitly runs the registered provider over the current eligible messages.
+`get(session)` reads the latest folded title from one live or replayed session, and `foldSessionTitle(events)` is the pure fold over a log. The service requires `ctx.sessionProjections` and registers three units: the client-visible `title` unit (the accepted title string for client list rows), the host-only `titleSnapshot` unit (the latest title with its event metadata), and the host-only `titleInput` unit (the first and latest eligible messages and their count). Once the projection is prepared, title, scheduling and fallback reads use `stateOf()` without rescanning the log; the full eligible prefix for one provider generation is scanned from the session log at execution time. An explicit `refresh(session)` materializes the fallback when needed, then explicitly runs the registered provider over the current eligible messages.
 
 ### Failures and recovery
 
@@ -76,7 +76,7 @@ This section explains the title design; the observable behavior is fully covered
 
 ### Design concept
 
-Titles are durable, log-only state: every accepted revision is a `session/title` event, and `foldSessionTitle()` selects the latest, so a title survives replay, resume, and paging exactly like any other session event. The service owns scheduling, supersession, and acceptance; providers own generation.
+Titles are durable, log-only state: every accepted revision is a `session/title` event, and `foldSessionTitle()` selects the latest, so a title survives replay, resume, and paging exactly like any other session event. The service owns scheduling, supersession, and acceptance; providers own generation. The host projection retains the latest title and its source sequence list; its memory grows with the number of messages cited by that title. Checkpoints without the `titleSnapshot` unit rebuild that unit from the log; existing `titleInput` and client-visible version-1 `title` checkpoints stay compatible.
 
 ### Source map
 

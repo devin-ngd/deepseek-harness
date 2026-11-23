@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import LlmRuntime, { createUserMessage, markAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
-import SessionStore, { type SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionTitleProviderId } from '@deepseek-ai/dsh-session-title/types'
@@ -340,6 +340,38 @@ describe('SessionTitleService Provider lifecycle', () => {
       title: 'Watermarked title',
       messageSeqs: [first.seq],
       source: { kind: 'provider', provider: brandString<SessionTitleProviderId>('watermark-cut') },
+    })
+  })
+
+  it('passes the latest title even when newer messages are past the scheduled watermark', async () => {
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(SessionTitleService, CONFIG)
+    const requested = deferred<SessionTitleProviderRequest>()
+    ctx.sessionTitle.register({
+      id: brandString<SessionTitleProviderId>('title-after-watermark'),
+      automatic: 'first-prompt',
+      async generate(request) {
+        requested.resolve(request)
+        return { title: 'Generated title', messageSeqs: request.messages.map(message => message.seq) }
+      },
+    })
+    const session = ctx.sessions.create(SessionId('title-after-watermark'))
+    session.append('turn/start', { turn: 1 })
+    const first = appendHumanPrompt(session, 'First prompt')
+    appendHumanPrompt(session, 'Later prompt')
+    const latestTitle = session.append('session/title', {
+      title: 'Later fallback', messageSeqs: [first.seq], source: { kind: 'fallback' },
+    })
+    appendRoute(session)
+
+    const request = await requested.promise
+    expect(request.messages).toEqual([{ seq: first.seq, text: 'First prompt' }])
+    expect(request.currentTitle).toMatchObject({
+      title: 'Later fallback', eventSeq: latestTitle.seq, source: { kind: 'fallback' },
     })
   })
 

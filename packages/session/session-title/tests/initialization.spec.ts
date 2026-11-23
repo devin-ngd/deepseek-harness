@@ -12,7 +12,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 const CONFIG = { fallbackMaxWords: 8, fallbackMaxBytes: 64, maxTitleBytes: 256 }
 
-async function setup(key: 'title' | 'titleInput') {
+async function setup(key: 'title' | 'titleInput' | 'titleSnapshot') {
   const ctx = new Context()
   const entered = Promise.withResolvers<undefined>()
   const release = Promise.withResolvers<undefined>()
@@ -52,7 +52,7 @@ function titleWritten(ctx: Context, session: Session, kind: 'fallback' | 'provid
 }
 
 describe('SessionTitleService activation', () => {
-  it.each(['title', 'titleInput'] as const)('retains the first message while %s registration is pending', async (key) => {
+  it.each(['title', 'titleSnapshot', 'titleInput'] as const)('retains the first message while %s registration is pending', async (key) => {
     const { ctx, entered, release } = await setup(key)
     const fiber = ctx.plugin(SessionTitleService, CONFIG)
     await entered

@@ -221,6 +221,26 @@ const sessionTitleUserMessageSchema: ZodType<SessionTitleUserMessage> = zod.obje
   text: zod.string(),
 }).strict()
 
+const titleSnapshotSchema: ZodType<SessionTitleSnapshot> = zod.object({
+  title: zod.string(),
+  messageSeqs: zod.array(zod.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).transform(SessionSeq)),
+  source: zod.discriminatedUnion('kind', [
+    zod.object({ kind: zod.literal('fallback') }).strict(),
+    zod.object({ kind: zod.literal('user') }).strict(),
+    zod.object({
+      kind: zod.literal('provider'),
+      provider: zod.string().transform(SessionTitleProviderId),
+      model: zod.object({ provider: zod.string(), model: zod.string() }).strict().optional(),
+    }).strict(),
+  ]).transform(source => source.kind !== 'provider' ? source : {
+    kind: source.kind,
+    provider: source.provider,
+    ...(source.model === undefined ? {} : { model: source.model }),
+  }),
+  eventSeq: zod.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).transform(SessionSeq),
+  updatedAt: zod.number(),
+}).strict()
+
 const titleInputStateSchema: ZodType<TitleInputState> = zod.object({
   first: sessionTitleUserMessageSchema.nullable(),
   count: zod.number().int().nonnegative(),
@@ -305,6 +325,7 @@ export class SessionTitleService extends Service {
   })
 
   private titleInputProjectionHandle!: ProjectionHandle<TitleInputState>
+  private titleSnapshotProjectionHandle!: ProjectionHandle<SessionTitleSnapshot | null>
   private readonly config: ResolvedConfig
   private readonly ownerFiber: Fiber
   private registration: ProviderRegistration | undefined
@@ -368,6 +389,16 @@ export class SessionTitleService extends Service {
 
     await ctx.sessionProjections.register(titleProjectionDefinition)
 
+    this.titleSnapshotProjectionHandle = await ctx.sessionProjections.register<'titleSnapshot', SessionTitleSnapshot | null>({
+      key: 'titleSnapshot',
+      stateVersion: 1,
+      stateSchema: titleSnapshotSchema.nullable(),
+      init: () => null,
+      apply: (state, event) => event.type !== 'session/title'
+        ? state
+        : { ...event.data, eventSeq: event.seq, updatedAt: event.time },
+    })
+
     this.titleInputProjectionHandle = await ctx.sessionProjections.register<'titleInput', TitleInputState>({
       key: 'titleInput',
       stateVersion: 3,
@@ -391,8 +422,8 @@ export class SessionTitleService extends Service {
    * @returns latest title snapshot, or `undefined` before eligible input.
    */
   get(session: Session): SessionTitleSnapshot | undefined {
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    return foldSessionTitle(session.snapshotEvents())
+    const title = this.titleSnapshotProjectionHandle.stateOf(session)
+    return title === null ? undefined : titleSnapshotFromState(title)
   }
 
   /**
