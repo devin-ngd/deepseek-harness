@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-goal-round-driver` automatically continues an active goal in the same session while the agent is idle, continuation is armed, and the configured round allowance remains. Each round gives the model another turn toward the objective; only goal rounds that reach model history consume the allowance, and exhaustion records a blocker. The driver has no configuration: the goal defines the round limit, and `dsh-tool-goal` defines when repeated blocking stops continuation. Mount it with `dsh-goal` and `dsh-tool-goal` for unattended multi-round progress; omit it when each step requires human steering.
+`dsh-goal-round-driver` continues an active goal in the same session when the agent is idle, continuation is armed, and rounds remain. Each round that reaches model history counts toward the goal's round limit. The driver delays continuation after transient model failures. Mount it with `dsh-goal` and `dsh-tool-goal` for unattended progress.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Mount `dsh-goal-round-driver` when an active goal should keep making progress wi
 
 ### Compose it
 
-Mount the driver beside the goal service and the goal tools; the driver itself takes no configuration.
+Mount the driver beside the goal service and the goal tools.
 
 ```yaml
 - id: goal
@@ -42,13 +42,15 @@ Mount the driver beside the goal service and the goal tools; the driver itself t
   name: '@deepseek-ai/dsh-goal-round-driver'
 ```
 
-`maxGoalRounds` belongs to the goal definition, while the model-facing blocked threshold belongs to `dsh-tool-goal`; duplicating either value in the driver could produce divergent policy.
+Set `config.retryDelayMs` on the driver to control the delay after a transient provider failure ends a turn. The default is 60,000 milliseconds. A longer provider-specified delay takes precedence up to the Node timer limit. Set the delay to zero to require manual resume after a model failure.
 
 ### What each round does
 
 With an exact live agent idle, an active armed goal, and remaining capacity, the driver queues one goal-round prompt. It names the JSON-quoted objective, round number, and cap, and tells the model to use current workspace, tool results, and durable state as authority. An accepted round starts a distinct request series, so Chat renders its self-contained request header before the goal message. The round enters history as a goal-sourced user message; only an entered goal message consumes the cap, while human messages and stale reservations do not. Goal lifecycle mutations still require the independent authority checks in `dsh-tool-goal`.
 
 ### When continuation stops
+
+When the turn ends with a transient model failure, the goal remains armed. The driver waits for the retry delay and a successful Session flush, then starts the next goal round from the recorded Session state. This applies to transport errors, timeouts, rate limits, server failures, and empty responses. Credential failures and persistence failures disarm continuation. The model should finish available work before reporting a specific external prerequisite as a blocker.
 
 A round starts only at whole-agent idle and, when the subagent service is loaded, only after the agent's progressing descendants settle; completion, pause, and blocking suppress continuation; a host-initiated pause also aborts the turn already running, while a model-initiated pause inside its own turn finishes normally. An edit only invalidates an in-flight round through the revision fence, and the driver continues the new revision. The driver also stops on its own when a turn ends on max tokens, a durability write fails, the agent is cancelled, the plugin unloads, or the round cap is exhausted — at the cap it records a blocker with the stable code `round-limit`. Cancellation never auto-restarts a round: a goal whose round was under way is paused at the next idle point, and a cancellation unrelated to a goal attempt only disarms continuation. Agent disposal, such as a graceful process shutdown or a reload of the plugin that owns the Agent, aborts the round with the `disposed` cause and only disarms continuation, so the goal stays active, as on plugin unload; user, parent, and hook cancellations still pause it. A round prompt still queued when the agent reaches idle is removed from the inbox, so later human input does not wait behind it; when the cancelled turn belonged to other work, continuation is disarmed rather than paused.
 
@@ -126,7 +128,6 @@ These limits define when the driver is a poor fit or needs special care. They ar
 - **Same-session execution only** — this package deliberately does not spawn a fresh agent, fork a session prefix, or implement Ralph-style independent attempts; that workflow belongs to its own plugin layer.
 - **Accepted-queue unload race** — Cordis plugin unload is asynchronous. A goal prompt already accepted by the agent inbox can begin and consume its round before unload starts; teardown then cancels the request, disarms the goal, and awaits quiescence. No later round starts.
 - **Round cap, not resource budget** — token, currency, time, and provider quota policies remain independent. Their session events are not attributed to the goal message or mapped into goal blocker codes.
-- **No abnormal auto-retry** — transient provider and persistence failures require a later human-authorized resume rather than an implicit retry policy.
 
 <a id="dev-note"></a>
 ### Dev Note
@@ -134,6 +135,6 @@ These limits define when the driver is a poor fit or needs special care. They ar
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-This Dev Note is working context for maintainers; it is explicitly non-authoritative. Open, undecided directions: an abnormal-failure retry policy and evaluator-backed round certification; both stay outside this package by design.
+Evaluator-backed round certification remains a possible extension.
 
 </details>

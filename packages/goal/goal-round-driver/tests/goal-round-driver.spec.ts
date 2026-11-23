@@ -95,12 +95,12 @@ afterEach(async () => {
 })
 
 /** Mount a real loop with only its model scripted. */
-async function harness(script: ScriptEntry[]): Promise<Harness> {
+async function harness(script: ScriptEntry[], config: goalSession.Config = { retryDelayMs: 0 }): Promise<Harness> {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(GoalService)
-  const driver = await ctx.plugin(goalSession)
+  const driver = await ctx.plugin(goalSession, config)
   await ctx.plugin(AgentLoop, { agents: [] })
   const adapter = new ScriptedAdapter(script)
   ctx.llm.registerAdapter(['mock'], adapter)
@@ -260,6 +260,16 @@ describe('same-session goal driving', () => {
 
     expect(goal).toMatchObject({ roundsStarted: 1, activation: 'disarmed' })
     expect(test.adapter.requests).toHaveLength(1)
+  })
+
+  it('continues an armed goal after the configured transient-failure delay', async () => {
+    const test = await harness([new LlmError('slow down', 'RATE_LIMIT'), textResponse('recovered')], { retryDelayMs: 1 })
+    test.ctx.goals.create(test.agent, { objective: 'retry safely', maxGoalRounds: 2 })
+
+    const goal = await waitForGoal(test.ctx, test.agent, current => current?.phase === 'blocked')
+
+    expect(goal).toMatchObject({ roundsStarted: 2, blockedReason: { code: 'round-limit' } })
+    expect(test.adapter.requests).toHaveLength(2)
   })
 
   it('maps a downstream step rejection to blocked without entering the round', async () => {

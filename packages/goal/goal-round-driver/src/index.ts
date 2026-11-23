@@ -8,16 +8,32 @@ import { FiberState } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { GoalMessageSource, GoalRef, GoalView } from '@deepseek-ai/dsh-goal'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, MessageId, MessageSource } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, LlmFailure, MessageId, MessageSource } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-subagent'
+import z from '@deepseek-ai/schemastery'
 import { renderGoalRoundPrompt } from './prompt.ts'
 
 export { renderGoalRoundPrompt } from './prompt.ts'
 
 export const name = 'goal-round-driver'
 export const inject = ['agents', 'goals', 'sessions']
+
+/** Configuration for delayed continuation after a transient provider failure. */
+export interface Config {
+  /** Delay before continuing after a transient provider failure, in milliseconds. Zero disables automatic retries. */
+  retryDelayMs?: number
+}
+
+const DEFAULT_RETRY_DELAY_MS = 60_000
+const MAX_RETRY_DELAY_MS = 2_147_483_647
+const providerDefaults = resolveRetryPolicy(undefined, 'goal-round-driver')
+
+/** Schema for the goal-round driver configuration. */
+export const Config: z<Config> = z.object({
+  retryDelayMs: z.number().min(0).max(MAX_RETRY_DELAY_MS).step(1).default(DEFAULT_RETRY_DELAY_MS),
+})
 
 /** Identity reserved before a goal continuation enters the agent inbox. */
 interface RoundIdentity {
@@ -41,6 +57,7 @@ interface DriverState {
   attempt: RoundAttempt | undefined
   competingQueued: boolean
   needsCheckpoint: boolean
+  retryTimer: ReturnType<typeof setTimeout> | undefined
   requested: boolean
   run: Promise<void> | undefined
   stopping: boolean
@@ -73,8 +90,16 @@ function renderThrown(value: unknown): string {
   return value instanceof Error ? value.message : String(value)
 }
 
-/** Install automatic same-session continuation and its race fences. */
-export function apply(ctx: Context): void {
+/**
+ * Install same-session continuation, including delayed recovery from transient model failures.
+ * @param ctx - plugin context that owns the driver and its timers.
+ * @param config - retry delay, defaulting to one minute. Zero disarms on a model failure.
+ */
+export function apply(ctx: Context, config: Config = {}): void {
+  const retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS
+  if (!Number.isInteger(retryDelayMs) || retryDelayMs < 0 || retryDelayMs > MAX_RETRY_DELAY_MS) {
+    throw new RangeError(`goal-round-driver.retryDelayMs must be an integer from 0 through ${MAX_RETRY_DELAY_MS}`)
+  }
   const states = new Map<Agent, DriverState>()
   // Releases drivers still joining subagents when the plugin unloads.
   const unloading = Promise.withResolvers<void>()
@@ -88,6 +113,7 @@ export function apply(ctx: Context): void {
       attempt: undefined,
       competingQueued: false,
       needsCheckpoint: false,
+      retryTimer: undefined,
       requested: false,
       run: undefined,
       stopping: false,
@@ -121,8 +147,20 @@ export function apply(ctx: Context): void {
     return readyToDrive(state) && !state.needsCheckpoint
   }
 
+  function retryable(failure: LlmFailure): boolean {
+    return retryDelayMs > 0 && providerDefaults.mode === 'normal'
+      && providerDefaults.retryableCodes.includes(failure.code)
+      && (failure.providerRetryAfterMs ?? 0) <= MAX_RETRY_DELAY_MS
+  }
+
+  function clearRetry(state: DriverState): void {
+    clearTimeout(state.retryTimer)
+    state.retryTimer = undefined
+  }
+
   /** Remove automatic authority while preserving the durable phase. */
   function disarm(state: DriverState): void {
+    clearRetry(state)
     try {
       const goal = currentGoal(state)
       if (goal?.activation === 'armed') ctx.goals.disarm(state.agent)
@@ -170,14 +208,14 @@ export function apply(ctx: Context): void {
     }
 
     const goal = currentGoal(state)
-    if (!drivable(goal)) return
+    if (!drivable(goal) || state.retryTimer !== undefined) return
     // A round started while descendants progress would only wait for them.
     // Every goal mutation requests a checkpoint, so passing the recheck
     // proves this goal view is still current.
     const subagents = ctx.get('subagents')
     if (subagents !== undefined) {
       await Promise.race([subagents.waitForTreeWork(agent), unloading.promise])
-      if (!readyAfterCheckpoint(state)) return
+      if (!readyAfterCheckpoint(state) || state.retryTimer !== undefined) return
     }
     if (goal.roundsStarted >= goal.maxGoalRounds) {
       ctx.goals.block(agent, goalRef(goal), {
@@ -259,17 +297,24 @@ export function apply(ctx: Context): void {
   // One composite effect keeps the step fence installed until this
   // plugin's own scheduling tasks settle.
   ctx.effect(function* () {
-    ctx.on('agent/error', ({ agent }) => {
+    ctx.on('agent/error', ({ agent, error }) => {
       const state = stateFor(agent)
+      // A retry needs a committed turn end and a successful checkpoint.
+      if (agent.status === 'running' && error instanceof LlmError && retryable(error.failure)) return
       disarm(state)
     })
 
-    ctx.on('agent/disposed', ({ agent }) => { states.delete(agent) })
+    ctx.on('agent/disposed', ({ agent }) => {
+      const state = states.get(agent)
+      if (state !== undefined) clearRetry(state)
+      states.delete(agent)
+    })
     ctx.on('agent/created', ({ agent }) => {
       const state = stateFor(agent)
       state.attempt = undefined
       state.competingQueued = false
       state.needsCheckpoint = false
+      clearRetry(state)
     })
     ctx.on('agent/status', ({ agent, status }) => {
       const state = stateFor(agent)
@@ -281,7 +326,8 @@ export function apply(ctx: Context): void {
         // the revision, so a host pause followed by an immediate resume (before
         // the aborted turn converges to idle) must not re-pause the resumed goal.
         const pause = attempt !== undefined
-          && (attempt.phase === 'queued' || attempt.phase === 'claimed' || attempt.cancelled)
+          && (attempt.cancelled || state.retryTimer === undefined
+            && (attempt.phase === 'queued' || attempt.phase === 'claimed'))
           && goal !== undefined && goal.phase === 'active' && goal.activation === 'armed'
           && attempt.goalId === goal.id && attempt.revision === goal.revision
         // A reservation still queued when the agent reaches idle cannot run:
@@ -301,6 +347,7 @@ export function apply(ctx: Context): void {
     })
     ctx.on('goal/changed', ({ agent, change }) => {
       const state = stateFor(agent)
+      clearRetry(state)
       state.needsCheckpoint = true
       // A host-initiated pause stops goal execution: abort the live turn so the
       // model cannot keep acting or resume in the same turn. A model-initiated
@@ -346,11 +393,25 @@ export function apply(ctx: Context): void {
           }
           return
         case 'turn/end':
+          if (event.data.reason.kind === 'error') {
+            const failure = event.data.reason.error
+            if (retryable(failure) && drivable(currentGoal(state))) {
+              clearRetry(state)
+              state.needsCheckpoint = true
+              const delay = Math.max(retryDelayMs, Math.ceil(failure.providerRetryAfterMs ?? 0))
+              state.retryTimer = setTimeout(() => {
+                state.retryTimer = undefined
+                requestDrive(state)
+              }, delay).unref()
+            }
+            return
+          }
           if (event.data.reason.kind === 'max-tokens') {
             disarm(state)
             return
           }
           if (event.data.reason.kind !== 'aborted') return
+          clearRetry(state)
           const abortReason = event.data.reason.reason
           // Agent disposal aborts the round without a pause decision, so continuation
           // is only disarmed and the durable phase stays active, as on driver unload.
