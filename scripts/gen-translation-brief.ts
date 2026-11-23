@@ -12,16 +12,16 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve, sep } from 'node:path'
+import { basename, join, resolve } from 'node:path'
+import { gitWorktreePaths } from './translation-pairing-git.ts'
 import {
   isTranslationPairingManifestExcluded,
   isTranslationScopeFile,
   pairAnchorOfArgument,
   parseTranslationMarkdown,
   parseTranslationPairingManifest,
-  TRANSLATION_SCOPE_GLOB_EXCLUDES,
   translationPairSourcePredicate,
   translationStructureDiff,
   translationStructureSignature,
@@ -296,9 +296,10 @@ if (requested.length > 0) {
   anchors = [...new Set(requested)].sort()
 } else {
   const discovered = new Set<string>()
-  for (const match of globSync('**/*.i18n.yaml', { cwd: root, exclude: TRANSLATION_SCOPE_GLOB_EXCLUDES })) {
-    const normalized = match.split(sep).join('/')
-    if (isTranslationScopeFile(normalized)) discovered.add(normalized.replace(/\.i18n\.yaml$/, '.md'))
+  for (const file of gitWorktreePaths(root)) {
+    if (file.endsWith('.i18n.yaml') && existsSync(join(root, file)) && isTranslationScopeFile(file)) {
+      discovered.add(file.replace(/\.i18n\.yaml$/, '.md'))
+    }
   }
   anchors = [...discovered].sort()
 }
