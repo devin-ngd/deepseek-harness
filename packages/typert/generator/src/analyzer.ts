@@ -635,9 +635,12 @@ export class WorkspaceAnalyzer {
         rootDir: this.options.root,
       },
     })
+    // Each program-wide diagnostic request collects per-file results, then sorts and deduplicates them.
+    // Only this package's diagnostics are reported, so do not request diagnostics for other packages.
+    const sources = program.getSourceFiles().filter(source => isWithin(source.fileName, registration.root))
     const diagnostics = [
-      ...program.getSyntacticDiagnostics(),
-      ...program.getSemanticDiagnostics(),
+      ...ts.sortAndDeduplicateDiagnostics(sources.flatMap(source => program.getSyntacticDiagnostics(source))),
+      ...ts.sortAndDeduplicateDiagnostics(sources.flatMap(source => program.getSemanticDiagnostics(source))),
     ].filter((diagnostic): diagnostic is ts.DiagnosticWithLocation => diagnostic.file !== undefined
       && diagnostic.start !== undefined
       && isWithin(diagnostic.file.fileName, registration.root))

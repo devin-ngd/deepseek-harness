@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -889,6 +889,55 @@ describe('WorkspaceAnalyzer', { timeout: 60_000 }, () => {
     expect(() => new WorkspaceAnalyzer({ root }).analyze()).toThrow(
       /packages\/host\/src\/index\.ts:\d+:\d+: TypeScript TS2322/,
     )
+  })
+
+  it('reports the same package diagnostics as a whole-program TypeScript check', () => {
+    const root = copyFixture('typert-package-diagnostics-')
+    const packageRoot = join(root, 'packages/host')
+    const index = join(packageRoot, 'src/index.ts')
+    writeFileSync(join(root, 'external-error.ts'), [
+      'export const external: string = 1',
+      'declare global { interface ExternalDiagnostic { value: number } }',
+      '',
+    ].join('\n'))
+    writeFileSync(index, `${readFileSync(index, 'utf8')}\nimport { external } from '../../../external-error.ts'\nvoid external\n`)
+    writeFileSync(join(packageRoot, 'src/diagnostics.ts'), [
+      'const syntaxError = ;',
+      'const typeError: string = 42',
+      'interface MergedDiagnostic { value: string }',
+      'interface ExternalDiagnostic { value: string }',
+      'void typeError',
+      '',
+    ].join('\n'))
+    writeFileSync(join(packageRoot, 'src/diagnostics-merge.ts'), 'interface MergedDiagnostic { value: number }\n')
+    const config = ts.getParsedCommandLineOfConfigFile(join(packageRoot, 'tsconfig.json'), {}, parseConfigHost())!
+    const program = ts.createProgram({
+      rootNames: config.fileNames,
+      options: { ...config.options, composite: false, incremental: false, noEmit: true, rootDir: root },
+    })
+    const belongs = (file: string) => {
+      const path = relative(packageRoot, file)
+      return path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path)
+    }
+    const allDiagnostics = [...program.getSyntacticDiagnostics(), ...program.getSemanticDiagnostics()]
+    const packageDiagnostics = allDiagnostics.filter((diagnostic): diagnostic is ts.DiagnosticWithLocation =>
+      diagnostic.file !== undefined && diagnostic.start !== undefined && belongs(diagnostic.file.fileName))
+    expect(allDiagnostics.some(diagnostic => diagnostic.file?.fileName.endsWith('external-error.ts') && diagnostic.code === 2322)).toBe(true)
+    expect(packageDiagnostics.map(diagnostic => diagnostic.code)).toEqual(expect.arrayContaining([1109, 2322, 2717]))
+    const expected = packageDiagnostics.map((diagnostic) => {
+      const position = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
+      const path = normalizedPath(relative(root, diagnostic.file.fileName))
+      return `typert(host): ${path}:${String(position.line + 1)}:${String(position.character + 1)}: TypeScript TS${String(diagnostic.code)}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`
+    }).join('\n')
+    expect(() => new WorkspaceAnalyzer({ root, faces: ['host'] }).analyze()).toThrow(expected)
+  })
+
+  it('does not report diagnostics from an imported package outside the project', () => {
+    const root = copyFixture('typert-external-diagnostics-')
+    const index = join(root, 'packages/host/src/index.ts')
+    writeFileSync(join(root, 'external-error.ts'), 'export const external: string = 1\n')
+    writeFileSync(index, `${readFileSync(index, 'utf8')}\nimport { external } from '../../../external-error.ts'\nvoid external\n`)
+    expect(() => new WorkspaceAnalyzer({ root, faces: ['host'] }).analyze()).not.toThrow()
   })
 
   it('retains every authored part of a merged interface', () => {
