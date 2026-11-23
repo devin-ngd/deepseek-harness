@@ -6,7 +6,8 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join, relative, resolve } from 'node:path'
+import { delimiter, isAbsolute, join, relative, resolve } from 'node:path'
+import { parseArgs } from 'node:util'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
 import { createRuntimeProjectMetadata } from '../src/project-manager.ts'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
@@ -37,10 +38,21 @@ import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
 import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
+const { values: options } = parseArgs({ options: {
+  'defer-runtime-smoke': { type: 'boolean', default: false },
+  offline: { type: 'boolean', default: false },
+  'store-dir': { type: 'string' },
+  'cache-dir': { type: 'string' },
+} })
+for (const name of ['store-dir', 'cache-dir'] as const) {
+  if (options[name] !== undefined && (!options.offline || !isAbsolute(options[name]))) {
+    throw new Error(`desktop runtime: --${name} requires --offline and an absolute directory`)
+  }
+}
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
 const DSH_OUTPUT_ROOT = BUILD_PATHS.dsh
 const BUILD_ROOT = mkdtempSync(join(tmpdir(), 'dsh-desktop-runtime-'))
-const STORE_ROOT = BUILD_PATHS.pnpmStore
+const STORE_ROOT = options['store-dir'] ?? BUILD_PATHS.pnpmStore
 const RUNTIME_ROOT = BUILD_PATHS.runtime
 const PNPM_BUILD_STATE = BUILD_PATHS.dshPnpm
 const PACKAGE_SET_ROOT = BUILD_PATHS.packageSet
@@ -83,11 +95,13 @@ function runPnpm(args: readonly string[]): Promise<void> {
       PNPM,
       `--config.registry=${registry}`,
       `--config.store-dir=${STORE_ROOT}`,
+      ...(options['cache-dir'] === undefined ? [] : [`--config.cache-dir=${options['cache-dir']}`]),
       '--config.verify-store-integrity=true',
       '--config.package-import-method=copy',
       '--config.enable-global-virtual-store=false',
       `--config.userconfig=${userConfig}`,
       command,
+      ...(options.offline ? ['--offline'] : []),
       ...commandArgs,
     ], {
       cwd: BUILD_ROOT,
@@ -175,7 +189,7 @@ async function main(): Promise<void> {
       return writeRuntime(DSH_OUTPUT_ROOT, release, packageSet.packages.map(entry => entry.name), target)
     })
     const descriptor = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:verify-before-smoke', () => verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target))
-    if (!process.argv.includes('--defer-runtime-smoke')) {
+    if (!options['defer-runtime-smoke']) {
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:smoke', () => smokePreparedRuntime(DSH_OUTPUT_ROOT, NODE, RUNTIME_ROOT, descriptor))
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:verify-after-smoke', () => verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target))
     }
