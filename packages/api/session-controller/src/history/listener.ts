@@ -13,6 +13,8 @@ export type EventItem =
   | { readonly type: 'event'; readonly session: Session; readonly event: SessionEvent }
   | { readonly type: 'created'; readonly session: Session; readonly end: number }
 
+type ListenerOutput<T> = Iterable<T> | AsyncIterable<T>
+
 /** A single subscription buffers before either consumption mode starts. */
 export class EventListener implements Disposable {
   private readonly buffer: ListenerBuffer<SessionEventEntry> | undefined
@@ -26,7 +28,7 @@ export class EventListener implements Disposable {
    * @param signal - cancellation that wakes consumers.
    * @param queue - optional caller-owned buffer; only an internally created buffer is disposed here.
    */
-  constructor(ctx: Context, sessionId: SessionId, signal: AbortSignal,
+  constructor(ctx: Context, sessionId: SessionId, private readonly signal: AbortSignal,
     queue?: Pick<ListenerBuffer<SessionEventEntry>, 'createInput' | 'capture'>) {
     signal.throwIfAborted()
     const buffer = queue ?? new ListenerBuffer(ctx, signal)
@@ -67,14 +69,37 @@ export class EventListener implements Disposable {
     this.nextExpectedSeq = cursor + 1
   }
 
-  private *transform(item: EventItem): Iterable<SessionEventEntry> {
-    if (this.disposes.length === 0) return
+  private transform(item: EventItem): ListenerOutput<SessionEventEntry> {
+    if (this.disposes.length === 0) return []
     this.nextExpectedSeq ??= this.firstReceivedSeq
-    const result = eventItem(item, this.nextExpectedSeq)
-    this.nextExpectedSeq = result.next
-    for (const event of result.events) {
-      if (this.disposes.length === 0) return
-      yield entryFor(event)
+    if (item.type === 'created') return this.creationEvents(item)
+    if (this.nextExpectedSeq !== undefined && item.event.seq < this.nextExpectedSeq) return []
+    return [this.accept(item.event)]
+  }
+
+  private accept(event: SessionEvent): SessionEventEntry {
+    if (this.nextExpectedSeq !== undefined && event.seq !== this.nextExpectedSeq) {
+      throw new RemoteError('gateway/internal', `session event stream skipped seq ${String(this.nextExpectedSeq)}`, {})
+    }
+    this.nextExpectedSeq = event.seq + 1
+    return entryFor(event)
+  }
+
+  private async *creationEvents(item: Extract<EventItem, { type: 'created' }>): AsyncIterable<SessionEventEntry> {
+    const start = this.nextExpectedSeq ?? item.session.firstLiveSeq
+    if (start >= item.end) return
+    try {
+      for await (const page of item.session.readHistoryPages({
+        fromSeq: SessionLogOffset(start), toSeqExclusive: SessionLogOffset(item.end), signal: this.signal,
+      })) {
+        for (const event of page) {
+          if (this.disposes.length === 0 || this.signal.aborted) return
+          yield this.accept(event)
+        }
+        if (this.disposes.length === 0) return
+      }
+    } catch (error: unknown) {
+      if (!this.signal.aborted || error !== this.signal.reason) throw error
     }
   }
 
@@ -95,36 +120,6 @@ export class EventListener implements Disposable {
     for (const dispose of this.disposes.splice(0).reverse()) dispose()
     this.buffer?.[Symbol.dispose]()
   }
-}
-
-/**
- * Select the uncovered events represented by one notification.
- * @param item - one buffered notification.
- * @param next - next required seq, or undefined before the first event.
- * @returns uncovered events and the next required seq without acquiring an observation.
- */
-export function eventItem(item: EventItem, next?: number): {
-  events: readonly SessionEvent[]
-  next: number | undefined
-} {
-  if (item.type === 'event') {
-    if (next !== undefined && item.event.seq < next) return { events: [], next }
-    if (next !== undefined && item.event.seq !== next) {
-      throw new RemoteError('gateway/internal', `session event stream skipped seq ${String(next)}`, {})
-    }
-    return { events: [item.event], next: item.event.seq + 1 }
-  }
-  const start = next ?? item.session.firstLiveSeq
-  if (start >= item.end) return { events: [], next }
-  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session-created history adaptation.
-  const events = item.session.snapshotEvents(SessionLogOffset(start), SessionLogOffset(item.end))
-  for (const event of events) {
-    if (next !== undefined && event.seq !== next) {
-      throw new RemoteError('gateway/internal', `session event stream skipped seq ${String(next)}`, {})
-    }
-    next = event.seq + 1
-  }
-  return { events, next }
 }
 
 /** Projection changes of one Session, one change per committed event that changed a projection. */
@@ -176,7 +171,7 @@ export class ProjectionListener implements Disposable {
 export class ListenerBuffer<T> implements Disposable {
   private readonly values = new Deque<unknown>()
   private readonly transformIds = new Deque<number>()
-  private readonly transforms: ((value: unknown) => Iterable<T>)[] = []
+  private readonly transforms: ((value: unknown) => ListenerOutput<T>)[] = []
   private readonly cleanup: (() => void)[] = []
   private wake: (() => void) | undefined
   private closed = false
@@ -226,7 +221,7 @@ export class ListenerBuffer<T> implements Disposable {
    * @returns a write-only input sharing this buffer's storage and lifetime.
    * @throws when this buffer is already closed.
    */
-  createInput<Input>(transform: (item: Input) => Iterable<T>): { append(item: Input): void; prepend(item: Input): void } {
+  createInput<Input>(transform: (item: Input) => ListenerOutput<T>): { append(item: Input): void; prepend(item: Input): void } {
     if (this.closed) throw new Error('Cannot register a transform on a closed listener buffer')
     const transformId = this.transforms.length
     // Only this typed input can enqueue values with its private transform id.
@@ -264,7 +259,7 @@ export class ListenerBuffer<T> implements Disposable {
         }
         const transformId = this.transformIds.popFront() as number
         const value = this.values.popFront()
-        for (const item of (this.transforms[transformId] as (value: unknown) => Iterable<T>)(value)) {
+        for await (const item of (this.transforms[transformId] as (value: unknown) => ListenerOutput<T>)(value)) {
           this.throwIfFailed()
           if (this.isClosed()) return
           yield item

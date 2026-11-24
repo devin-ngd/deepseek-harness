@@ -41,7 +41,7 @@ ctx.sessions.get(sessionId)      // the live session
 ctx.sessions.list()              // every live session, in creation order
 ```
 
-`session.completedTurnEndOffset` 是最后一个已提交或已恢复的 `turn/end` 之后的偏移量，尚无此类事件时为零。`session.readHistoryPages({ pageSize?, fromSeq?, toSeqExclusive?, signal? })` 在调用时捕获半开历史范围，返回只能消费一次的冻结分页异步迭代器。每页默认最多 128 个事件。每个事件都是已分离、深度冻结的无损 JSON 副本，其对象身份不同于日志事件。`pageSize` 限制事件数量而非字节数；复制单个大事件时仍同步执行。读取器在页间让出事件循环，并在事件之间及页间响应取消。无法无损复制恢复事件时，迭代以 `SessionHistoryCopyError` 拒绝，其 `seq` 标识该事件。`readHistoryValues(options, select)` 使用相同的范围与取消规则。它同步调用选择函数，返回每个选中值的结构化副本，允许跳过无关的恢复字段。
+`session.completedTurnEndOffset` 是最后一个已提交或已恢复的 `turn/end` 之后的偏移量，尚无此类事件时为零。`session.readHistoryPages({ pageSize?, fromSeq?, toSeqExclusive?, signal? })` 在调用时捕获半开历史范围，返回只能消费一次的冻结分页异步迭代器。每页默认最多 128 个事件。每个事件都是已分离、深度冻结的无损 JSON 副本，其对象身份不同于日志事件。`pageSize` 限制事件数量而非字节数；复制单个大事件时仍同步执行。读取器在页间让出事件循环，并在事件之间及页间响应取消。无法无损复制恢复事件时，迭代以 `SessionHistoryCopyError` 拒绝，其 `seq` 标识该事件。`readHistoryValues(options, select)` 使用相同的范围与取消规则。它同步调用选择函数，返回每个选中值的结构化副本，允许跳过无关的恢复字段。 观察者可用 `session.containsEvent(event)` 校验收到的对象是否就是该序号上保存的事件；后续追加不会影响校验结果。
 
 ### 追加与派生
 

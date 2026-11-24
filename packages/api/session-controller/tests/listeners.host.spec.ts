@@ -4,7 +4,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { LlmAttemptId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { type SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { EventListener, ListenerBuffer, ProjectionListener, eventItem } from '../src/history/listener.ts'
+import { EventListener, ListenerBuffer, ProjectionListener } from '../src/history/listener.ts'
 import { SessionAssistantStreamsListener } from '../src/history/assistant-stream.ts'
 import type { SessionFollowFrame, SessionEventEntry } from '../src/types.ts'
 import { installSessionReadTestServices } from './test-remote.ts'
@@ -167,14 +167,32 @@ describe('EventListener', () => {
     expect(() => new EventListener(ctx, session.id, abort.signal)).toThrow('registration failure')
   })
 
-  it('handles raw events and rejects a noncontiguous supplied creation prefix', async () => {
-    const { session } = await fixture()
+  it('rejects a gap in a paged creation prefix', async () => {
+    const { ctx, session, abort } = await fixture()
     const event = session.append('turn/start', { turn: 1 })
-    expect(eventItem({ type: 'event', session, event })).toEqual({ events: [event], next: 1 })
-    expect(eventItem({ type: 'created', session, end: 0 })).toEqual({ events: [], next: undefined })
-    vi.spyOn(session, 'snapshotEvents').mockReturnValue([{ ...event, seq: SessionSeq(1) }])
-    expect(() => eventItem({ type: 'created', session, end: 2 }, 0)).toThrow('skipped seq')
-    expect(eventItem({ type: 'created', session, end: 2 })).toMatchObject({ next: 2 })
+    using listener = new EventListener(ctx, session.id, abort.signal)
+    listener.setCursor(-1)
+    ctx.emit('session/created', session)
+    vi.spyOn(session, 'readHistoryPages').mockImplementation(async function* () {
+      yield [{ ...event, seq: SessionSeq(1) }]
+    })
+    await expect(listener.events()[Symbol.asyncIterator]().next()).rejects.toThrow('skipped seq')
+  })
+
+  it('delivers a paged creation cut followed by events committed while consuming it', async () => {
+    const { ctx, session, abort } = await fixture()
+    for (let i = 0; i < 130; i++) session.append('turn/start', { turn: i + 1 })
+    using listener = new EventListener(ctx, session.id, abort.signal)
+    listener.setCursor(-1)
+    ctx.emit('session/created', session)
+    const values = listener.events()[Symbol.asyncIterator]()
+    expect(await values.next()).toMatchObject({ value: { event: { seq: 0 } } })
+    const last = session.append('turn/start', { turn: 131 })
+    for (let seq = 1; seq <= last.seq; seq++) {
+      expect(await values.next()).toMatchObject({ value: { event: { seq } } })
+    }
+    abort.abort()
+    expect(await values.next()).toMatchObject({ done: true })
   })
 })
 

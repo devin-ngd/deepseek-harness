@@ -2,14 +2,10 @@
   "packages/api/session-controller/src/commands.ts": {
     "d54f349e854e5be21d48cf66f37f924c8c445b76175bc28fd1300dbd130ee33b": 1
   },
-  "packages/api/session-controller/src/history/listener.ts": {
-    "ff771438de4cfbff2e222eae1b7f50443646f956a7af79026557787250b3c687": 1
-  },
   "packages/compaction/compaction-basic/src/region.ts": {
     "c2e196e80d715a79d59da2ecd6190fc2f74936eccc1c345dbdbd87394c5859b7": 1
   },
   "packages/core/session/src/index.ts": {
-    "6d988028d78aee48aaf7d2f8d3aae2e8b8e5f18e48cdea157e9b37c1c7087dc9": 1,
     "aaee8b2376ee0d8cd353c79cf75e100129fa71a65bd3e7b6bf718c1170bfaf42": 1
   },
   "packages/experimental/auto-review/src/index.ts": {
@@ -34,9 +30,6 @@
     "25ae2404a5a3884aecf61e15bf3f2a3d796da22545a5c5e6289fd1e1320de159": 1,
     "b0ac2b8a09d7c6d271e3ca6e4be8a92aaabd2df5f35451b057de4a64dd0ed28b": 1,
     "c2e196e80d715a79d59da2ecd6190fc2f74936eccc1c345dbdbd87394c5859b7": 1
-  },
-  "packages/session/session-telemetry-otel/src/index.ts": {
-    "73276f8976a3026276469d73f217158dea75da08917f970f1d1583993fae70df": 1
   },
   "packages/session/session-telemetry/src/coordinator.ts": {
     "1d578d99882ccc636c7bd1dd9f1f14051923a79681ce24757ecfac93d3075d6a": 1

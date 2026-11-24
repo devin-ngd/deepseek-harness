@@ -470,8 +470,44 @@ function assertPluginRecordEvent(value: unknown): asserts value is SessionEvent 
   }
 }
 
+function forkBoundary(
+  sessionId: SessionId, events: readonly SessionEvent[], requestedBoundary: SessionSeq | undefined,
+): SessionSeq | undefined {
+  const lastEvent = events.at(-1)
+  let boundary: SessionSeq
+  if (requestedBoundary !== undefined) {
+    boundary = requestedBoundary
+  } else {
+    if (lastEvent === undefined) return undefined
+    boundary = lastEvent.seq
+  }
+  if (!Number.isSafeInteger(boundary) || boundary < 0) {
+    throw new SessionForkError(
+      `fork boundary for session "${sessionId}" must be a non-negative safe integer, got ${String(boundary)}`,
+      'INVALID_BOUNDARY',
+    )
+  }
+  if (boundary >= events.length) {
+    const lastSeq = lastEvent?.seq
+    throw new SessionForkError(
+      `fork boundary ${boundary} does not exist in session "${sessionId}" (last seq: ${lastSeq ?? 'none'})`,
+      'INVALID_BOUNDARY',
+    )
+  }
+
+  const boundaryEvent = events[boundary]
+  if (boundaryEvent === undefined || boundaryEvent.seq !== boundary) {
+    throw new SessionForkError(
+      `fork boundary ${boundary} does not match a contiguous event seq in session "${sessionId}"`,
+      'INVALID_BOUNDARY',
+    )
+  }
+  return boundary
+}
+
 /** Module-private access to {@link Session}'s record commit, assigned once by its static block. */
 let commitPluginRecord: (session: Session, type: PluginRecordType, data: unknown) => SessionSeq
+let seedLiveFork: (session: Session, boundary?: SessionSeq) => { seed: SessionEvent[]; inheritedEventCount: SessionLogOffset }
 let visitPreparedEvents: (session: Session, visitor: (session: Session, events: readonly SessionEvent[]) => undefined) => void
 let isPreparedCut: (session: Session, events: readonly SessionEvent[]) => boolean
 
@@ -1080,6 +1116,13 @@ export class Session {
 
   static {
     commitPluginRecord = (session, type, data) => session.#appendRecord(type, data)
+    seedLiveFork = (session, requested) => {
+      const boundary = forkBoundary(session.id, session.log, requested)
+      return {
+        seed: boundary === undefined ? [] : buildForkSeed(session.log, boundary),
+        inheritedEventCount: SessionLogOffset(boundary === undefined ? 0 : boundary + 1),
+      }
+    }
     visitPreparedEvents = (session, visitor) => {
       const events = Object.freeze([...session.log])
       session.#preparedCut = events
@@ -1162,6 +1205,15 @@ export class Session {
         if (entry.detachRequested && entry.announcement !== 'dispatching') entry.detach()
       }
     }
+  }
+
+  /**
+   * Check whether this Session stores the supplied event object at its sequence.
+   * @param event - event supplied by an observer.
+   * @returns true only for the canonical object, including an earlier committed event.
+   */
+  containsEvent(event: SessionEvent): boolean {
+    return this.log[event.seq] === event
   }
 
   /** Cached fold of the request-header events — see {@link requestHeader}. */
@@ -1676,53 +1728,13 @@ export class SessionStore extends Service {
       throw new SessionForkError(`session "${childSessionId}" already exists`, 'SESSION_ALREADY_EXISTS')
     }
     const liveSource = this._resolveForkSource(source)
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing fork snapshot read; migration deferred.
-    const events = liveSource.snapshotEvents()
-    const resolved = this._forkBoundary(liveSource.id, events, boundary)
-    const seed = resolved === undefined ? [] : buildForkSeed(events, resolved)
     return this.create(childSessionId, {
-      seed,
-      inheritedEventCount: SessionLogOffset(resolved === undefined ? 0 : resolved + 1),
+      ...seedLiveFork(liveSource, boundary),
       meta: {
         ...liveSource.header.cwd !== undefined ? { cwd: liveSource.header.cwd } : {},
         isSeeded: true,
       },
     })
-  }
-
-  private _forkBoundary(
-    sessionId: SessionId, events: readonly SessionEvent[], requestedBoundary: SessionSeq | undefined,
-  ): SessionSeq | undefined {
-    const lastEvent = events.at(-1)
-    let boundary: SessionSeq
-    if (requestedBoundary !== undefined) {
-      boundary = requestedBoundary
-    } else {
-      if (lastEvent === undefined) return undefined
-      boundary = lastEvent.seq
-    }
-    if (!Number.isSafeInteger(boundary) || boundary < 0) {
-      throw new SessionForkError(
-        `fork boundary for session "${sessionId}" must be a non-negative safe integer, got ${String(boundary)}`,
-        'INVALID_BOUNDARY',
-      )
-    }
-    if (boundary >= events.length) {
-      const lastSeq = lastEvent?.seq
-      throw new SessionForkError(
-        `fork boundary ${boundary} does not exist in session "${sessionId}" (last seq: ${lastSeq ?? 'none'})`,
-        'INVALID_BOUNDARY',
-      )
-    }
-
-    const boundaryEvent = events[boundary]
-    if (boundaryEvent === undefined || boundaryEvent.seq !== boundary) {
-      throw new SessionForkError(
-        `fork boundary ${boundary} does not match a contiguous event seq in session "${sessionId}"`,
-        'INVALID_BOUNDARY',
-      )
-    }
-    return boundary
   }
 
   private _resolveForkSource(source: SessionForkSource): Session {
