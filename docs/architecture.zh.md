@@ -90,7 +90,7 @@ AgentLoop 回滚失败的初始化，并在启动已排队工作前等待串行 
 turn/start
   claim next-step input plus one queued message
   snapshot Session model selection; assemble prompt sections + step-admitted tool schemas
-  -> agent/pre-step; project runtime context at fallback
+  -> agent/pre-step; project runtime context at fallback (published flag and visible reminder)
                                      reject | enter(messages, startsRequestSeries?)
      reject, or a first enter rewritten empty -> close the turn with no step
      step/start
@@ -111,7 +111,7 @@ turn/end
 
 `turn/*`、`step/*`、`system/message`、`user/message`、`assistant/message`、`assistant/attempt` 和 `tool/*` 是持久会话事件；其余是分属三个事件域的实时扩展点。`agent/assistant-stream` 发布进程本地 start、瞬态 chunk 与 end frame。loop 会在 committed end frame 前把完整紧凑 stream 提交为一个 message 或仅日志 attempt；Web Session-follow adapter 是该 live event 唯一的远程消费方。`agent/pre-step`、`agent/request`、`llm/stream` 和三个 `tools/*` 事件是 waterfall（瀑布式事件），其监听器必须调用 `next()` 才能委托下去；`agent/turn-stopping` 是 serial 事件，没有 `next()`。
 
-fork 创建存储调用方提供的历史；共享前缀的后端先持久化父前缀（[生命周期](../packages/core/agent-loop/README.zh.md#understand-the-implementation)）。工厂 setup 在 Session 进入 SessionStore 并完成 `session/created` 之后、`agent/created` 之前运行；收尾事件在移除之前提交。
+发布前，循环从投影恢复使用的同一份构造事件中写入尚未持久化的部分。fork 创建存储调用方提供的历史，共享前缀的后端先持久化父前缀（[生命周期](../packages/core/agent-loop/README.zh.md#understand-the-implementation)）。工厂 setup 在 Session 进入 SessionStore 并完成 `session/created` 之后、`agent/created` 之前运行；收尾事件在移除之前提交。
 
 输入通过同一个 inbox 到达驱动器；注入的上下文等待一条唤醒消息。AgentLoop 的持久 `inbox` 投影使待处理输入在没有活跃 Agent 时仍可读取。
 

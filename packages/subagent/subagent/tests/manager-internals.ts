@@ -6,6 +6,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SubagentRunId, SubagentResult } from '../src/types.ts'
 import type { LocalActivation } from '../src/activation.ts'
+import { observeLocalWork } from '../src/activation.ts'
 import type SubagentManager from '../src/manager.ts'
 
 /** Return the service's bound subagent manager. */
@@ -47,7 +48,7 @@ export function bindSubagentActivation(
     path: undefined,
     releaseSlot() {},
     handle: { agent: child, async dispose() {} },
-    outputStart: child.session.seq,
+    observed: observeLocalWork(child.session),
     structured: undefined,
     failureAt: undefined,
     poke: Promise.withResolvers(),
@@ -59,6 +60,7 @@ export function bindSubagentActivation(
   }
   resident.set(child.id, activation)
   child.ctx.effect(() => () => {
+    activation.observed.dispose()
     if (resident.get(child.id) === activation) resident.delete(child.id)
   }, 'fixture: managed Activation')
 }

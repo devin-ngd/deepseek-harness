@@ -159,7 +159,6 @@ export class BasicCompactionEngine extends CompactionEngine {
     const ctx = this.ctx
     const ready = ctx.sessionProjections.registerPrepared(compactionEntryProjection)
     ctx.on('agent/created', async ({ agent, signal }) => {
-      if (ctx.sessions.get(agent.session.id) !== agent.session) return
       const handle = await ready
       ctx.fiber.assertActive()
       await this.prepareEntryState(handle, agent.session, signal)
@@ -179,6 +178,8 @@ export class BasicCompactionEngine extends CompactionEngine {
   ): Promise<void> {
     try {
       await handle.prepare(session, { pageSize: this.config.recoveryPageSize, ...signal === undefined ? {} : { signal } })
+      this.ctx.fiber.assertActive()
+      signal?.throwIfAborted()
       this.compatibilitySessions.delete(session)
     } catch (error: unknown) {
       signal?.throwIfAborted()
@@ -189,15 +190,23 @@ export class BasicCompactionEngine extends CompactionEngine {
     }
   }
 
+  /** Prepare a Session first encountered through a direct compaction call. */
+  private prepareForAdmission(session: Session, signal?: AbortSignal): Promise<void> | undefined {
+    const handle = this.entryProjection
+    if (handle === undefined || this.compatibilitySessions.has(session) || handle.stateIfReady(session).ready) return
+    return this.prepareEntryState(handle, session, signal)
+  }
+
   private entryStateOf(session: Session): CompactionEntryState {
+    this.ctx.fiber.assertActive()
     const handle = this.entryProjection
     if (handle === undefined || this.compatibilitySessions.has(session)) return inspectCompactionEntryState(session)
-    const prepared = handle.stateIfReady(session)
-    if (!prepared.ready || prepared.state.turn.kind === 'compatibility') return inspectCompactionEntryState(session)
+    const state = handle.stateOf(session)
+    if (state.turn.kind === 'compatibility') return inspectCompactionEntryState(session)
     return {
-      openTurn: prepared.state.turn.kind === 'open' ? prepared.state.turn.value : null,
-      unmatchedCompactionStart: prepared.state.unmatchedStart === null ? undefined : SessionSeq(prepared.state.unmatchedStart),
-      latestEndSeedSeq: prepared.state.latestSeed === null ? undefined : SessionSeq(prepared.state.latestSeed),
+      openTurn: state.turn.kind === 'open' ? state.turn.value : null,
+      unmatchedCompactionStart: state.unmatchedStart === null ? undefined : SessionSeq(state.unmatchedStart),
+      latestEndSeedSeq: state.latestSeed === null ? undefined : SessionSeq(state.latestSeed),
     }
   }
 
@@ -390,6 +399,11 @@ export class BasicCompactionEngine extends CompactionEngine {
     let measurement = meter.measure(agent.session, header)
     const prune = this.ctx.get('toolResultPruner')
     const info = await this.ctx.llm.resolveModelInfo(target.provider, target.model, signal)
+    const preparing = this.prepareForAdmission(agent.session, signal)
+    if (preparing !== undefined) {
+      await preparing
+      signal.throwIfAborted()
+    }
     assertNoActiveCompaction(this.entryStateOf(agent.session), 'automatic pressure compaction')
     const targetKey = `${target.provider}/${target.model}`
     if (info.context === undefined) {
@@ -527,6 +541,7 @@ export class BasicCompactionEngine extends CompactionEngine {
   private regionDependencies(): Parameters<typeof compactSurfaceRegion>[0] {
     return {
       meter: this.ctx.tokenMeter,
+      prepareEntry: (session, signal) => this.prepareForAdmission(session, signal),
       entryState: session => this.entryStateOf(session),
       summarize: (input, owner, abort) => this.summarize(input, owner, abort),
       recover: (error, agent, sourceEventSeqs, signal) => this.ctx.waterfall('compaction/summary-error', {

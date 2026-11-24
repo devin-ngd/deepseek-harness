@@ -26,6 +26,7 @@ import { frameSummary } from './summarizer.ts'
 import type { SummarizationInput, SummaryResult } from './summarizer.ts'
 interface RegionDependencies {
   readonly meter: TokenMeter
+  prepareEntry(session: Session, signal?: AbortSignal): Promise<void> | undefined
   entryState(session: Session): CompactionEntryState
   summarize(input: SummarizationInput, agent: Agent, signal?: AbortSignal): Promise<SummaryResult>
   recover(error: unknown, agent: Agent, sourceEventSeqs: readonly SessionSeq[], signal?: AbortSignal): boolean
@@ -98,16 +99,12 @@ interface TransactionFailure {
 /**
  * The `system/message` holding surface node 0, or `undefined` when another
  * message-producing event starts the surface.
- * @param session - session supplying the log behind the current surface.
- * @param headSeq - seq at surface node 0 of a non-empty surface.
+ * @param session - session supplying the current surface.
  * @returns the system head event, or `undefined` without one.
  */
-function systemHead(session: Session, headSeq: SessionSeq): SessionEvent<'system/message'> | undefined {
-  // Surface nodes are current log seqs, so the event exists.
-  // Existing Session history read; migration deferred.
-  // oxlint-disable-next-line typescript/no-non-null-assertion, typescript/no-deprecated
-  const head = session.eventAt(headSeq)!
-  return head.type === 'system/message' ? head : undefined
+function systemHead(session: Session): SessionEvent<'system/message'> | undefined {
+  const head = session.surface.eventAtPosition(0)
+  return head?.type === 'system/message' ? head : undefined
 }
 
 /**
@@ -133,8 +130,7 @@ export function selectCompactableRange(
     || surfaceNodes.some((seq, index) => seq !== pricedNodes[index]?.seq)) {
     throw new Error('compaction: token-meter surface does not match the current session surface')
   }
-  // oxlint-disable-next-line typescript/no-non-null-assertion
-  const firstIdx = systemHead(session, surfaceNodes[0]!) === undefined ? 0 : 1
+  const firstIdx = systemHead(session) === undefined ? 0 : 1
 
   let accumulated = 0
   let keepFromIdx = pricedNodes.length
@@ -186,6 +182,11 @@ export async function compactSurfaceRegion(
   signal?: AbortSignal,
 ): Promise<CompactionResult> {
   if (options.owner === null) signal?.throwIfAborted()
+  const preparing = dependencies.prepareEntry(session, signal)
+  if (preparing !== undefined) {
+    await preparing
+    signal?.throwIfAborted()
+  }
   const selection = validateSurfaceRegion(session, start, end)
   const entryState = dependencies.entryState(session)
   assertCompactionInactive(
@@ -384,7 +385,7 @@ function prepareCompaction(
     // route-priced `tokens` instead.
     shadowedTokenCount: selectedNodes.reduce((total, node) => total + node.heuristicTokens, 0),
     shadowedRouteTokenCount: selectedNodes.reduce((total, node) => total + node.tokens, 0),
-    input: buildSummarizationInput(session, selection.shadowedSeqs),
+    input: buildSummarizationInput(session, selection),
   }
 }
 
@@ -543,24 +544,23 @@ function completeCompaction(
  * KV cache. A surface without a system head, or whose head projects to no
  * message, contributes no leading system message.
  * @param session - session supplying the surface head, request header, and per-node projection.
- * @param shadowedSeqs - the surface-node seqs, in order, being compacted.
+ * @param selection - validated positions and event sequences being compacted.
  * @returns the replayed conversation prefix to condense.
  */
 function buildSummarizationInput(
   session: Session,
-  shadowedSeqs: readonly SessionSeq[],
+  selection: SurfaceSelection,
 ): SummarizationInput {
   const header = session.requestHeader()
-  // shadowedSeqs are current surface seqs, so the surface has a node 0.
-  // oxlint-disable-next-line typescript/no-non-null-assertion
-  const head = systemHead(session, session.surface.nodes[0]!)
+  const head = systemHead(session)
   const system = head === undefined ? null : session.deriveEventMessage(head)
-  const regionMessages = shadowedSeqs
-    // shadowedSeqs are current surface seqs, so each is a valid log index.
-    // Existing Session history read; migration deferred.
-    // oxlint-disable-next-line typescript/no-non-null-assertion, typescript/no-deprecated
-    .map(seq => session.deriveEventMessage(session.eventAt(seq)!))
-    .filter((message): message is Message => message !== null)
+  const regionMessages: Message[] = []
+  for (const [offset, seq] of selection.shadowedSeqs.entries()) {
+    const event = session.surface.eventAtPosition(selection.startIdx + offset)
+    if (event?.seq !== seq) throw new SurfaceChangedError('compaction: selected surface changed before summarization began')
+    const message = session.deriveEventMessage(event)
+    if (message !== null) regionMessages.push(message)
+  }
   return {
     ...header?.tools === undefined ? {} : { tools: header.tools },
     messages: system === null ? regionMessages : [system, ...regionMessages],

@@ -3,9 +3,10 @@
  */
 
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
-import type { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import type { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { createConsumedWorkFold } from '@deepseek-ai/dsh-agent/consumed-work'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
-import { finalAssistantOutput } from './assistant-output.ts'
+import { AssistantOutputFold } from './assistant-output.ts'
 import { epochStopReason } from './lifecycle.ts'
 import { SubagentError } from './error.ts'
 import type { StructuredAttachment } from './structured.ts'
@@ -70,7 +71,7 @@ export type ActivationResource =
   | {
     readonly kind: 'local'
     readonly handle: AgentHandle
-    readonly outputStart: SessionLogOffset
+    readonly observed: ReturnType<typeof observeLocalWork>
     readonly structured: StructuredAttachment | undefined
     /** Latest live failure not superseded by a later committed turn ending. */
     failureAt: SessionLogOffset | undefined
@@ -94,6 +95,37 @@ export type Activation = ActivationBase & ActivationResource
 
 /** Local residency with input admission and Session-backed result capture. */
 export type LocalActivation = Extract<Activation, { kind: 'local' }>
+
+/**
+ * Observe commits from the moment a local handle becomes resident until its result is captured.
+ * @param session - the exact child Session for this activation.
+ * @returns synchronous result readers and the subscription disposer.
+ */
+export function observeLocalWork(session: Session) {
+  const subscription = new AbortController()
+  const output = new AssistantOutputFold()
+  const work = createConsumedWorkFold()
+  let failed: { error: unknown } | undefined
+  session.onCommit((events) => {
+    if (failed !== undefined) return
+    try {
+      for (const event of events) {
+        output.push(event)
+        work.push(event)
+      }
+    } catch (error: unknown) {
+      // Session observers cannot reject a commit. Surface the failure to the result owner at settlement.
+      failed = { error }
+    }
+  }, subscription.signal)
+  return {
+    collect() {
+      if (failed !== undefined) throw failed.error
+      return { output: output.collect() ?? [], work: work.collect() }
+    },
+    dispose() { subscription.abort() },
+  }
+}
 
 /**
  * Read the live Agent retained by local execution.
@@ -146,10 +178,8 @@ export function observeLocalFailure(activation: LocalActivation, wake: () => voi
  * @returns final output, stop reason, and committed structured value.
  */
 export function captureLocalResult(activation: LocalActivation): SubagentResult {
-  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-  const events = activation.handle.agent.session.snapshotEvents(activation.outputStart)
-  const output = finalAssistantOutput(events) ?? []
-  const stopReason = activation.failureAt === undefined ? epochStopReason(events) : 'error'
+  const { output, work } = activation.observed.collect()
+  const stopReason = activation.failureAt === undefined ? epochStopReason(work) : 'error'
   const structured = activation.structured
   if (structured !== undefined) {
     const captured = structured.captured()

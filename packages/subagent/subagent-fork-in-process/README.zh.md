@@ -79,7 +79,7 @@ kind: "package-reference"
 
 ### 运行流程
 
-`prepareContinuable()` 在创建时捕获一次父级已完成轮次前缀。`startActivation()` 以此创建子 agent，由 subagent 服务组装继承的 preset 和可选的结构化输出。提供方声明 agent 选项、输出及深度能力；不支持独立选择 preset。
+`prepareContinuable()` 在首次等待前，将最后一个已记录的 `turn/end` 之后的位置固定为 seed 的结束截点。它只对该截点之前的历史分页读取，包括继承的事件，并支持取消。截点以内的恢复事件若无法无损复制为 JSON，准备操作会失败并报告事件序号。截点之后的事件不参与复制。`startActivation()` 以此创建子 agent，由 subagent 服务组装继承的 preset 和可选的结构化输出。提供方声明 agent 选项、输出及深度能力；不支持独立选择 preset。
 
 ### 生命周期绑定
 

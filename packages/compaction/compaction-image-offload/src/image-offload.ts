@@ -15,11 +15,15 @@ import type { ImageOffloadTarget } from './projection.ts'
  */
 export function offloadOldestImages(session: Session, sourceEventSeqs: readonly SessionSeq[], count: number): boolean {
   const targets: ImageOffloadTarget[] = []
+  const surface = session.surface
+  const nodes = surface.nodes
+  let position = 0
   for (const seq of sourceEventSeqs) {
     if (count === 0) break
-    // Existing Session history read; migration deferred. Current surface nodes index the durable log.
-    // oxlint-disable-next-line typescript/no-non-null-assertion, typescript/no-deprecated
-    const event = session.eventAt(seq)!
+    if (nodes[position] !== seq) position = nodes.indexOf(seq)
+    const event = surface.eventAtPosition(position)
+    position += 1
+    if (event === undefined) throw new Error(`image/offload: target seq ${seq} is not a current surface node`)
     if (event.type !== 'user/message' && event.type !== 'tool/result') continue
     // oxlint-disable-next-line typescript/no-non-null-assertion -- both input node types produce a message
     const message = session.deriveEventMessage(event)!

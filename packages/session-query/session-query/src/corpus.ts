@@ -99,7 +99,7 @@ export class SessionCorpus {
     signal?.throwIfAborted()
     const live = this._ctx.sessions.get(sessionId)
     if (live !== undefined) {
-      const snapshot = snapshotLive(live)
+      const snapshot = await snapshotLive(live, signal)
       signal?.throwIfAborted()
       return snapshot
     }
@@ -112,7 +112,7 @@ export class SessionCorpus {
     signal?.throwIfAborted()
     const attached = this._ctx.sessions.get(sessionId)
     if (attached !== undefined) {
-      const snapshot = snapshotLive(attached)
+      const snapshot = await snapshotLive(attached, signal)
       signal?.throwIfAborted()
       return snapshot
     }
@@ -132,12 +132,14 @@ export class SessionCorpus {
    * The synchronous projector runs before a persisted worker claims its next id.
    * Full logs are borrowed only for that call and never retained by the batch.
    * @param sessionIds - sessions to resolve in first-occurrence order.
+   * @param projectLive - synchronous projection read from an attached Session.
    * @param project - synchronous fold that owns/clones every retained value.
    * @param signal - cancellation shared by listing and every persisted inspection.
    * @returns one fulfilled or rejected projected result per unique requested id.
    */
   async projectMany<Value>(
     sessionIds: readonly SessionId[],
+    projectLive: (session: Session) => Value,
     project: (source: LogicalSessionSource) => Value,
     signal?: AbortSignal,
   ): Promise<LogicalProjectionResult<Value>[]> {
@@ -150,7 +152,7 @@ export class SessionCorpus {
       if (session === undefined) {
         unresolved.push(id)
       } else {
-        resolved.set(id, projectSource(id, sourceLive(session), project, signal))
+        resolved.set(id, projectSource(id, session, projectLive, signal))
       }
     }
     if (unresolved.length === 0) return orderedResults(ids, resolved)
@@ -181,7 +183,7 @@ export class SessionCorpus {
         const attached = this._ctx.sessions.get(sessionId)
         resolved.set(sessionId, attached === undefined
           ? { sessionId, status: 'rejected', reason: notFound(sessionId) }
-          : projectSource(sessionId, sourceLive(attached), project, signal))
+          : projectSource(sessionId, attached, projectLive, signal))
         return
       }
       try {
@@ -190,7 +192,7 @@ export class SessionCorpus {
         signal?.throwIfAborted()
         const attached = this._ctx.sessions.get(sessionId)
         if (attached !== undefined) {
-          resolved.set(sessionId, projectSource(sessionId, sourceLive(attached), project, signal))
+          resolved.set(sessionId, projectSource(sessionId, attached, projectLive, signal))
           return
         }
         assertSessionHeadersCompatible(loaded.header, listed)
@@ -231,10 +233,10 @@ export class SessionCorpus {
   }
 }
 
-function projectSource<Value>(
+function projectSource<Source, Value>(
   sessionId: SessionId,
-  source: LogicalSessionSource,
-  project: (source: LogicalSessionSource) => Value,
+  source: Source,
+  project: (source: Source) => Value,
   signal?: AbortSignal,
 ): LogicalProjectionResult<Value> {
   try {
@@ -247,11 +249,6 @@ function projectSource<Value>(
     if (signal?.aborted) signal.throwIfAborted()
     return { sessionId, status: 'rejected', reason }
   }
-}
-
-function sourceLive(session: Session): LogicalSessionSource {
-  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-  return { header: session.header, events: session.snapshotEvents() }
 }
 
 function orderedResults<Value>(
@@ -301,12 +298,16 @@ async function inspectPersisted(
   }
 }
 
-function snapshotLive(session: Session): LogicalSession {
+async function snapshotLive(session: Session, signal?: AbortSignal): Promise<LogicalSession> {
+  const header = structuredClone(session.header)
+  const events: SessionEvent[] = []
+  for await (const page of session.readHistoryValues(signal === undefined ? {} : { signal }, event => event)) {
+    events.push(...page)
+  }
   return {
-    header: structuredClone(session.header),
+    header,
     inheritedEventCount: session.inheritedEventCount,
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    events: session.snapshotEvents().map(event => structuredClone(event)),
+    events,
   }
 }
 

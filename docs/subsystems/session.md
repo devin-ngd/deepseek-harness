@@ -408,6 +408,12 @@ interface SessionMessageProjection<T extends SessionEventType = SessionEventType
 interface SessionSurface {
   /** Current surface event sequences in model-visible order. */
   readonly nodes: readonly SessionSeq[]
+  /**
+   * Read the canonical log event at a current surface position.
+   * @param position - Zero-based index in the current surface order.
+   * @returns The event at that position, or undefined if the position is absent.
+   */
+  eventAtPosition(position: number): SessionEvent | undefined
   /** Monotonic count of committed positional replacements. */
   readonly replaceGeneration: number
   /** Monotonic count of committed replacements and plugin-owned message changes. */
@@ -560,6 +566,13 @@ declare class Session {
    */
   readHistoryPages(options: SessionHistoryReadOptions): AsyncIterable<readonly SessionEvent[]>;
   /**
+   * Read one selected value per event in a fixed history range, yielding between pages.
+   * @param options - event count per page, optional range, and cancellation.
+   * @param select - synchronous, side-effect-free selector. Borrow the event only for this call.
+   * @returns frozen pages of structured clones of the selected values. Unselected fields need not be cloneable.
+   */
+  readHistoryValues<T>(options: SessionHistoryReadOptions, select: (event: SessionEvent) => T): AsyncIterable<readonly T[]>;
+  /**
    * Return the immutable event stored at one exact sequence number.
    * @deprecated Existing logic may remain unmigrated for now, but new calls are prohibited.
    * See the [Agent Note](../../../../.agents/notes/implemented/architecture/2026-09-09-deprecate-synchronous-session-event-reads.md).
@@ -596,8 +609,19 @@ declare class Session {
   isOwnSeq(seq: SessionSeq): boolean;
   /** The next event's sequence number — always the log length (the `seq = log.length` contiguity contract). */
   get seq(): SessionLogOffset;
+  /** Exclusive end of the last recorded turn/end, including inherited and restored turns. */
+  get completedTurnEndOffset(): SessionLogOffset;
   /** Current event while synchronously notifying a batch's observers. */
   get currentBatchPublication(): SessionEvent | undefined;
+  /**
+   * Observe future nonempty commits on this exact Session, including independent appends.
+   * Each callback starts synchronously after log and surface acceptance and before store
+   * event observers. Reentrant appends are rejected. Listener failures are reported
+   * without rolling back the commit or interrupting other observers.
+   * @param listener - receives the frozen group in sequence order, once per append.
+   * @param signal - abort to unsubscribe. An already aborted signal installs no listener.
+   */
+  onCommit(listener: (events: readonly SessionEvent[]) => void | Promise<void>, signal: AbortSignal): void;
   /**
    * Append consecutive events together after validating every candidate and dispatch.
    * Observers read the complete committed log and final message surface.

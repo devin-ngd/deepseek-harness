@@ -16,7 +16,7 @@ import type {
   Session,
   SessionEvent,
 } from '@deepseek-ai/dsh-session'
-import { SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionDefinition, ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -259,24 +259,20 @@ const titleInputStateSchema: ZodType<TitleInputState> = zod.object({
   }
 })
 
-/**
- * Collect eligible human text messages from a session log, in seq order.
- * The full eligible prefix is only materialized for one provider generation,
- * so it is scanned from the log at execution time rather than retained by
- * the O(1) `titleInput` projection.
- * @param events - the session event log.
- * @param throughSeq - optional inclusive upper seq bound.
- * @returns eligible messages with exact source seqs.
- */
-function collectSessionTitleMessages(
-  events: readonly SessionEvent[],
-  throughSeq?: SessionSeq,
-): SessionTitleUserMessage[] {
-  const messages: SessionTitleUserMessage[] = []
-  for (const event of events) {
-    if (throughSeq !== undefined && event.seq > throughSeq) break
-    const message = sessionTitleUserMessageOf(event)
-    if (message !== undefined) messages.push(message)
+/** Collect only provider text and seqs through the scheduled message, including inherited prompts. */
+async function collectSessionTitleMessages(
+  session: Session,
+  first: SessionTitleUserMessage,
+  throughSeq: SessionSeq,
+  signal: AbortSignal,
+): Promise<SessionTitleUserMessage[]> {
+  const messages = [{ ...first }]
+  for await (const page of session.readHistoryValues({
+    fromSeq: SessionLogOffset(first.seq + 1),
+    toSeqExclusive: SessionLogOffset(throughSeq + 1),
+    signal,
+  }, sessionTitleUserMessageOf)) {
+    for (const message of page) if (message !== undefined) messages.push(message)
   }
   return messages
 }
@@ -315,6 +311,27 @@ export function foldSessionTitle(events: readonly SessionEvent[]): SessionTitleS
   })
 }
 
+/**
+ * Bind a latest-title reader to the caller's projection registration lifetime.
+ * @param ctx - context owning the reader.
+ * @returns a synchronous reader of immutable title snapshots.
+ */
+export async function registerTitleSnapshotReader(ctx: Context): Promise<(session: Session) => SessionTitleSnapshot | undefined> {
+  const handle = await ctx.sessionProjections.register<'titleSnapshot', SessionTitleSnapshot | null>({
+    key: 'titleSnapshot',
+    stateVersion: 1,
+    stateSchema: titleSnapshotSchema.nullable(),
+    init: () => null,
+    apply: (state, event) => event.type !== 'session/title'
+      ? state
+      : { ...event.data, eventSeq: event.seq, updatedAt: event.time },
+  })
+  return (session) => {
+    const title = handle.stateOf(session)
+    return title === null ? undefined : titleSnapshotFromState(title)
+  }
+}
+
 /** Log-backed title fold plus asynchronous fallback generation. */
 export class SessionTitleService extends Service {
   static inject = ['sessions', 'sessionProjections', 'agents']
@@ -325,7 +342,7 @@ export class SessionTitleService extends Service {
   })
 
   private titleInputProjectionHandle!: ProjectionHandle<TitleInputState>
-  private titleSnapshotProjectionHandle!: ProjectionHandle<SessionTitleSnapshot | null>
+  private readTitle!: (session: Session) => SessionTitleSnapshot | undefined
   private readonly config: ResolvedConfig
   private readonly ownerFiber: Fiber
   private registration: ProviderRegistration | undefined
@@ -389,15 +406,7 @@ export class SessionTitleService extends Service {
 
     await ctx.sessionProjections.register(titleProjectionDefinition)
 
-    this.titleSnapshotProjectionHandle = await ctx.sessionProjections.register<'titleSnapshot', SessionTitleSnapshot | null>({
-      key: 'titleSnapshot',
-      stateVersion: 1,
-      stateSchema: titleSnapshotSchema.nullable(),
-      init: () => null,
-      apply: (state, event) => event.type !== 'session/title'
-        ? state
-        : { ...event.data, eventSeq: event.seq, updatedAt: event.time },
-    })
+    this.readTitle = await registerTitleSnapshotReader(ctx)
 
     this.titleInputProjectionHandle = await ctx.sessionProjections.register<'titleInput', TitleInputState>({
       key: 'titleInput',
@@ -422,8 +431,7 @@ export class SessionTitleService extends Service {
    * @returns latest title snapshot, or `undefined` before eligible input.
    */
   get(session: Session): SessionTitleSnapshot | undefined {
-    const title = this.titleSnapshotProjectionHandle.stateOf(session)
-    return title === null ? undefined : titleSnapshotFromState(title)
+    return this.readTitle(session)
   }
 
   /**
@@ -638,12 +646,13 @@ export class SessionTitleService extends Service {
       this.assertCurrent(session, work)
       await this.ensureFallback(session)
       this.assertCurrent(session, work)
-      // One snapshot supplies both inputs: messages stop at the scheduled
-      // watermark, while the current title is not bounded by that watermark.
-      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-      const events = session.snapshotEvents()
-      const messages = collectSessionTitleMessages(events, work.throughSeq)
-      const currentTitle = foldSessionTitle(events)
+      const first = this.titleInputOf(session).first
+      /* v8 ignore next -- every scheduled watermark identifies an eligible message. */
+      if (first === null) throw new Error('session title generation has no first message')
+      const messages = first.seq === work.throughSeq ? [{ ...first }]
+        : await collectSessionTitleMessages(session, first, work.throughSeq, work.signal)
+      this.assertCurrent(session, work)
+      const currentTitle = this.get(session)
       const result = await work.registration.provider.generate({
         session,
         messages,

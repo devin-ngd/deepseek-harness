@@ -1,7 +1,7 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { Session, type SessionId, SessionSeq, type SessionEventInput } from '@deepseek-ai/dsh-session'
+import SessionStore, { appendPluginRecord, Session, type SessionId, SessionSeq, type SessionEventInput } from '@deepseek-ai/dsh-session'
 import { brandString } from '@deepseek-ai/dsh-brand'
 
 function message(text: string) {
@@ -9,6 +9,49 @@ function message(text: string) {
 }
 
 describe('multiple Session appends', () => {
+  it('stops constructing notification groups immediately on the final unsubscribe', () => {
+    const session = Session.create(brandString<SessionId>('unsubscribed-commits'))
+    const first = new AbortController()
+    const last = new AbortController()
+    session.onCommit(() => {}, first.signal)
+    session.onCommit(() => {}, last.signal)
+    const freezes = vi.spyOn(Object, 'freeze')
+    try {
+      first.abort()
+      const active = session.append('turn/start', { turn: 1 })
+      last.abort()
+      const single = session.append('turn/start', { turn: 2 })
+      const batch = session.append([['turn/start', { turn: 3 }], ['turn/start', { turn: 4 }]])
+      const groups = freezes.mock.calls.map(([value]) => value).filter(Array.isArray)
+      expect(groups.some(group => group[0] === active)).toBe(true)
+      expect(groups.some(group => group[0] === single || group[0] === batch[0])).toBe(false)
+    } finally {
+      freezes.mockRestore()
+    }
+  })
+
+  it('delivers accepted commits to exact-Session listeners until cancellation', () => {
+    const session = Session.create(brandString<SessionId>('local-commits'))
+    const cancel = new AbortController()
+    const heard: number[][] = []
+    const warn = vi.spyOn(process, 'emitWarning').mockImplementation(() => {})
+    onTestFinished(() => { warn.mockRestore() })
+    session.onCommit(() => { session.append('turn/start', { turn: 9 }) }, cancel.signal)
+    session.onCommit((events) => { heard.push(events.map(event => event.seq)) }, cancel.signal)
+    session.append([])
+    expect(() => session.append([['turn/start', { turn: 1 }], ['turn/start', { turn: NaN }]])).toThrow()
+    session.append([['turn/start', { turn: 1 }], ['turn/start', { turn: 2 }]])
+    appendPluginRecord(session, 'plugin:test/state', { count: 1 })
+    expect(warn.mock.calls.map(([message]) => String(message))).toEqual([
+      expect.stringContaining('cannot reenter'), expect.stringContaining('cannot reenter'),
+    ])
+    cancel.abort()
+    session.onCommit(() => { heard.push([]) }, cancel.signal)
+    session.append('turn/start', { turn: 3 })
+    expect(heard).toEqual([[0, 1], [2]])
+    expect(session.seq).toBe(4)
+  })
+
   it('rejects sparse arrays before changing the log or surface', () => {
     const session = Session.create(brandString<SessionId>('sparse-append'))
     const inputs = new Array<SessionEventInput>(3)

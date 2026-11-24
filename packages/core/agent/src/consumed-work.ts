@@ -67,12 +67,22 @@ function accountsForClaim(reason: TurnEndReason): boolean {
  * @returns the accounting turn when one closed, and whether work was dropped unrun after it.
  */
 export function foldConsumedWork(events: readonly SessionEvent[]): ConsumedWork {
+  const fold = createConsumedWorkFold()
+  for (const event of events) fold.push(event)
+  return fold.collect()
+}
+
+/**
+ * Account for an operation's committed events in sequence order.
+ * @returns an incremental reader with the same selection rules as the complete log fold.
+ */
+export function createConsumedWorkFold() {
   const stepped = new Set<number>()
   const claimed = new Set<number>()
   let open: number | undefined
   let end: SessionEvent<'turn/end'> | undefined
   let droppedUnrun = false
-  for (const event of events) {
+  function push(event: SessionEvent): void {
     switch (event.type) {
       case 'turn/start':
         open = event.data.turn
@@ -105,5 +115,5 @@ export function foldConsumedWork(events: readonly SessionEvent[]): ConsumedWork 
         break
     }
   }
-  return { ...end === undefined ? {} : { end }, droppedUnrun }
+  return { push, collect: (): ConsumedWork => ({ ...end === undefined ? {} : { end }, droppedUnrun }) }
 }

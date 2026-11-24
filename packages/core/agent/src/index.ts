@@ -23,7 +23,7 @@ export * from './types.ts'
 export { AgentModel, modelSelectionProjectionDefinition, installModelSelection } from './model-selection.ts'
 export type { ModelSelectionProjectionState } from './model-selection.ts'
 export type * from './projection.ts'
-export * from './consumed-work.ts'
+export { foldConsumedWork, type ConsumedWork } from './consumed-work.ts'
 export { agentCarrier, agentEvents, assembleContextFor, emitAgentEvent } from './dispatch.ts'
 export type { AgentEventDispatch, AgentSubjectEvent } from './dispatch.ts'
 

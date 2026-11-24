@@ -22,7 +22,7 @@ import { extractTextContent } from '@deepseek-ai/dsh-llm/message'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { APPROVAL_POLICIES, setApprovalPolicy, type ApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
-import { SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionHistoryCopyError } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query'
 // Empty type imports carry the loader Context merge for the settlement await,
@@ -69,6 +69,7 @@ export const Config: z<Config> = z.object({
 
 /** Outcome of one owned run interval. */
 interface RunOutcome {
+  lastTerminal?: SessionEvent['seq']
   text: string
   reason: SessionEvent<'turn/end'>['data']['reason'] | undefined
 }
@@ -81,31 +82,30 @@ interface HeadlessIo {
   exit(code: number): void
 }
 
-/** Aggregate the interval's last assistant text; only its final turn can establish completion. */
-function summarize(session: Session, firstSeq: SessionLogOffset): RunOutcome {
+/** Stop the invocation's Session observers on every exit path. */
+class RunObservers extends AbortController {
+  [Symbol.dispose](): void { this.abort() }
+}
+
+/** Fold only commits belonging to this invocation, including commits during flush. */
+function observeOutcome(session: Session, signal: AbortSignal): RunOutcome {
+  const outcome: RunOutcome = { text: '', reason: undefined }
   let started = false
-  let text = ''
-  let reason: SessionEvent<'turn/end'>['data']['reason'] | undefined
-  const length = session.seq
-  for (let seq = firstSeq; seq < length; seq++) {
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    const event = session.eventAt(SessionSeq(seq))
-    if (event === undefined) {
-      throw new Error(`headless summary cannot read seq ${String(seq)} below captured length ${String(length)}`)
+  session.onCommit((events) => {
+    for (const event of events) {
+      if (event.type === 'turn/start') {
+        started = true
+        outcome.reason = undefined
+      } else if (started && event.type === 'assistant/message') {
+        const text = extractTextContent(event.data.message.content)
+        if (text !== '') outcome.text = text
+      } else if (event.type === 'turn/end') {
+        outcome.lastTerminal = event.seq
+        if (started) outcome.reason = event.data.reason
+      }
     }
-    if (event.type === 'turn/start') {
-      started = true
-      reason = undefined
-      continue
-    }
-    if (!started) continue
-    if (event.type === 'assistant/message') {
-      const joined = extractTextContent(event.data.message.content)
-      if (joined !== '') text = joined
-    }
-    if (event.type === 'turn/end') reason = event.data.reason
-  }
-  return { text, reason }
+  }, signal)
+  return outcome
 }
 
 /**
@@ -181,45 +181,27 @@ interface AdoptableHeader {
   agentPreset?: string | undefined
 }
 
-/** Iterate a live Session's durable events in order. */
-function* liveEvents(session: Session): Generator<SessionEvent> {
-  const length = session.seq
-  for (let seq = 0; seq < length; seq++) {
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    const event = session.eventAt(SessionSeq(seq))
-    if (event === undefined) {
-      throw new Error(`headless adoption cannot read seq ${String(seq)} below captured length ${String(length)}`)
-    }
-    yield event
-  }
-}
+/** Null records a malformed selection even if a later event selects a valid preset. */
+type Preset = string | null | undefined
 
-/**
- * The preset a Session currently runs under: its creation header advanced by
- * the last `agent-preset/selected` event. The header is only a creation fact;
- * the presets plugin reconstructs a session's composition from the projection.
- */
-function currentPreset(header: AdoptableHeader, events: Iterable<SessionEvent>, sessionId: SessionId): string | undefined {
-  let preset = header.agentPreset
+function currentPreset(preset: Preset, events: readonly SessionEvent[]): Preset {
+  if (preset === null) return null
   for (const event of events) {
-    // Owned by dsh-agent-preset-registry, which this bundle does not compose, so the
-    // event is read structurally rather than through its module augmentation.
-    const candidate = event as unknown as { type: string; data?: { agentPreset?: unknown } }
+    const candidate: { type: string; data?: unknown } = event
     if (candidate.type !== 'agent-preset/selected') continue
-    const selected = candidate.data?.agentPreset
-    // A corrupt record must not read as "no preset": that would let the run
-    // continue under this bundle's composition instead of the recorded one.
-    if (typeof selected !== 'string' || selected === '') {
-      throw new Error(`session "${sessionId}" records a malformed agent-preset/selected event and cannot be adopted`)
-    }
-    preset = selected
+    const data = candidate.data
+    if (typeof data !== 'object' || data === null || !('agentPreset' in data)
+      || typeof data.agentPreset !== 'string' || data.agentPreset === '') return null
+    preset = data.agentPreset
   }
   return preset
 }
 
 /** Reject a Session the one-shot runner must not adopt. */
-function assertAdoptable(header: AdoptableHeader, events: Iterable<SessionEvent>, sessionId: SessionId, cwd: string): void {
-  const preset = currentPreset(header, events, sessionId)
+function assertAdoptable(header: AdoptableHeader, preset: Preset, sessionId: SessionId, cwd: string): void {
+  if (preset === null) {
+    throw new Error(`session "${sessionId}" records a malformed agent-preset/selected event and cannot be adopted`)
+  }
   if (preset !== undefined) {
     // This bundle composes no preset roster, so resuming the session here would
     // silently run it under the headless tools and prompts instead of the
@@ -239,6 +221,32 @@ function assertAdoptable(header: AdoptableHeader, events: Iterable<SessionEvent>
   }
 }
 
+/** Join a fixed history prefix to subsequent commits before the task can be submitted. */
+async function observeAdoption(
+  session: Session, query: Context['sessionQuery'], cwd: string, signal: AbortSignal,
+): Promise<() => void> {
+  let tail: Preset
+  session.onCommit((events) => { tail = currentPreset(tail, events) }, signal)
+  let prefix: Preset = session.header.agentPreset
+  try {
+    for await (const page of session.readHistoryPages({ signal })) {
+      prefix = currentPreset(prefix, page)
+      if (prefix === null) break
+    }
+  } catch (error) {
+    if (!(error instanceof SessionHistoryCopyError)) throw error
+    // Restored records may contain unrelated fields that cannot be copied as JSON.
+    // The live observation retains the original records at its captured cursor.
+    using cut = await query.observeSession(session.id, { projectionMode: 'none', signal })
+    if (cut.source !== 'live' || cut.header !== session.header) throw error
+    prefix = currentPreset(session.header.agentPreset, cut.events)
+  }
+  return () => {
+    const preset = prefix === null || tail === null ? null : tail ?? prefix
+    assertAdoptable(session.header, preset, session.id, cwd)
+  }
+}
+
 /**
  * Resolve the Agent for one run: adopt the persisted Session with the requested
  * id. The identity must already exist, and no Agent may be live under it; a
@@ -250,7 +258,8 @@ function assertAdoptable(header: AdoptableHeader, events: Iterable<SessionEvent>
  * @param agentOptions - provider/model pair for this run.
  * @param setup - per-Agent scope setup installing the model selection.
  * @param cwd - working directory resolved in the mounted filesystem.
- * @returns the resumed Agent.
+ * @param signal - lifetime of the attached Session observer.
+ * @returns the resumed Agent and its synchronous admission check.
  */
 async function resolveAgent(
   ctx: Context,
@@ -259,7 +268,8 @@ async function resolveAgent(
   agentOptions: AgentOptions,
   setup: (agentCtx: Context, agent: Agent) => void | Promise<void>,
   cwd: string,
-): Promise<Agent> {
+  signal: AbortSignal,
+): Promise<{ agent: Agent; checkAdoption: () => void }> {
   // Resuming promises the caller a log a later process can continue. Without a
   // durable log the run would succeed, print the id, and still lose the whole
   // history at exit, so a miscomposed profile fails loud before the resume.
@@ -280,18 +290,20 @@ async function resolveAgent(
     // The runner cannot claim an exclusive interval over an Agent it did not
     // create, so it refuses the identity; the adoptability rules run first so a
     // real mismatch is named instead of the generic refusal.
-    assertAdoptable(live.session.header, liveEvents(live.session), sessionId, cwd)
+    const check = await observeAdoption(live.session, query, cwd, signal)
+    check()
     throw new Error(`session "${sessionId}" is live in this process, so the one-shot runner cannot own an exclusive run interval`)
   }
   try {
     using observation = await query.observeSession(sessionId)
-    assertAdoptable(observation.header, observation.events, sessionId, cwd)
+    assertAdoptable(observation.header, currentPreset(observation.header.agentPreset, observation.events), sessionId, cwd)
     const { agent } = await agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
     // The observation is a snapshot: another writer may have appended a preset
     // selection before this process took the write lease. Re-check the log
     // resume actually attached, now that no other process can append.
-    assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
-    return agent
+    const checkAdoption = await observeAdoption(agent.session, query, cwd, signal)
+    checkAdoption()
+    return { agent, checkAdoption }
   } catch (error: unknown) {
     if (!(error instanceof SessionQueryError) || error.code !== 'SESSION_QUERY_SESSION_NOT_FOUND') throw error
     // --session-id resumes a conversation that already exists; starting a new
@@ -383,38 +395,31 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   const sessionId = brandString<SessionId>(config.sessionId ?? `session-${randomUUID()}`)
   const fs = ctx.get('fs')
   const cwd = fs === undefined ? process.cwd() : fs.processPath(await fs.resolve('.'))
-  const agent = config.sessionId === undefined
-    ? (await agents.create({
+  using observers = new RunObservers()
+  const { agent, checkAdoption }: { agent: Agent; checkAdoption?: () => void } = config.sessionId === undefined
+    ? await agents.create({
       sessionId,
       meta: { cwd },
       agentOptions,
       setup,
-    })).agent
-    : await resolveAgent(ctx, agents, sessionId, agentOptions, setup, cwd)
+    })
+    : await resolveAgent(ctx, agents, sessionId, agentOptions, setup, cwd, observers.signal)
   await agent.whenIdle()
-  if (config.sessionId !== undefined) {
-    // The resume-time check read a snapshot; an overlay can still append a
-    // preset selection between it and the interval this run now owns, so
-    // re-read the log the runner holds before submitting the task.
-    assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
-  }
+  checkAdoption?.()
   if (permissionMode !== undefined && permissions !== undefined) permissions.set(agent.session, permissionMode)
   if (approvalPolicy !== undefined && approval?.overrideOf(agent.session) !== approvalPolicy) {
     setApprovalPolicy(agent.session, approvalPolicy)
   }
-  const firstSeq = agent.session.seq
+  const outcome = observeOutcome(agent.session, observers.signal)
   const projection = config.json === true ? projectJsonRun(ctx, agent, io.stdout, { cwd }) : undefined
   const stopReasoning = projection === undefined ? streamReasoning(ctx, agent, io.stderr) : undefined
   let failure: { error: unknown; atOffset: SessionLogOffset } | undefined
   const stopErrors = ctx.on('agent/error', ({ agent: subject, error }) => {
     if (subject === agent) failure = { error, atOffset: agent.session.seq }
   })
-  const stopTerminals = ctx.on('session/event', (session, event) => {
-    if (session === agent.session && event.type === 'turn/end'
-      && failure !== undefined && event.seq >= failure.atOffset) failure = undefined
-  })
   try {
     try {
+      checkAdoption?.()
       agent.followup(createUserMessage({
         content: [{ type: 'text', text: task }],
         source: { kind: 'user' },
@@ -431,8 +436,7 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
       stopReasoning?.()
     }
     await sessions.flush(agent.session)
-    if (failure !== undefined) throw failure.error
-    const outcome = summarize(agent.session, firstSeq)
+    if (failure !== undefined && (outcome.lastTerminal === undefined || outcome.lastTerminal < failure.atOffset)) throw failure.error
     if (projection === undefined) io.stdout.write(outcome.text + '\n')
     else projection.finish(outcome.text, outcome.reason)
     if (outcome.reason?.kind === 'error') {
@@ -441,7 +445,6 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     io.exit(outcome.reason?.kind === 'completed' ? 0 : 1)
   } finally {
     stopErrors()
-    stopTerminals()
     projection?.dispose()
   }
 }

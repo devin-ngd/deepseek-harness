@@ -1,7 +1,7 @@
 /** Direct one-shot Agent driving, exact Session adoption, machine-readable projection, and exit mapping. */
 
 import { Readable } from 'node:stream'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -14,7 +14,7 @@ import type {
 } from '@deepseek-ai/dsh-agent'
 import AgentDefaultModelConfig from '@deepseek-ai/dsh-agent-default-model'
 import { type LlmAttemptId, type ReasoningEffortId, type ToolCallId, createAssistantMessage, createToolResultMessage, createUserMessage, type MessageId, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionLogOffset } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
 import ApprovalService, { setApprovalPolicy, type ApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
@@ -738,22 +738,31 @@ describe('headless runner', () => {
     await test.ctx.fiber.dispose()
   })
 
-  it('fails when an event below the captured Session length cannot be read', async () => {
-    let capturedLength = 0
+  it('derives the answer from commits even when a store notification is replayed during flush', async () => {
     const test = await bench({
       afterPrompt(session, message) {
-        appendTurn(session, 1, message, 'unreachable', true)
-        capturedLength = session.seq
-        Object.defineProperty(session, 'eventAt', { value: () => undefined })
+        appendTurn(session, 1, message, 'committed answer', true)
+        const start = session.snapshotEvents().find(event => event.type === 'turn/start')
+        if (start === undefined) throw new Error('missing committed turn start')
+        test.ctx.on('session/flush', () => { test.ctx.emit('session/event', session, start) })
+        vi.spyOn(session, 'eventAt').mockImplementation(() => { throw new Error('unexpected history scan') })
       },
     })
-    const result = await test.run()
-    expect(capturedLength).toBeGreaterThan(0)
-    expect(result).toMatchObject({
-      code: 1,
-      out: '',
-      err: `dsh: headless summary cannot read seq 0 below captured length ${String(capturedLength)}\n`,
+    expect(await test.run()).toMatchObject({ code: 0, out: 'committed answer\n', err: '' })
+    await test.ctx.fiber.dispose()
+  })
+
+  it('requires a committed terminal to clear a later Agent failure', async () => {
+    const test = await bench({
+      afterPrompt(session, message, agent) {
+        appendTurn(session, 1, message, 'earlier', true)
+        agent.ctx.emit('agent/error', { agent, turn: 2, step: 0, error: new Error('turn failed') })
+        test.ctx.emit('session/event', session, {
+          type: 'turn/end', seq: SessionSeq(session.seq), time: 1, data: { turn: 2, reason: { kind: 'completed' } },
+        })
+      },
     })
+    expect(await test.run()).toMatchObject({ code: 1, out: '', err: 'dsh: turn failed\n' })
     await test.ctx.fiber.dispose()
   })
 
@@ -1144,26 +1153,61 @@ describe('headless runner', () => {
     await test.ctx.fiber.dispose()
   })
 
-  it('fails when a live event below the captured Session length cannot be read', async () => {
-    let capturedLength = 0
-    const test = await bench({
-      before(session) {
-        const history = {
-          role: 'user', content: [{ type: 'text', text: 'earlier' }], source: { kind: 'user' }, id: brandString<MessageId>('history'),
-        } satisfies UserMessage
-        appendTurn(session, 0, history, 'earlier answer', true)
-        capturedLength = session.seq
-        Object.defineProperty(session, 'eventAt', { value: () => undefined })
-      },
-      afterPrompt: () => {},
-    }, {
+  it.each(['', 'concurrent'])('rejects selection %j committed while the captured prefix is being read', async (preset) => {
+    const afterPrompt = vi.fn()
+    const test = await bench({ afterPrompt }, {
       sessionId: 'session-exact',
-      prelive: true,
+      observe: async () => ({ header: { cwd: process.cwd() }, events: [], [Symbol.dispose]() {} }),
+    })
+    const session = test.ctx.sessions.create(brandString<SessionId>('session-exact'), { meta: { cwd: process.cwd() } })
+    const read = session.readHistoryPages.bind(session)
+    vi.spyOn(session, 'readHistoryPages').mockImplementation((options) => {
+      const prefix = read(options)
+      queueMicrotask(() => {
+        selectPreset(session, preset)
+        if (preset === '') selectPreset(session, 'later-valid')
+      })
+      return prefix
     })
     const result = await test.run()
-    expect(capturedLength).toBeGreaterThan(0)
     expect(result.code).toBe(1)
-    expect(result.err).toContain(`headless adoption cannot read seq 0 below captured length ${String(capturedLength)}`)
+    expect(result.err).toContain(preset === '' ? 'malformed agent-preset/selected' : 'runs under agent preset "concurrent"')
+    expect(afterPrompt).not.toHaveBeenCalled()
+    await test.ctx.fiber.dispose()
+  })
+
+  it('adopts a restored log with unrelated fields that cannot be copied as JSON', async () => {
+    const id = brandString<SessionId>('restored')
+    const observe = vi.fn(async (): Promise<ObservationStub & { source: 'live' }> => ({
+      source: 'live', header: session.header, events: session.snapshotEvents(), [Symbol.dispose]() {},
+    }))
+    const test = await bench({
+      afterPrompt(current, message) { appendTurn(current, 1, message, 'resumed', true) },
+    }, { sessionId: id, observe })
+    const session: Session = test.ctx.sessions.prepare(id, {
+      seed: [{ type: 'turn/start', seq: SessionSeq(0), time: 1, data: Object.assign({ turn: 0 }, { extra: undefined }) }],
+      eventState: 'detached', inheritedEventCount: SessionLogOffset(0),
+      meta: { version: SESSION_FORMAT_VERSION, id, createdAt: 0, isSeeded: false, cwd: process.cwd() },
+    })
+    test.ctx.sessions.enter(session)
+    test.ctx.sessions.announce(session)
+    expect(await test.run()).toMatchObject({ code: 0, out: 'resumed\n' })
+    expect(observe).toHaveBeenCalledTimes(2)
+    await test.ctx.fiber.dispose()
+  })
+
+  it('checks a selection committed by a permission hook immediately before followup', async () => {
+    const afterPrompt = vi.fn()
+    const test = await bench({ afterPrompt }, {
+      sessionId: 'session-exact', permissionMode: 'workspace-write',
+      observe: async () => ({ header: { cwd: process.cwd() }, events: [], [Symbol.dispose]() {} }),
+    })
+    test.ctx.sessions.create(brandString<SessionId>('session-exact'), { meta: { cwd: process.cwd() } })
+    test.ctx.provide('permissionPresets', { resolve() {}, set(session: Session) { selectPreset(session, 'late') } } as never)
+    const result = await test.run()
+    expect(result.code).toBe(1)
+    expect(result.err).toContain('runs under agent preset "late"')
+    expect(afterPrompt).not.toHaveBeenCalled()
     await test.ctx.fiber.dispose()
   })
 

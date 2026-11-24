@@ -1,7 +1,7 @@
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { unsupportedModel, provideWorkingDirectoryFixture, unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -12,7 +12,7 @@ import { createUserMessage, type ToolCallId, type Message } from '@deepseek-ai/d
 import type { ContextFormed, MessageSource } from '@deepseek-ai/dsh-llm'
 import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import {
-  SESSION_FORMAT_VERSION, Session, SessionId, type SessionEvent, type UserMessage,
+  SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset, type SessionEvent, type UserMessage,
 } from '@deepseek-ai/dsh-session'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -674,13 +674,13 @@ describe('dsh-tool-skill', () => {
     expect(JSON.stringify(published[0]?.data.content)).toContain('live-skill')
   })
 
-  it('rejects a missing event below the current Session length', async () => {
+  it('rejects a missing event at a visible surface position', async () => {
     const home = await tempDir('tool-catalog-missing-event')
     const ctx = await setup(home)
     const session = Session.create(brandString<SessionId>('catalog-missing-event'))
     const agent = sessionAgent(session)
     openMessageTurn(session)
-    Object.defineProperty(session, 'eventAt', { value: () => undefined })
+    vi.spyOn(session.surface, 'eventAtPosition').mockReturnValue(undefined)
 
     await expect(fireStep(ctx, agent, 1, 1))
       .rejects.toThrow('skill catalog cannot read seq 1 below the current Session length')
@@ -752,6 +752,33 @@ describe('dsh-tool-skill', () => {
     expect(catalogMessages(session)).toHaveLength(2)
   })
 
+  it('compares visible catalogs in commit order after a replacement cites a still-visible catalog', async () => {
+    const ctx = await setup(await tempDir('tool-catalog-replacement-order'))
+    ctx.skills.register({ name: 'live-skill', description: 'Live', source: 'runtime', content: 'Body.' })
+    const session = Session.create(SessionId('catalog-replacement-order'))
+    const agent = sessionAgent(session)
+    openMessageTurn(session)
+    await composePrefixForAgent(ctx, agent)
+    const initial = catalogMessages(session)[0]!
+    const stale = session.append('user/message', createUserMessage({
+      content: [], source: { kind: 'skill-catalog', form: 'catalog', entries: [] },
+    }), { surfaceOp: 'append' })
+    const replace = (target: typeof initial, message: UserMessage) => session.append('user/message', message, {
+      surfaceOp: { op: 'replace', startSeq: target.seq, endSeq: target.seq },
+      sourceEventSeqs: [target.seq, stale.seq],
+    })
+    const newest = replace(initial, createUserMessage({ content: [], source: initial.data.source }))
+    const history = vi.spyOn(session, 'readHistoryValues')
+    expect(session.surface.nodes.slice(-2)).toEqual([newest.seq, stale.seq])
+    expect(await proposeStep(ctx, agent, [])).toEqual({ kind: 'enter', messages: [] })
+
+    replace(newest, createUserMessage({ content: [], source: checkpointSource('hide-newest') }))
+    expect(session.surface.nodes).toContain(stale.seq)
+    await fireStep(ctx, agent, 1, 1)
+    expect(catalogMessages(session).at(-1)?.data.source).toMatchObject({ kind: 'skill-catalog', update: true })
+    expect(history).not.toHaveBeenCalled()
+  })
+
   it('retains prior publication when the remaining visible catalog is malformed', async () => {
     const home = await tempDir('tool-catalog-hidden-valid')
     const ctx = await setup(home)
@@ -779,9 +806,25 @@ describe('dsh-tool-skill', () => {
       source: { kind: 'skill-catalog', form: 'catalog', entries: null } as never,
     }), { surfaceOp: 'append' })
 
-    await fireStep(ctx, agent, 1, 1)
+    const events = session.snapshotEvents().map(event => event.seq === initial.seq && event.type === 'user/message'
+      ? { ...event, data: { ...event.data, source: { ...event.data.source, opaque: undefined } } }
+      : event)
+    const cold = Session.fromRestore(session.id, events, session.header, SessionLogOffset(0), 'detached')
+    const restoredAgent = sessionAgent(cold)
+    const read = cold.readHistoryValues.bind(cold)
+    const controller = new AbortController()
+    const reason = new Error('cancel catalog recovery')
+    const pages = vi.spyOn(cold, 'readHistoryValues').mockImplementationOnce((options, select) => {
+      controller.abort(reason)
+      return read(options, select)
+    })
+    const end = cold.seq
+    await expect(composePrefixForAgent(ctx, restoredAgent, controller.signal)).rejects.toBe(reason)
+    expect(cold.seq).toBe(end)
+    expect(pages).toHaveBeenCalledWith({ signal: controller.signal }, expect.any(Function))
+    await fireStep(ctx, restoredAgent, 1, 1)
 
-    const catalogs = catalogMessages(session)
+    const catalogs = catalogMessages(cold)
     expect(catalogs).toHaveLength(3)
     expect(catalogs.at(-1)?.data.source).toMatchObject({ kind: 'skill-catalog', update: true })
     expect(JSON.stringify(catalogs.at(-1)?.data.content)).toContain('live-skill')

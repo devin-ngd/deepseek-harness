@@ -28,7 +28,7 @@ import type {
   StreamChunk,
   TokenUsage,
 } from '@deepseek-ai/dsh-llm'
-import SessionStore, { Session, type SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, type SessionId, SessionHistoryCopyError, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionCheckpoint } from '@deepseek-ai/dsh-session-projection'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
@@ -1192,13 +1192,18 @@ describe('compaction region transaction', () => {
     )).rejects.toThrow(/no open turn/)
   })
 
-  it('rejects a meter snapshot that changed before summarization began', async () => {
+  it.each(['meter', 'surface'] as const)('rejects a stale selection when the %s changes before summarization', async (changed) => {
     const ctx = createContext()
     const meter = ctx.tokenMeter
     const original = meter.measure.bind(meter)
     vi.spyOn(meter, 'measure').mockImplementationOnce((session) => {
       const measurement = original(session)
-      return { ...measurement, nodes: measurement.nodes.slice(1) }
+      if (changed === 'meter') return { ...measurement, nodes: measurement.nodes.slice(1) }
+      const first = session.surface.nodes[0]!
+      session.append('user/message', createUserMessage({
+        content: [{ type: 'text', text: 'replacement after pricing' }], source: { kind: 'user' },
+      }), { surfaceOp: { op: 'replace', startSeq: first, endSeq: first }, sourceEventSeqs: [first] })
+      return measurement
     })
     const compact = service({ auto: false }, ctx)
     const session = conversation(2)
@@ -1642,6 +1647,55 @@ describe('default one-shot summarizer', () => {
 
     await fiber.dispose()
     expect(ctx.sessionProjections.checkpoint(conversation(2))).not.toHaveProperty('compactionAnsweredRoute')
+  })
+
+  it('prepares a directly supplied independent Session before checking its compaction lock', async () => {
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(TokenMeter)
+    await ctx.plugin(BasicCompactionEngine, { auto: false })
+    const session = conversation(1)
+    const nodes = session.surface.nodes
+    const opening = session.append('compaction/start', { compactionId: brandString<CompactionId>('held'), turn: 2 })
+    const pages = vi.spyOn(session, 'readHistoryPages')
+    const events = vi.spyOn(session, 'eventAt')
+    const tryCompact = () => ctx.compaction.compactRegion(nodes[0]!, nodes[1]!, agent(session, MODEL))
+
+    await expect(tryCompact()).rejects.toThrow(/already in progress/)
+    expect(pages).toHaveBeenCalled()
+    expect(events).not.toHaveBeenCalledWith(opening.seq)
+    pages.mockClear()
+    session.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
+    await expect(tryCompact()).rejects.toThrow(/already in progress/)
+    expect(pages).not.toHaveBeenCalled()
+    expect(events).not.toHaveBeenCalledWith(opening.seq)
+  })
+
+  it.each(['copy', 'fold'] as const)('contains only a history copy failure during hot-load (%s)', async (kind) => {
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(TokenMeter)
+    const session = conversation(1)
+    ctx.effect(() => ctx.sessions.enter(session))
+    ctx.sessions.announce(session)
+    const error = kind === 'copy' ? new SessionHistoryCopyError(SessionSeq(0)) : new Error('fold failed')
+    vi.spyOn(session, 'readHistoryPages').mockImplementation(() => { throw error })
+    const mounting = ctx.plugin(BasicCompactionEngine, { auto: false })
+    if (kind === 'fold') {
+      await expect(mounting).rejects.toThrow(error.message)
+      return
+    }
+    await mounting
+    session.append('compaction/start', { compactionId: brandString<CompactionId>('existing-lock'), turn: 2 })
+    const nodes = session.surface.nodes
+    await expect(ctx.compaction.compactRegion(nodes[0]!, nodes[1]!, agent(session, MODEL)))
+      .rejects.toThrow(/already in progress/)
   })
 
   it('fails plugin activation when the answered-route projection cannot register', async () => {

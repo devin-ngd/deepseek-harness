@@ -142,11 +142,9 @@ function visibleInstructionChanges(
   authorityMessages: readonly UserMessage[],
 ): Map<string, AgentInstructionChange> {
   const visible = new Map<string, AgentInstructionChange>()
-  for (const seq of agent.session.surface.nodes) {
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    const event = agent.session.eventAt(seq)
-    if (event?.type !== 'user/message' || !isAgentInstructionsSource(event.data.source)) continue
-    const changes = workspaceInstructionChanges(event.data.source)
+  for (const message of agent.session.deriveMessages()) {
+    if (message.role !== 'user' || !isAgentInstructionsSource(message.source)) continue
+    const changes = workspaceInstructionChanges(message.source)
     for (const change of changes) {
       visible.set(change.scope, change)
     }

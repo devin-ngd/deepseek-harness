@@ -5,38 +5,8 @@
   "packages/api/session-controller/src/history/listener.ts": {
     "ff771438de4cfbff2e222eae1b7f50443646f956a7af79026557787250b3c687": 1
   },
-  "packages/bundle/headless/src/index.ts": {
-    "c2e196e80d715a79d59da2ecd6190fc2f74936eccc1c345dbdbd87394c5859b7": 2
-  },
   "packages/compaction/compaction-basic/src/region.ts": {
-    "885088c42730437302213869ae6d276569a4bc166c648106738ed378702d77f4": 1,
-    "a528d51cdc0a04547ce4f24fca1a64d3b7f0f2f8080a3aa3a06696fa5a1a8f63": 1,
     "c2e196e80d715a79d59da2ecd6190fc2f74936eccc1c345dbdbd87394c5859b7": 1
-  },
-  "packages/compaction/compaction-image-offload/src/image-offload.ts": {
-    "885088c42730437302213869ae6d276569a4bc166c648106738ed378702d77f4": 1
-  },
-  "packages/compaction/compaction-tool-result-pruner/src/index.ts": {
-    "885088c42730437302213869ae6d276569a4bc166c648106738ed378702d77f4": 1
-  },
-  "packages/compaction/compaction/src/tool-pairing.ts": {
-    "885088c42730437302213869ae6d276569a4bc166c648106738ed378702d77f4": 1
-  },
-  "packages/context/agent-instructions/src/index.ts": {
-    "205d07abfbf8b347ec80f3961d0eb3fb88c0ac0db3b5206255cea6b4c0cefa29": 2
-  },
-  "packages/context/agent-instructions/src/state.ts": {
-    "205d07abfbf8b347ec80f3961d0eb3fb88c0ac0db3b5206255cea6b4c0cefa29": 1
-  },
-  "packages/context/time-context/src/index.ts": {
-    "987388b5fd99facccba60003015ea4c87aaf5c07ae84ec3d8e1189555b5f458e": 1
-  },
-  "packages/core/agent-loop/src/index.ts": {
-    "0b161f28210a2eb48bb09e328787c49fb8cf176baed3b3bc52001670c38d367a": 1
-  },
-  "packages/core/agent-loop/src/runtime-context.ts": {
-    "b0ac2b8a09d7c6d271e3ca6e4be8a92aaabd2df5f35451b057de4a64dd0ed28b": 1,
-    "ea3e36e5be5bc39b15a75865c699580db735bdd0e29e27b6e1e3f5c94aa2bc71": 1
   },
   "packages/core/session/src/index.ts": {
     "6d988028d78aee48aaf7d2f8d3aae2e8b8e5f18e48cdea157e9b37c1c7087dc9": 1,
@@ -46,8 +16,7 @@
     "b0ac2b8a09d7c6d271e3ca6e4be8a92aaabd2df5f35451b057de4a64dd0ed28b": 1
   },
   "packages/experimental/rich-inline/src/host/index.ts": {
-    "b0ac2b8a09d7c6d271e3ca6e4be8a92aaabd2df5f35451b057de4a64dd0ed28b": 1,
-    "d08a90e01e19599d73af97dd66707ab1a4180d87018da7a3d8ae7919cbcefba5": 1
+    "b0ac2b8a09d7c6d271e3ca6e4be8a92aaabd2df5f35451b057de4a64dd0ed28b": 1
   },
   "packages/feedback/message-feedback/src/index.ts": {
     "371f85a40b6f16bb214697ae893afb4e1cc47246cdbd17bf493ee0c5076424e6": 1
@@ -55,18 +24,11 @@
   "packages/llm/token-meter/src/index.ts": {
     "d50a8b7cdd15f3a4f87214961f8ff42a2db30cab9e28406015ccb60a7aa80802": 1
   },
-  "packages/session-query/session-query-sqlite/src/index.ts": {
-    "b0ac2b8a09d7c6d271e3ca6e4be8a92aaabd2df5f35451b057de4a64dd0ed28b": 1
-  },
-  "packages/session-query/session-query/src/corpus.ts": {
-    "b0ac2b8a09d7c6d271e3ca6e4be8a92aaabd2df5f35451b057de4a64dd0ed28b": 2
-  },
   "packages/session-query/session-query/src/observation.ts": {
     "87fd01e3eb23af10f01f2d441c90827c7c9404d6b5f2ce5d064a2db5e1294cf2": 1
   },
   "packages/session/session-log-deepseek/src/index.ts": {
-    "6fcbb52f918ff2a3374679c36e13e843701a2c1ff9412a302a30713e3d9f69f1": 1,
-    "a2e9eaafe83014f10ea8a3c5dd263899ea086d72edec1a0b40243c44d420def7": 1
+    "6fcbb52f918ff2a3374679c36e13e843701a2c1ff9412a302a30713e3d9f69f1": 1
   },
   "packages/session/session-projection/src/index.ts": {
     "25ae2404a5a3884aecf61e15bf3f2a3d796da22545a5c5e6289fd1e1320de159": 1,
@@ -78,17 +40,5 @@
   },
   "packages/session/session-telemetry/src/coordinator.ts": {
     "1d578d99882ccc636c7bd1dd9f1f14051923a79681ce24757ecfac93d3075d6a": 1
-  },
-  "packages/session/session-title/src/index.ts": {
-    "b0ac2b8a09d7c6d271e3ca6e4be8a92aaabd2df5f35451b057de4a64dd0ed28b": 1
-  },
-  "packages/skill/tool-skill/src/index.ts": {
-    "8605217122f44859ef0bded9c3ae998f1910c244c14146c691d1dae9ef68304d": 1
-  },
-  "packages/subagent/subagent-fork-in-process/src/index.ts": {
-    "d40a80adfa273d13525e284a14b1a882ba617a2c53b95002c9a842a9d33b8695": 1
-  },
-  "packages/subagent/subagent/src/activation.ts": {
-    "a69a030746f39226d15a501bae24a17cbe1888499731bb68bf7426eb8a79de8a": 1
   }
 }

@@ -5,6 +5,14 @@ import SessionStore, { SESSION_FORMAT_VERSION, Session, SessionHistoryCopyError,
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
 describe('Session asynchronous history pages', () => {
+  it('bounds pages when the caller only specifies a history cut', async () => {
+    const session = Session.create(SessionId('default-history-page'))
+    for (let turn = 0; turn < 130; turn++) session.append('turn/start', { turn })
+    const lengths: number[] = []
+    for await (const page of session.readHistoryPages({ toSeqExclusive: SessionLogOffset(129) })) lengths.push(page.length)
+    expect(lengths).toEqual([128, 1])
+  })
+
   it.each(['detached', 'live'] as const)('keeps the %s Session cut captured when reading starts', async (mode) => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
@@ -110,6 +118,37 @@ describe('Session asynchronous history pages', () => {
     expect(() => { copied.data.turn = 99 }).toThrow(TypeError)
     expect(source.data.turn).toBe(1)
     expect(Object.isFrozen(source)).toBe(false)
+  })
+
+  it('copies only the selected values at the opening cut and propagates selector failures and cancellation', async () => {
+    const id = SessionId('selected-history')
+    const source = {
+      type: 'turn/start', seq: SessionSeq(0), time: 1,
+      data: { turn: 1, extension: () => 42 },
+    } satisfies SessionEvent<'turn/start'> & { data: { extension: () => number } }
+    const selected = { ...source, seq: SessionSeq(1), data: { turn: 2 } }
+    const session = Session.fromRestore(id, [source, selected], {
+      id, version: SESSION_FORMAT_VERSION, createdAt: 0, isSeeded: false,
+    }, SessionLogOffset(0), 'detached')
+    const pages = session.readHistoryValues({}, event => event.type === 'turn/start' && event.data.turn === 2 ? event.data : null)
+    session.append('turn/start', { turn: 2 })
+    const result = []
+    for await (const page of pages) result.push(page)
+    expect(result).toEqual([[null, { turn: 2 }, null]])
+    expect(Object.isFrozen(result[0])).toBe(true)
+    const copy = result[0]?.[1]
+    if (copy == null) throw new Error('missing selected turn')
+    expect(copy).not.toBe(selected.data)
+    copy.turn = 9
+    expect(selected.data.turn).toBe(2)
+    const failure = new Error('selector failed')
+    const failing = session.readHistoryValues({}, () => { throw failure })[Symbol.asyncIterator]()
+    await expect(failing.next()).rejects.toBe(failure)
+    const controller = new AbortController()
+    const iterator = session.readHistoryValues({ pageSize: 1, signal: controller.signal }, event => event.seq)[Symbol.asyncIterator]()
+    expect((await iterator.next()).value).toEqual([0])
+    controller.abort(failure)
+    await expect(iterator.next()).rejects.toBe(failure)
   })
 
   it('rejects an event that cannot be copied losslessly', async () => {

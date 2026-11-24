@@ -7,8 +7,10 @@
 
 import { createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed, ContextSnapshotSection, Message } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionEvent, SessionSeq, SurfaceIntent, SystemMessage, UserMessage } from '@deepseek-ai/dsh-session'
+import type { Session, SessionSeq, SurfaceIntent, SystemMessage, UserMessage } from '@deepseek-ai/dsh-session'
 import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session'
+import { z } from 'zod'
+import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import type { Context } from '@deepseek-ai/cordis'
 declare module '@deepseek-ai/dsh-llm' {
@@ -54,11 +56,14 @@ export interface SystemPromptDecisionInput {
   startsSeries: boolean
 }
 
-/** Committed events from the newest backward; the restore scans stop at the first match. */
-function eventsNewestFirst(session: Session): readonly SessionEvent[] {
-  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-  return session.snapshotEvents().toReversed()
-}
+/** Whether a prior runtime reminder may survive inside a compacted summary. */
+export const runtimeContextPublishedDefinition = {
+  key: 'runtimeContextPublished',
+  stateVersion: 1,
+  stateSchema: z.boolean(),
+  init: () => false,
+  apply: (published, event) => published || (event.type === 'user/message' && isOwned(event.data)),
+} satisfies ProjectionDefinition<'runtimeContextPublished', boolean>
 
 /**
  * Decides how a rendered system prompt reaches the surface without owning the
@@ -77,9 +82,9 @@ export class SystemPromptProjection {
   /** The surviving `system/message` nodes in surface order. */
   private systemNodes(): { seq: SessionSeq; text: string | undefined }[] {
     const nodes: { seq: SessionSeq; text: string | undefined }[] = []
-    for (const seq of this.session.surface.nodes) {
-      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-      const event = this.session.eventAt(seq)
+    const surface = this.session.surface
+    for (const [position, seq] of surface.nodes.entries()) {
+      const event = surface.eventAtPosition(position)
       if (event?.type !== 'system/message') continue
       const content = event.data.message.content
       const text = content.length === 0 ? '' : textOf(event.data.message)
@@ -130,15 +135,20 @@ export class RuntimeContextProjection {
    * Restore projection state once, then follow authoritative session events.
    * @param ctx - agent-scoped event context.
    * @param session - session receiving projected messages.
+   * @param published - whether any runtime reminder was committed before attachment.
    */
-  constructor(ctx: Context, session: Session) {
-    const surface = new Set(session.surface.nodes)
-    for (const event of eventsNewestFirst(session)) {
-      if (event.type !== 'user/message' || !isOwned(event.data)) continue
-      this.retained ??= null
-      if (surface.has(event.seq)) {
-        this.retained = { seq: event.seq, sections: sectionsOf(event.data) }
-        break
+  constructor(ctx: Context, session: Session, published: boolean) {
+    if (published) {
+      this.retained = null
+      const surface = session.surface
+      const nodes = surface.nodes
+      // A replacement can put a newer reminder ahead of the last visible one.
+      for (let position = nodes.length - 1; position >= 0; position--) {
+        if (this.retained !== null && (nodes[position] ?? -1) < this.retained.seq) continue
+        const event = surface.eventAtPosition(position)
+        if (event?.type === 'user/message' && isOwned(event.data)) {
+          this.retained = { seq: event.seq, sections: sectionsOf(event.data) }
+        }
       }
     }
 

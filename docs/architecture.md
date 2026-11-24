@@ -86,7 +86,7 @@ A **step** is one model request plus the tools it calls. A **turn** is zero or m
 turn/start
   claim next-step input plus one queued message
   snapshot Session model selection; assemble prompt sections + step-admitted tool schemas
-  -> agent/pre-step; project runtime context at fallback
+  -> agent/pre-step; project runtime context at fallback (published flag and visible reminder)
                                      reject | enter(messages, startsRequestSeries?)
      reject, or a first enter rewritten empty -> close the turn with no step
      step/start
@@ -107,7 +107,7 @@ turn/end
 
 `turn/*`, `step/*`, `system/message`, `user/message`, `assistant/message`, `assistant/attempt`, and `tool/*` are durable session events; the rest are live extension points across three domains. `agent/assistant-stream` publishes process-local start, transient chunk, and end frames. The loop commits the complete compact stream as one message or log-only attempt before a committed end frame, and the Web Session-follow adapter is the live event's only remote consumer. `agent/pre-step`, `agent/request`, `llm/stream`, and the three `tools/*` events are waterfalls, whose listeners must call `next()` to delegate; `agent/turn-stopping` is serial and has no `next()`.
 
-Fork creation stores the caller-supplied history; a sharing backend persists the parent prefix first ([lifecycle](../packages/core/agent-loop/README.md#understand-the-implementation)). Factory setup follows SessionStore entry and `session/created`, preceding `agent/created`; closing events commit before removal.
+Before publication, the loop persists outstanding events from the same constructor cut used for projection recovery. Fork creation stores the caller-supplied history and a sharing backend persists the parent prefix first ([lifecycle](../packages/core/agent-loop/README.md#understand-the-implementation)). Factory setup follows SessionStore entry and `session/created`, preceding `agent/created`; closing events commit before removal.
 
 One inbox feeds the driver; injected context waits for a waking message. AgentLoop’s durable `inbox` projection exposes pending input without live Agents.
 

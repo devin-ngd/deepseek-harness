@@ -32,7 +32,10 @@ export class AssistantOutputFold {
   push(event: SessionEvent): void {
     if (event.type === 'assistant/message') {
       const content = event.data.message.content
-      if (content.length > 0) this.message = content
+      if (content.length > 0) {
+        this.message = content
+        this.partial.length = 0
+      }
     }
     if (event.type === 'assistant/message' || event.type === 'assistant/attempt') {
       this.pushText(joinAssistantStreamText(event.data.stream))
@@ -44,7 +47,7 @@ export class AssistantOutputFold {
    * @param text - the next streamed text piece (an empty piece is a no-op).
    */
   pushText(text: string): void {
-    if (text.length > 0) this.partial.push(text)
+    if (this.message === undefined && text.length > 0) this.partial.push(text)
   }
 
   /**
@@ -65,10 +68,6 @@ export class AssistantOutputFold {
  * @returns the selected output, or `undefined` when the child produced none.
  */
 export function finalAssistantOutput(events: readonly SessionEvent[]): readonly ContentBlock[] | undefined {
-  // TODO: this folds the complete suffix once per run/epoch settlement. If a
-  // long continuable epoch ever profiles hot here, scan backward with early
-  // exit for the last non-empty message and fold text deltas only on the
-  // no-message fallback.
   const fold = new AssistantOutputFold()
   for (const event of events) fold.push(event)
   return fold.collect()

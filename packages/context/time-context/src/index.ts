@@ -17,8 +17,7 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
-import type { UserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionSeq } from '@deepseek-ai/dsh-session'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { Duration } from '@deepseek-ai/dsh-util-time'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import {
@@ -81,18 +80,29 @@ function formatDuration(elapsedMs: number): string {
   return parts.join(' ')
 }
 
-/** Preserve the original scan for typed pre-step callers requesting a nonlatest turn. */
-function requestMessages(agent: Agent, turn: number, proposed: readonly UserMessage[]): UserMessage[] {
-  const entered: UserMessage[] = []
-  for (let seq = agent.session.seq - 1; seq >= 0; seq -= 1) {
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    const event = agent.session.eventAt(SessionSeq(seq))
-    if (event?.type === 'turn/start' && event.data.turn === turn) {
-      return [...entered.reverse(), ...proposed]
-    }
-    if (event?.type === 'user/message') entered.push(event.data)
+/** Collect raw zones after the last matching start within the request's fixed history cut. */
+async function historicalZones(agent: Agent, turn: number, signal: AbortSignal): Promise<string[]> {
+  const zones = new Set<string>()
+  let entered = false
+  const select = (event: SessionEvent): string | true | undefined => {
+    if (event.type === 'turn/start' && event.data.turn === turn) return true
+    if (event.type === 'user/message') return reportedBrowserTimeZone(event.data)
+    return undefined
   }
-  return [...proposed]
+  try {
+    for await (const page of agent.session.readHistoryValues({ signal }, select)) {
+      for (const value of page) {
+        if (value === true) {
+          zones.clear()
+          entered = true
+        } else if (entered && value !== undefined) zones.add(value)
+      }
+    }
+  } catch (error: unknown) {
+    if (signal.aborted && error === signal.reason) return []
+    throw error
+  }
+  return [...zones]
 }
 
 function renderText(
@@ -216,9 +226,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     const previous = step === 1
       ? state.lastMessageTime ?? undefined
       : state.lastTurnInjectionTime ?? undefined
-    const browser = state.browserTurn === turn
-      ? deriveBrowserTimeZoneContext(decision.messages, state.browserTimeZones)
-      : deriveBrowserTimeZoneContext(requestMessages(agent, turn, decision.messages))
+    const zones = state.browserTurn === turn ? state.browserTimeZones : await historicalZones(agent, turn, signal)
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- A historical page read can yield after the first check.
+    if (signal.aborted) return decision
+    const browser = deriveBrowserTimeZoneContext(decision.messages, zones)
     const selectedTimeZone = browser.kind === 'resolved' ? browser.timeZone : fallbackTimeZone
     const text = renderText(
       now,

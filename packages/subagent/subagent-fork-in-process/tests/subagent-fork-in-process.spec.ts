@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SessionLogOffset, SessionSeq, type SessionId } from '@deepseek-ai/dsh-session'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -234,6 +234,78 @@ describe('dsh-subagent-fork-in-process', () => {
     // The seed ends at a completed turn, so it replays as a valid child log.
     expect(lastSeeded?.type).toBe('turn/end')
     expect(seeded.seed!.map(event => event.seq)).toEqual(seeded.seed!.map((_event, index) => index))
+  })
+
+  it('captures the completed-turn prefix before the preparation promise settles', async () => {
+    const { ctx, parent } = await setup([textResponse('parent turn')])
+    parent.followup(createUserMessage({ content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } }))
+    await parent.whenIdle()
+    const initial = parent.session.snapshotEvents()
+    const lastEnd = initial.findLast(event => event.type === 'turn/end')!
+    const provider = ctx.subagents.getProvider('fork')!
+    const preparing = provider.prepareContinuable!({
+      cwd: process.cwd(), sessionId: brandString<SessionId>('fork-cut'), parent, signal: new AbortController().signal,
+    })
+    parent.session.append('turn/end', { turn: 99, reason: { kind: 'completed' } })
+    expect((await preparing).seed).toEqual(initial.slice(0, lastEnd.seq + 1))
+
+    const controller = new AbortController()
+    const canceled = provider.prepareContinuable!({
+      cwd: process.cwd(), sessionId: brandString<SessionId>('canceled-fork'), parent, signal: controller.signal,
+    })
+    const reason = new Error('cancel prefix copy')
+    controller.abort(reason)
+    await expect(canceled).rejects.toBe(reason)
+  })
+
+  it('does not inspect a restored non-JSON suffix after the last completed turn', async () => {
+    const { ctx, parent } = await setup([])
+    const restored = Session.fromRestore(parent.id, [
+      { type: 'turn/start', seq: SessionSeq(0), time: 0, data: { turn: 1 } },
+      { type: 'turn/end', seq: SessionSeq(1), time: 1, data: { turn: 1, reason: { kind: 'completed' } } },
+      { type: 'turn/start', seq: SessionSeq(2), time: 2, data: { turn: Number.NaN } },
+    ], parent.session.header, SessionLogOffset(0), 'detached')
+    const property = Object.getOwnPropertyDescriptor(parent, 'session')!
+    Object.defineProperty(parent, 'session', { ...property, value: restored })
+    try {
+      const provider = ctx.subagents.getProvider('fork')!
+      const result = await provider.prepareContinuable!({
+        cwd: process.cwd(), sessionId: brandString<SessionId>('fork-restored-suffix'), parent, signal: new AbortController().signal,
+      })
+      expect(result.seed?.map(event => event.seq)).toEqual([0, 1])
+      const pages = restored.readHistoryPages({ pageSize: 1 })
+      await expect((async () => { for await (const _page of pages) { /* consume */ } })())
+        .rejects.toThrow('not losslessly JSON-serializable')
+    } finally {
+      Object.defineProperty(parent, 'session', property)
+    }
+  })
+
+  it.each([
+    ['cloneable non-JSON value', { extra: Number.NaN }, 0],
+    ['key omitted by structuredClone', { [Symbol('extra')]: true }, 1],
+    ['value rejected by structuredClone', { extra: () => true }, 0],
+  ] as const)('rejects a completed prefix containing a %s', async (_name, extra, badSeq) => {
+    const { ctx, parent } = await setup([textResponse('retry')])
+    const restored = Session.fromRestore(parent.id, [
+      { type: 'turn/start', seq: SessionSeq(0), time: 0, data: { turn: 1, ...badSeq === 0 ? extra : {} } },
+      { type: 'turn/end', seq: SessionSeq(1), time: 1, data: { turn: 1, reason: { kind: 'completed' }, ...badSeq === 1 ? extra : {} } },
+    ], parent.session.header, SessionLogOffset(0), 'detached')
+    // The child factory validates even a prefix already detached by the restore owner.
+    const prefix = restored.snapshotEvents(SessionLogOffset(0), SessionLogOffset(2))
+    expect(() => Session.create(parent.id, prefix)).toThrow(`seed event at index ${badSeq} is not losslessly JSON-serializable`)
+    const property = Object.getOwnPropertyDescriptor(parent, 'session')!
+    Object.defineProperty(parent, 'session', { ...property, value: restored })
+    try {
+      await expect(start(ctx, 'fork', { parent, prompt: [{ type: 'text', text: 'child' }] }))
+        .rejects.toMatchObject({ name: 'SessionHistoryCopyError', seq: badSeq })
+      expect(ctx.agents.list()).toEqual([parent])
+    } finally {
+      Object.defineProperty(parent, 'session', property)
+    }
+    const retried = await start(ctx, 'fork', { parent, prompt: [{ type: 'text', text: 'retry' }] })
+    expect((await retried.result).stopReason).toBe('completed')
+    await retried.dispose()
   })
 
   it('has the namespace-plugin export shape (no stray default)', () => {

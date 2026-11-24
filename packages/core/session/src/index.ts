@@ -8,6 +8,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { isAbsolute } from 'node:path'
+import { aborted } from 'node:util'
 import { setImmediate as nextEventLoopTurn } from 'node:timers/promises'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { assertNever, deepFreeze, snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
@@ -571,7 +572,10 @@ function createAppendEvent(snapshot: ReturnType<typeof snapshotAppend>, seq: Ses
  */
 export class Session {
   private log: SessionEvent[] = []
+  private completedTurnCut = SessionLogOffset(0)
   private batchPublication: SessionEvent | undefined
+  private commitObservers: readonly { signal: AbortSignal; notify(events: readonly SessionEvent[]): void }[] | undefined
+  private notifyingCommit = false
   #preparedCut: readonly SessionEvent[] | undefined
   /** Single incremental owner of surface acceptance and projection state. */
   private readonly surfaceManager: SurfaceManager
@@ -712,7 +716,7 @@ export class Session {
         } catch (error: unknown) {
           throw new Error(`invalid seed event at index ${index}: ${error instanceof Error ? error.message : 'invalid surface metadata'}`)
         }
-        this.log.push(mode === 'snapshot' ? deepFreeze(snapshot) : snapshot)
+        this.recordEvent(mode === 'snapshot' ? deepFreeze(snapshot) : snapshot)
       }
     }
     this.firstLiveSeq = SessionLogOffset(this.log.length)
@@ -765,7 +769,25 @@ export class Session {
    *   Iteration rejects if an event cannot be copied as lossless JSON or cancellation occurs.
    */
   readHistoryPages(options: SessionHistoryReadOptions): AsyncIterable<readonly SessionEvent[]> {
-    const { pageSize, signal } = options
+    return this.readPages(options, (source) => {
+      const copy = snapshotJsonValue(source)
+      if (copy === undefined) throw new SessionHistoryCopyError(source.seq)
+      return deepFreeze(copy)
+    })
+  }
+
+  /**
+   * Read one selected value per event in a fixed history range, yielding between pages.
+   * @param options - event count per page, optional range, and cancellation.
+   * @param select - synchronous, side-effect-free selector. Borrow the event only for this call.
+   * @returns frozen pages of structured clones of the selected values. Unselected fields need not be cloneable.
+   */
+  readHistoryValues<T>(options: SessionHistoryReadOptions, select: (event: SessionEvent) => T): AsyncIterable<readonly T[]> {
+    return this.readPages(options, event => structuredClone(select(event)))
+  }
+
+  private readPages<T>(options: SessionHistoryReadOptions, copy: (event: SessionEvent) => T): AsyncIterable<readonly T[]> {
+    const { pageSize = 128, signal } = options
     if (!Number.isSafeInteger(pageSize) || pageSize < 1) {
       throw new TypeError('session history pageSize must be a positive safe integer')
     }
@@ -775,28 +797,27 @@ export class Session {
     if (from > to || to > this.seq) {
       throw new RangeError(`session history range ${String(from)}..${String(to)} exceeds the current log`)
     }
-    return this.historyPages(from, to, pageSize, signal)
+    return this.historyPages(from, to, pageSize, signal, copy)
   }
 
   /** Read a captured half-open range without materializing its complete prefix. */
-  private async *historyPages(
+  private async *historyPages<T>(
     from: SessionLogOffset,
     to: SessionLogOffset,
     pageSize: number,
     signal: AbortSignal | undefined,
-  ): AsyncGenerator<readonly SessionEvent[]> {
+    copy: (event: SessionEvent) => T,
+  ): AsyncGenerator<readonly T[]> {
     for (let cursor: number = from; cursor < to;) {
       signal?.throwIfAborted()
       const end = Math.min(cursor + pageSize, to)
-      const page: SessionEvent[] = []
+      const page: T[] = []
       for (let index = cursor; index < end; index++) {
         signal?.throwIfAborted()
         const source = this.log[index]
         /* v8 ignore next -- the captured range is within the append-only log. */
         if (source === undefined) throw new Error(`session history is missing seq ${String(index)}`)
-        const copy = snapshotJsonValue(source)
-        if (copy === undefined) throw new SessionHistoryCopyError(SessionSeq(index))
-        page.push(deepFreeze(copy))
+        page.push(copy(source))
       }
       yield Object.freeze(page)
       cursor = end
@@ -869,9 +890,72 @@ export class Session {
     return SessionLogOffset(this.log.length)
   }
 
+  /** Exclusive end of the last recorded turn/end, including inherited and restored turns. */
+  get completedTurnEndOffset(): SessionLogOffset {
+    return this.completedTurnCut
+  }
+
+  /** Record an accepted event and advance the fork cut before observers see the commit. */
+  private recordEvent(event: SessionEvent): void {
+    this.log.push(event)
+    if (event.type === 'turn/end') this.completedTurnCut = SessionLogOffset(this.log.length)
+  }
+
   /** Current event while synchronously notifying a batch's observers. */
   get currentBatchPublication(): SessionEvent | undefined {
     return this.batchPublication
+  }
+
+  /**
+   * Observe future nonempty commits on this exact Session, including independent appends.
+   * Each callback starts synchronously after log and surface acceptance and before store
+   * event observers. Reentrant appends are rejected. Listener failures are reported
+   * without rolling back the commit or interrupting other observers.
+   * @param listener - receives the frozen group in sequence order, once per append.
+   * @param signal - abort to unsubscribe. An already aborted signal installs no listener.
+   */
+  onCommit(listener: (events: readonly SessionEvent[]) => void | Promise<void>, signal: AbortSignal): void {
+    if (signal.aborted) return
+    const report = (error: unknown): void => {
+      const message = `session "${this.id}": commit listener failed: ${String(error)}`
+      const entry = attachments.get(this)
+      if (entry == null) process.emitWarning(message)
+      else entry.emitCtx.logger.warn(message)
+    }
+    const observer = {
+      signal,
+      notify(events: readonly SessionEvent[]) {
+        try {
+          const returned = listener(events)
+          if (returned !== undefined) void Promise.resolve(returned).catch(report)
+        } catch (error: unknown) {
+          report(error)
+        }
+      },
+    }
+    this.commitObservers = [...this.commitObservers ?? [], observer]
+    // A registration-wide signal must not retain independent Sessions that lose their last owner.
+    void aborted(signal, observer).then(() => {
+      const remaining = this.commitObservers?.filter(item => item !== observer)
+      this.commitObservers = remaining?.length ? remaining : undefined
+    })
+  }
+
+  private notifyCommit(commit: SessionEvent | readonly SessionEvent[]): void {
+    const observers = this.commitObservers
+    if (observers === undefined) return
+    let group: readonly SessionEvent[] | undefined
+    this.notifyingCommit = true
+    try {
+      for (const observer of observers) {
+        if (observer.signal.aborted) continue
+        group ??= Object.freeze('seq' in commit ? [commit] : commit)
+        observer.notify(group)
+      }
+    } finally {
+      this.notifyingCommit = false
+      if (group === undefined) this.commitObservers = undefined
+    }
   }
 
   /**
@@ -974,9 +1058,10 @@ export class Session {
         const callbacks = collectSessionCallbacks(entry.emitCtx, [entry.carrier, 'session/event', ...args])
         return { event, args, callbacks }
       })
-      for (const event of events) this.log.push(event)
+      for (const event of events) this.recordEvent(event)
       this.eventsSnapshot = undefined
       acceptSurface()
+      if (this.commitObservers !== undefined) this.notifyCommit(events)
       if (entry !== undefined) {
         for (const { event, args, callbacks } of publications) {
           this.batchPublication = event
@@ -1044,7 +1129,7 @@ export class Session {
     if (entry !== undefined && entry.announcement !== 'complete') {
       throw new Error(`session "${this.id}" cannot append before session/created completes`)
     }
-    if (entry?.appending) {
+    if (this.notifyingCommit || entry?.appending) {
       throw new Error('session append cannot reenter while another append is being published')
     }
     return entry
@@ -1065,8 +1150,9 @@ export class Session {
       const callbacks = entry === undefined
         ? undefined
         : collectSessionCallbacks(entry.emitCtx, [entry.carrier, 'session/event', ...callbackArgs])
-      this.log.push(event)
+      this.recordEvent(event)
       this.eventsSnapshot = undefined
+      if (this.commitObservers !== undefined) this.notifyCommit(event)
       if (entry !== undefined && callbacks !== undefined) {
         invokeContainedSessionObservers(entry.emitCtx, 'session/event', entry.id, callbackArgs, callbacks)
       }

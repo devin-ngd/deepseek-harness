@@ -11,7 +11,7 @@ import z from '@deepseek-ai/schemastery'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { defineTool, ToolArgsError } from '@deepseek-ai/dsh-tools'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionSeq, type UserMessage } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
 import {
   escapeText,
   isModelInvocable,
@@ -231,20 +231,23 @@ export function apply(ctx: Context, config: Config = {}): void {
     const entries = catalogSourceEntries(skills, catalogDescriptionMaxLength)
     const incomplete = !snapshot.complete
     const digest = digestCatalogEntries(entries, incomplete)
-    const history = catalogHistory(agent)
+    const visibleDigest = visibleCatalogDigest(agent)
     const existing = catalogMessage(decision.messages)
-    if (history.visibleDigest === digest) {
+    if (visibleDigest === digest) {
       return existing === undefined
         ? decision
         : { ...decision, messages: decision.messages.filter(message => message.id !== existing.message.id) }
     }
     if (existing !== undefined && digestCatalogEntries(existing.entries, existing.incomplete) === digest) return decision
-    if (!history.published && skills.length === 0 && !incomplete) {
+    const published = visibleDigest !== undefined
+      || (agent.session.surface.replaceGeneration > 0 && await hadCatalogPublication(agent, signal))
+    signal.throwIfAborted()
+    if (!published && skills.length === 0 && !incomplete) {
       return existing === undefined
         ? decision
         : { ...decision, messages: decision.messages.filter(message => message.id !== existing.message.id) }
     }
-    const catalog = history.published
+    const catalog = published
       ? renderCatalogUpdate(entries, incomplete)
       : renderCatalogMessage(entries, incomplete)
     return {
@@ -359,7 +362,7 @@ function digestCatalogEntries(entries: SkillCatalogSource['entries'], incomplete
  * Entries of one durable catalog message, or undefined when the record is not a
  * usable catalog.
  *
- * `agent.session.snapshotEvents()` may contain a resumed, forked, or externally written seed,
+ * A resumed or forked Session may contain an externally written seed,
  * and seed validation only guarantees a source object with a non-empty `kind`;
  * no per-kind field is checked there. An unreadable record is therefore treated
  * as "not this plugin's catalog" — the posture the replaced content digest had —
@@ -379,23 +382,37 @@ function readCatalogEntries(source: unknown): SkillCatalogSource['entries'] | un
   return readable
 }
 
-function catalogHistory(agent: Agent): { visibleDigest?: string; published: boolean } {
-  const visible = new Set(agent.session.surface.nodes)
-  let published = false
-  for (let index = agent.session.seq - 1; index >= 0; index -= 1) {
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    const event = agent.session.eventAt(SessionSeq(index))
-    if (event === undefined) {
-      throw new Error(`skill catalog cannot read seq ${String(index)} below the current Session length`)
-    }
+/** The newest visible publication is selected by commit sequence, including positional replacements. */
+function visibleCatalogDigest(agent: Agent): string | undefined {
+  const surface = agent.session.surface
+  const nodes = surface.nodes
+  const orderedBySeq = surface.replaceGeneration === 0
+  let latest: { seq: number; digest: string } | undefined
+  for (let position = nodes.length - 1; position >= 0; position--) {
+    const event = surface.eventAtPosition(position)
+    if (event === undefined) throw new Error(`skill catalog cannot read seq ${String(nodes[position])} below the current Session length`)
+    if (latest !== undefined && latest.seq > event.seq) continue
     if (event.type !== 'user/message' || event.data.source.kind !== 'skill-catalog') continue
     const entries = readCatalogEntries(event.data.source)
     if (entries === undefined) continue
     const digest = digestCatalogEntries(entries, event.data.source.incomplete === true)
-    published = true
-    if (visible.has(event.seq)) return { visibleDigest: digest, published }
+    if (orderedBySeq) return digest
+    latest = { seq: event.seq, digest }
   }
-  return { published }
+  return latest?.digest
+}
+
+function isCatalogPublication(event: SessionEvent): boolean {
+  return event.type === 'user/message' && event.data.source.kind === 'skill-catalog'
+    && readCatalogEntries(event.data.source) !== undefined
+}
+
+/** After replacement hides every readable catalog, even an empty publication counts. */
+async function hadCatalogPublication(agent: Agent, signal: AbortSignal): Promise<boolean> {
+  for await (const page of agent.session.readHistoryValues({ signal }, isCatalogPublication)) {
+    if (page.includes(true)) return true
+  }
+  return false
 }
 
 function catalogMessage(

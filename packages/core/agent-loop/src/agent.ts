@@ -44,6 +44,8 @@ import { SystemPromptProjection } from './runtime-context.ts'
 
 /** Projected facts consumed by this driver; registration stays with the factory. */
 interface LoopProjections {
+  /** Whether any runtime reminder was previously committed. */
+  readonly runtimeContextPublished: () => boolean
   /** Current model selection, including pending changes. */
   readonly modelSelection: () => ModelSelectionProjectionState
   /** Current queued and claimed input. */
@@ -157,7 +159,7 @@ export class ReactLoopAgent implements Agent {
     this.model = new AgentModel(projections.modelSelection, session, options)
     this.inbox = new ReactLoopInbox(projections.inbox, session, this.dispatch)
     this.phase = { kind: 'idle', lastTurn }
-    this.runtimeContext = new RuntimeContextProjection(this.ctx, session)
+    this.runtimeContext = new RuntimeContextProjection(this.ctx, session, projections.runtimeContextPublished())
     this.systemPrompt = new SystemPromptProjection(session)
   }
 

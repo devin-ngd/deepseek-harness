@@ -48,6 +48,8 @@ node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-experimen
 
 The CLI refuses to manage `desktop`: use the application plugin manager. `dsh.bundle.patch` activates [cordis.patch.yml](cordis.patch.yml), inserting the `rich-inline` row. An npm dependency alone does not enable it. Acceptance uses the source [overlay](../../../apps/web/tests/rich-inline.overlay.yml).
 
+The Host requires `sessionProjections`. For an existing live Session, `recoveryPageSize` sets the positive safe-integer event count per preparation page (default 128); independent or unprepared Sessions use the synchronous compatibility reader. Custom compositions should follow the [upgrade guide](../../../docs/upgrade-guide/v0.2.2-rc.1/rich-inline-session-projection/guide.md).
+
 ### What you get
 
 By default, `activePresets: []` enables authoring in every root session. Set `activePresets: [lumina]` to require rich output only in root sessions selecting that [declared mode](../../preset/agent-preset-registry/README.md). All child Agents are excluded from authoring guidance, format repair and every `rich_inline_*` tool, including source reads; native schemas, the PTC SDK and direct execution enforce the exclusion. Other root modes retain ordinary Markdown and coding tools; saved rich blocks remain viewable. A Lumina declaration can use Standard's complete child plugin list so it retains the same coding capabilities.

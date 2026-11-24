@@ -53,12 +53,10 @@ function visibleBaselineSource(
       return message.source
     }
   }
-  for (const seq of agent.session.surface.nodes.toReversed()) {
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    const event = agent.session.eventAt(seq)
-    if (event?.type === 'user/message'
-      && event.data.source.kind === 'agent-instructions'
-      && event.data.source.baseline === true) return event.data.source
+  for (const message of agent.session.deriveMessages().reverse()) {
+    if (message.role === 'user'
+      && message.source.kind === 'agent-instructions'
+      && message.source.baseline === true) return message.source
   }
   return undefined
 }
@@ -246,9 +244,8 @@ export function apply(ctx: Context, config: Config): void {
     const pending = agent.inbox.nextStep.filter(isAgentInstructionsMessage)
     const alreadySupplied = desired !== undefined && (
       claimed.some(message => sameContextPayload(message, desired))
-      || agent.session.surface.nodes.some((seq) => {
-        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-        const event = agent.session.eventAt(seq)
+      || agent.session.surface.nodes.some((_, position) => {
+        const event = agent.session.surface.eventAtPosition(position)
         return event?.type === 'user/message' && sameContextPayload(event.data, desired)
       })
     )

@@ -18,6 +18,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./consumed-work": {
+      "types": "./lib/types/consumed-work.d.ts",
+      "default": "./lib/types/consumed-work.js"
+    },
     "./types": {
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types/types.js"

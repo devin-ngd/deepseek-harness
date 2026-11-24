@@ -245,6 +245,12 @@ export interface SurfaceFoldResult {
 export interface SessionSurface {
   /** Current surface event sequences in model-visible order. */
   readonly nodes: readonly SessionSeq[]
+  /**
+   * Read the canonical log event at a current surface position.
+   * @param position - Zero-based index in the current surface order.
+   * @returns The event at that position, or undefined if the position is absent.
+   */
+  eventAtPosition(position: number): SessionEvent | undefined
   /** Monotonic count of committed positional replacements. */
   readonly replaceGeneration: number
   /** Monotonic count of committed replacements and plugin-owned message changes. */
@@ -721,6 +727,11 @@ export class SurfaceManager implements SessionSurface {
     this._assertProjections()
     if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta()
     return this._state.nodes
+  }
+
+  eventAtPosition(position: number): SessionEvent | undefined {
+    const seq = this.nodes[position]
+    return seq === undefined ? undefined : this.log[seq - this.baseSeq]
   }
 
   /** Fold events appended since the previous access. */

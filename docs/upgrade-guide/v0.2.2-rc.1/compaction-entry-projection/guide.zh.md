@@ -9,7 +9,7 @@ description: "自定义组合中的基本压缩要求 Session 投影服务。"
 
 ## 变更
 
-以 Cordis 插件挂载 `@deepseek-ai/dsh-compaction-basic` 时需要 `sessionProjections`。服务接受工作前会注册仅供 Host 使用的事务投影；尚未准备的 Session 保留同步兼容路径。
+以 Cordis 插件挂载 `@deepseek-ai/dsh-compaction-basic` 时需要 `sessionProjections`。服务在接受工作前注册仅供 Host 使用的事务投影。对尚未准备的 Session 直接调用压缩时，服务会先等待恢复完成，再检查事务锁并开启事务。
 
 ## 迁移
 

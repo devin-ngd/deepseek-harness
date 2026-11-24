@@ -259,14 +259,13 @@ describe('tool-pairing cache refresh', () => {
     const surface = {
       get nodes() { return nodes },
       get replaceGeneration() { return generation },
-    }
-    const session = {
-      surface,
-      eventAt(seq: number) {
+      eventAtPosition(position: number) {
         eventReads += 1
-        return events[seq]
+        const seq = nodes[position]
+        return seq === undefined ? undefined : events[seq]
       },
-    } as unknown as Session
+    }
+    const session = { surface } as unknown as Session
 
     expect(toolPairingBalancedAfter(session, nodes[2]!)).toBe(true)
     expect(eventReads).toBe(3)
@@ -357,8 +356,7 @@ describe('tool-pairing cache refresh', () => {
     ]
     const nodes: SessionSeqType[] = [SessionSeq(0), SessionSeq(1)]
     const session = {
-      eventAt: (seq: number) => events[seq],
-      surface: { nodes, replaceGeneration: 0 },
+      surface: { nodes, replaceGeneration: 0, eventAtPosition: (position: number) => events[nodes[position]!] },
     } as unknown as Session
     expect(toolPairingBalancedAfter(session, nodes[1]!)).toBe(true)
     nodes.pop()
@@ -401,25 +399,19 @@ describe('tool-pairing corrupt surfaces', () => {
   it('throws when a current surface seq has no matching event or indexes the wrong event', () => {
     const missingSeq = SessionSeq(1)
     const missing = {
-      eventAt: (seq: number) => [{
-        type: 'user/message', seq: SessionSeq(0), time: 0,
-        data: createUserMessage({
-          content: [], source: { kind: 'user' },
-        }), surfaceOp: 'append',
-      } satisfies SessionEvent][seq],
-      surface: { nodes: [missingSeq], replaceGeneration: 0 },
+      surface: { nodes: [missingSeq], replaceGeneration: 0, eventAtPosition: () => undefined },
     } as unknown as Session
     expect(() => toolPairingBalancedBefore(missing, missingSeq)).toThrow(/no matching session event/)
 
     const mismatchedSeq = SessionSeq(0)
     const mismatched = {
-      eventAt: (seq: number) => [{
-        type: 'user/message', seq: SessionSeq(99), time: 0,
-        data: createUserMessage({
-          content: [], source: { kind: 'user' },
-        }), surfaceOp: 'append',
-      } satisfies SessionEvent][seq],
-      surface: { nodes: [mismatchedSeq], replaceGeneration: 0 },
+      surface: {
+        nodes: [mismatchedSeq], replaceGeneration: 0,
+        eventAtPosition: () => ({
+          type: 'user/message', seq: SessionSeq(99), time: 0,
+          data: createUserMessage({ content: [], source: { kind: 'user' } }), surfaceOp: 'append',
+        } satisfies SessionEvent),
+      },
     } as unknown as Session
     expect(() => toolPairingBalancedBefore(mismatched, mismatchedSeq)).toThrow(/no matching session event/)
   })

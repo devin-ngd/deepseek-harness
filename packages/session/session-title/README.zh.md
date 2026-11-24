@@ -58,7 +58,7 @@ kind: "package-reference"
 
 ### 读取标题
 
-`get(session)` 从活跃或回放会话读取折叠出的最新标题，`foldSessionTitle(events)` 是对日志的纯折叠。服务要求 `ctx.sessionProjections` 并注册三个单元：客户端可见的 `title` 单元（供客户端列表行使用的已接受标题字符串）、仅供 host 使用的 `titleSnapshot` 单元（包含事件元数据的最新标题），以及仅供 host 使用的 `titleInput` 单元（第一条与最新一条合格消息及其计数）。投影准备完成后，标题、调度和回退读取通过 `stateOf()` 完成，无需重复扫描日志；某次提供方生成所需的完整合格前缀，则会在执行时从会话日志中扫描取得。显式 `refresh(session)` 在需要时物化回退，然后对当前符合条件的消息显式运行已注册提供方。
+`get(session)` 从活跃或回放会话读取折叠出的最新标题，`foldSessionTitle(events)` 是对日志的纯折叠。服务要求 `ctx.sessionProjections` 并注册三个单元：客户端可见的 `title` 单元（供客户端列表行使用的已接受标题字符串）、仅供 host 使用的 `titleSnapshot` 单元（包含事件元数据的最新标题），以及仅供 host 使用的 `titleInput` 单元（首条合格消息、最新合格消息的序号及总数）。若指定水位是首条合格消息，提供方请求只读取已准备好的投影。若水位更晚，服务从首条合格消息的下一条事件分页读到指定水位，只保留合格文本及其序号。只需这些选中的值可复制。批量查询通过 `registerTitleSnapshotReader(ctx)` 共享最新标题读取器。调用提供方前，服务再次检查取消状态并读取最新标题。显式 `refresh(session)` 在需要时物化回退，然后对当前符合条件的消息显式运行已注册提供方。
 
 ### 失败与恢复
 

@@ -25,18 +25,18 @@ import type {
 } from '@deepseek-ai/dsh-agent'
 import { modelSelectionProjectionDefinition } from '@deepseek-ai/dsh-agent'
 import { errorChain, type ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import { interruptedTurnClosers, SessionLogOffset, SessionPreparation } from '@deepseek-ai/dsh-session'
+import { interruptedTurnClosers, SessionPreparation } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
-import type { Session, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
-import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
+import type { PreparedProjectionHandle, ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionHandle, SessionPersistence, SessionPersistenceCreateOptions } from '@deepseek-ai/dsh-session-persistence'
 import { ReactLoopAgent } from './agent.ts'
 import { inboxProjectionDefinition } from './inbox.ts'
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.ts'
-import type {} from './runtime-context.ts'
+import { runtimeContextPublishedDefinition } from './runtime-context.ts'
 
 /** Fiber states that cannot own or serve a new lifecycle. */
 const INACTIVE_STATES: ReadonlySet<FiberState> = new Set([
@@ -157,10 +157,10 @@ function assertAgentOptions(options: AgentOptions): void {
   }
 }
 
-/** One session's owned write handle plus the count of events already stored through it. */
+/** One Session's write handle and the constructor events still awaiting their first write. */
 interface StoredSession {
   readonly handle: SessionHandle
-  storedCount: number
+  pending: readonly SessionEvent[]
 }
 
 /** Acquired Session resources and composition inputs for one Agent initialization. */
@@ -315,6 +315,7 @@ export class AgentLoop extends Service implements AgentFactory {
   /** Plain holder prevents Cordis from re-tracing the factory's dependency context through a caller shadow. */
   private readonly runtime: { ctx: Context }
   private modelProjectionHandle!: ProjectionHandle<ModelSelectionProjectionState>
+  private runtimeContextPublished!: PreparedProjectionHandle<boolean>
   private inboxProjectionHandle!: ProjectionHandle<InboxState>
 
   constructor(ctx: Context, config: Config) {
@@ -337,6 +338,7 @@ export class AgentLoop extends Service implements AgentFactory {
     ctx.effect(() => () => ownership.dispose(), 'agentLoop.transactions()')
     this.modelProjectionHandle = await ctx.sessionProjections.register(modelSelectionProjectionDefinition)
     this.inboxProjectionHandle = await ctx.sessionProjections.register(inboxProjectionDefinition)
+    this.runtimeContextPublished = await ctx.sessionProjections.registerPrepared(runtimeContextPublishedDefinition)
     ctx.effect(() => ctx.agents.setFactory(this), 'agentLoop.setFactory()')
     ctx.systemPrompt.variable('provider', context => context.modelSelection?.provider ?? context.agent?.options.provider)
     ctx.systemPrompt.variable('model', context => context.modelSelection?.model ?? context.agent?.options.model)
@@ -573,6 +575,7 @@ export class AgentLoop extends Service implements AgentFactory {
       const lastTurn = loopCtx.agents.turnBoundaryOf(session).lastTurn
       const projections = {
         modelSelection: this.modelProjectionHandle.readerFor(session),
+        runtimeContextPublished: this.runtimeContextPublished.readerFor(session),
         inbox: this.inboxProjectionHandle.readerFor(session),
       }
       unfollowOwner = ownerCtx.effect(function* () {
@@ -628,7 +631,7 @@ export class AgentLoop extends Service implements AgentFactory {
         publication = Promise.withResolvers<void>()
         try {
           assertLive()
-          await this.appendUnstoredSuffix(stored, session)
+          await this.appendUnstoredSuffix(stored)
           assertLive()
           detachSession = agent.ctx.sessions.enter(session)
           agent.ctx.sessions.announce(session)
@@ -673,10 +676,12 @@ export class AgentLoop extends Service implements AgentFactory {
    * @returns the published running agent.
    */
   async create(id: SessionId, options: AgentOptions = {}, meta: Pick<SessionHeader, 'cwd'> = {}): Promise<Agent> {
+    let initial: readonly SessionEvent[] = []
     using preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, { meta }, (session, events) => {
       this.runtime.ctx.sessionProjections.prepare(session, {}, events)
+      initial = events
     }))
-    const stored = await this.createStoredSession(preparation.session)
+    const stored = await this.createStoredSession(preparation.session, initial)
     return (await this.initializeAgent(this.ctx, {
       session: preparation.session,
       stored,
@@ -691,12 +696,13 @@ export class AgentLoop extends Service implements AgentFactory {
    * appends through the live event feed; creation failure retains any events
    * already written to the handle.
    * @param session - the unpublished session to store.
+   * @param initial - canonical constructor events captured before publication.
    * @param signal - optional cancellation forwarded to the backend create.
    * @param parentSource - fork parent, cut, and canonical constructor log to store at creation.
-   * @returns the owned handle and stored cursor, or `undefined` without a backend.
+   * @returns the owned handle and outstanding constructor batch, or `undefined` without a backend.
    */
   private async createStoredSession(
-    session: Session, signal?: AbortSignal, parentSource?: SessionPersistenceCreateOptions['parentSource'],
+    session: Session, initial: readonly SessionEvent[], signal?: AbortSignal, parentSource?: SessionPersistenceCreateOptions['parentSource'],
   ): Promise<StoredSession | undefined> {
     const persistence = this.runtime.ctx.get('sessionPersistence')
     if (persistence === undefined) return undefined
@@ -705,20 +711,17 @@ export class AgentLoop extends Service implements AgentFactory {
       ...parentSource === undefined ? {} : { parentSource },
       ...signal === undefined ? {} : { signal },
     })
-    return { handle, storedCount: parentSource?.events.length ?? 0 }
+    return { handle, pending: parentSource === undefined ? initial : [] }
   }
 
   /**
-   * Durably store the session events appended since the last stored cursor.
-   * @param stored - the session's owned handle and stored cursor, if any.
-   * @param session - the unpublished session whose suffix is stored.
+   * Persist outstanding constructor events as one batch before Session publication.
+   * @param stored - the Session's write handle and pending events, if persistence is mounted.
    */
-  private async appendUnstoredSuffix(stored: StoredSession | undefined, session: Session): Promise<void> {
-    if (stored === undefined) return
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    const suffix = session.snapshotEvents(SessionLogOffset(stored.storedCount))
-    if (suffix.length > 0) await stored.handle.append(suffix)
-    stored.storedCount += suffix.length
+  private async appendUnstoredSuffix(stored: StoredSession | undefined): Promise<void> {
+    if (stored === undefined || stored.pending.length === 0) return
+    await stored.handle.append(stored.pending)
+    stored.pending = []
   }
 
   /**
@@ -729,21 +732,23 @@ export class AgentLoop extends Service implements AgentFactory {
    */
   async createAgent(ownerCtx: Context, options: CreateAgentOptions): Promise<AgentHandle> {
     let parentSource: SessionPersistenceCreateOptions['parentSource']
+    let initial: readonly SessionEvent[] = []
     const preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(options.sessionId, {
       ...options.seed === undefined ? {} : { seed: options.seed },
       ...options.meta === undefined ? {} : { meta: options.meta },
       ...options.inheritedEventCount === undefined ? {} : { inheritedEventCount: options.inheritedEventCount },
     }, (session, events) => {
       this.runtime.ctx.sessionProjections.prepare(session, {}, events)
+      initial = events
       if (options.parentSource !== undefined) parentSource = { ...options.parentSource, events }
     }))
     const published = (async () => {
       using ownedPreparation = preparation
       // raceAbortCall closes a handle that finishes creating after cancellation.
       const stored = options.signal === undefined
-        ? await this.createStoredSession(ownedPreparation.session, undefined, parentSource)
+        ? await this.createStoredSession(ownedPreparation.session, initial, undefined, parentSource)
         : await raceAbortCall(
-          () => this.createStoredSession(ownedPreparation.session, options.signal, parentSource),
+          () => this.createStoredSession(ownedPreparation.session, initial, options.signal, parentSource),
           options.signal,
           options.sessionId,
           (abandoned) => { void abandoned?.handle.close().catch(() => {}) },
@@ -817,18 +822,20 @@ export class AgentLoop extends Service implements AgentFactory {
           const persisted = coldRead.events
           const closers = interruptedTurnClosers(persisted)
           if (closers.length > 0) await handle.append(closers)
+          let pending: readonly SessionEvent[] = []
           preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, {
             seed: [...persisted, ...closers],
             meta: structuredClone(handle.header),
             inheritedEventCount: handle.inheritedEventCount,
             eventState: coldRead.eventState,
           }, (session, events) => {
+            pending = events.slice(persisted.length + closers.length)
             const cache = this.runtime.ctx.get('sessionProjectionCache')
             if (cache === undefined) this.runtime.ctx.sessionProjections.prepare(session, {}, events)
             else cache.prepare(session, events)
           }))
-          stored = { handle, storedCount: persisted.length + closers.length }
-          await this.appendUnstoredSuffix(stored, preparation.session)
+          stored = { handle, pending }
+          await this.appendUnstoredSuffix(stored)
         } finally {
           await unfollowOwner()
         }

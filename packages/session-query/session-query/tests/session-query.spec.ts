@@ -635,7 +635,9 @@ describe('session-query exact reads', () => {
       const second = ctx.sessions.create(SessionId('live-title-cut-second'))
       first.append('session/title', { title: 'First', messageSeqs: [], source: { kind: 'fallback' } })
       second.append('session/title', { title: 'Second', messageSeqs: [], source: { kind: 'fallback' } })
+      const snapshot = vi.spyOn(first, 'snapshotEvents')
       const pending = ctx.sessionQuery.readTitleSnapshots([first.id, second.id])
+      expect(snapshot).not.toHaveBeenCalled()
       first.append('session/title', { title: 'First later', messageSeqs: [], source: { kind: 'fallback' } })
       second.append('session/title', { title: 'Second later', messageSeqs: [], source: { kind: 'fallback' } })
 

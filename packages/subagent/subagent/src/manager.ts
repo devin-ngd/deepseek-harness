@@ -45,7 +45,7 @@ import type {
 import { attachStructuredRuntime } from './structured.ts'
 import type { StructuredAttachment } from './structured.ts'
 import type { SubagentDelivery } from './control-types.ts'
-import { ActivationPool, ChildLock, activationAgent, captureLocalResult, observeLocalFailure, requireLocalActivation } from './activation.ts'
+import { ActivationPool, ChildLock, activationAgent, captureLocalResult, observeLocalFailure, observeLocalWork, requireLocalActivation } from './activation.ts'
 import type { Activation, ActivationResource, LocalActivation } from './activation.ts'
 
 /** Inputs shared by model steering and human prompt delivery. */
@@ -872,7 +872,7 @@ export class SubagentManager {
       resource = {
         kind: 'local',
         handle,
-        outputStart: handle.agent.session.seq,
+        observed: observeLocalWork(handle.agent.session),
         structured,
         failureAt: undefined,
         poke: Promise.withResolvers<void>(),
@@ -955,6 +955,7 @@ export class SubagentManager {
   private rollbackUnpublished(activation: Activation, error: unknown): Promise<void> {
     return this.close(activation, async () => {
       try {
+        if (activation.kind === 'local') activation.observed.dispose()
         await (activation.kind === 'local' ? activation.handle.dispose() : activation.run.dispose())
       } finally {
         this.resident.delete(activation.childId)
@@ -1079,8 +1080,10 @@ export class SubagentManager {
       ))
     }
     try {
-      if (activation.kind === 'local') await activation.handle.dispose()
-      else await (externalDisposal ?? activation.run.dispose())
+      if (activation.kind === 'local') {
+        activation.observed.dispose()
+        await activation.handle.dispose()
+      } else await (externalDisposal ?? activation.run.dispose())
     } catch (error: unknown) {
       failures.push(new SubagentError(
         `subagent "${childId}" activation handle disposal failed: ${detail(error)}`,

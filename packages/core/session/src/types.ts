@@ -579,8 +579,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 
 /** Bounded asynchronous reading of one fixed Session history cut. */
 export interface SessionHistoryReadOptions {
-  /** Maximum number of events in each page; must be a positive safe integer. */
-  readonly pageSize: number
+  /** Maximum events per page. Defaults to 128. Supply a positive safe integer to override it. */
+  readonly pageSize?: number
   /** Inclusive starting offset; omission starts at the beginning. */
   readonly fromSeq?: SessionLogOffset
   /** Exclusive ending offset; omission captures the Session's current length. */

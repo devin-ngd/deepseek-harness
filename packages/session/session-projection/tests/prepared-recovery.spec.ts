@@ -1,7 +1,7 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
-import SessionStore, { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionHistoryReadOptions, SessionEvent } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 
@@ -19,7 +19,7 @@ function pauseFirstPage(session: Session) {
   const aborted = Promise.withResolvers<undefined>()
   const original = session.readHistoryPages.bind(session)
   let paused = false
-  vi.spyOn(session, 'readHistoryPages').mockImplementation((options: SessionHistoryReadOptions) => {
+  const pagesRead = vi.spyOn(session, 'readHistoryPages').mockImplementation((options: SessionHistoryReadOptions) => {
     options.signal?.addEventListener('abort', () => { aborted.resolve(undefined) }, { once: true })
     const pages = original(options)
     return {
@@ -35,7 +35,7 @@ function pauseFirstPage(session: Session) {
       },
     }
   })
-  return { entered: entered.promise, aborted: aborted.promise, release: () => { release.resolve(undefined) } }
+  return { pagesRead, entered: entered.promise, aborted: aborted.promise, release: () => { release.resolve(undefined) } }
 }
 
 describe('prepared host projection recovery', () => {
@@ -52,13 +52,22 @@ describe('prepared host projection recovery', () => {
     const ctx = await harness()
     const session = mode === 'live' ? ctx.sessions.create(SessionId('prepared-live')) : Session.create(SessionId('prepared-independent'))
     session.append('turn/start', { turn: 1 })
-    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    const subscribe = session.onCommit.bind(session)
+    vi.spyOn(session, 'onCommit').mockImplementationOnce((listener, signal) => {
+      subscribe(listener, signal)
+      session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    })
     const readHistory = vi.spyOn(session, 'snapshotEvents')
     const readEvent = vi.spyOn(session, 'eventAt')
     const gate = pauseFirstPage(session)
+    const folded: number[] = []
     const handle = await ctx.sessionProjections.registerPrepared({
       key: 'test/prepared-history', stateSchema: z.number(), stateVersion: 1,
-      init: () => 0, apply: count => count + 1,
+      init: () => 0,
+      apply: (count, event) => {
+        folded.push(event.seq)
+        return count + 1
+      },
     })
     expect(() => { handle.stateOf(session) }).toThrow('requires Session preparation')
     expect(handle.stateIfReady(session)).toEqual({ ready: false })
@@ -66,22 +75,137 @@ describe('prepared host projection recovery', () => {
     await gate.entered
     expect(handle.stateIfReady(session)).toEqual({ ready: false })
     session.append('turn/start', { turn: 2 })
+    session.append([['turn/start', { turn: 3 }], ['turn/start', { turn: 4 }]])
     gate.release()
     await preparing
-    expect(handle.stateOf(session)).toBe(3)
-    expect(handle.stateIfReady(session)).toEqual({ ready: true, state: 3 })
+    expect(gate.pagesRead.mock.calls.map(([options]) => [options.fromSeq, options.toSeqExclusive, options.pageSize])).toEqual([[0, 2, 1]])
+    expect(folded).toEqual([0, 1, 2, 3, 4])
+    expect(handle.stateOf(session)).toBe(5)
+    expect(handle.stateIfReady(session)).toEqual({ ready: true, state: 5 })
     expect(readHistory).not.toHaveBeenCalled()
     expect(readEvent).not.toHaveBeenCalled()
     session.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
-    if (mode === 'live') {
-      expect(handle.stateOf(session)).toBe(4)
-    } else {
-      expect(() => { handle.stateOf(session) }).toThrow('requires Session preparation')
-      expect(handle.stateIfReady(session)).toEqual({ ready: false })
-      await handle.prepare(session, { pageSize: 1 })
-      expect(handle.stateOf(session)).toBe(4)
-    }
+    expect(handle.stateIfReady(session)).toEqual({ ready: true, state: 6 })
+    expect(readHistory).not.toHaveBeenCalled()
+    expect(readEvent).not.toHaveBeenCalled()
     await handle.dispose()
+  })
+
+  it('follows a prepared Session into the store and replaces its owner on hot reload', async () => {
+    const ctx = await harness()
+    const owner = await ctx.plugin(Object.assign(function projectionOwner() {}, { inject: ['sessionProjections'] }))
+    const session = Session.create(SessionId('prepared-enter'))
+    const apply = vi.fn((state: number) => state + 1)
+    const definition = { key: 'test/enter', stateSchema: z.number(), stateVersion: 1, init: () => 0, apply }
+    const handle = await owner.ctx.sessionProjections.registerPrepared(definition)
+    await handle.prepare(session, { pageSize: 1 })
+    const pages = vi.spyOn(session, 'readHistoryPages')
+    session.append('turn/start', { turn: 1 })
+    const detach = ctx.sessions.enter(session)
+    onTestFinished(detach)
+    ctx.sessions.announce(session)
+    const observed: number[] = []
+    const stop = ctx.on('session/event', () => { observed.push(handle.stateOf(session)) })
+    session.append([['turn/start', { turn: 2 }], ['turn/start', { turn: 3 }]])
+    expect(observed).toEqual([3, 3])
+    expect(apply).toHaveBeenCalledTimes(3)
+    expect(pages).not.toHaveBeenCalled()
+    stop()
+    await owner.dispose()
+    const replacement = await ctx.sessionProjections.registerPrepared({ ...definition, stateVersion: 2, apply: n => n + 10 })
+    expect(replacement.stateIfReady(session)).toEqual({ ready: false })
+    await replacement.prepare(session, { pageSize: 1 })
+    session.append('turn/start', { turn: 4 })
+    expect(replacement.stateIfReady(session)).toEqual({ ready: true, state: 40 })
+    expect(handle.stateIfReady(session)).toEqual({ ready: false })
+    expect(apply).toHaveBeenCalledTimes(3)
+  })
+
+  it('isolates a failed independent batch fold and retries without duplicating its subscription', async () => {
+    const ctx = await harness()
+    const warn = vi.spyOn(ctx.logger, 'warn')
+    const session = Session.create(SessionId('independent-failure'))
+    const other = Session.create(session.id)
+    const failure = new Error('fold interrupted')
+    let fail = true
+    const broken = await ctx.sessionProjections.registerPrepared({
+      key: 'test/retry', stateSchema: z.number(), stateVersion: 1, init: () => 0,
+      apply: (state, event) => {
+        if (fail && event.seq === 1) throw failure
+        return state + 1
+      },
+    })
+    const healthy = await ctx.sessionProjections.registerPrepared({
+      key: 'test/count', stateSchema: z.number(), stateVersion: 1, init: () => 0, apply: n => n + 1,
+    })
+    await Promise.all([
+      broken.prepare(session, { pageSize: 1 }), broken.prepare(other, { pageSize: 1 }), healthy.prepare(session, { pageSize: 1 }),
+    ])
+    session.append([['turn/start', { turn: 1 }], ['turn/start', { turn: 2 }]])
+    other.append('turn/start', { turn: 1 })
+    expect(broken.stateOf(other)).toBe(1)
+    expect(healthy.stateOf(session)).toBe(2)
+    expect(() => broken.stateIfReady(session)).toThrow(failure)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('test/retry'), failure)
+    expect(ctx.sessionProjections.checkpoint(session)).not.toHaveProperty('test/retry')
+    fail = false
+    await broken.prepare(session, { pageSize: 1 })
+    session.append('turn/start', { turn: 3 })
+    expect(broken.stateOf(session)).toBe(3)
+  })
+
+  it('waits for the full prefix when a nonempty independent Session enters the store', async () => {
+    const ctx = await harness()
+    const definition = { key: 'count', stateSchema: z.number(), stateVersion: 1, init: () => 0, apply: (n: number) => n + 1 }
+    const first = await ctx.sessionProjections.registerPrepared(definition)
+    const shared = await ctx.sessionProjections.registerPrepared(definition)
+    const sum = await ctx.sessionProjections.registerPrepared({
+      ...definition, key: 'sequenceSum', apply: (n, event) => n + event.seq,
+    })
+    const session = Session.create(SessionId('enter-with-prefix'))
+    session.append('turn/start', { turn: 1 })
+    const detach = ctx.sessions.enter(session)
+    onTestFinished(detach)
+    ctx.sessions.announce(session)
+    session.append('turn/start', { turn: 2 })
+    expect(first.stateIfReady(session)).toEqual({ ready: false })
+    expect(ctx.sessionProjections.checkpoint(session)).toEqual({})
+    await Promise.all([first.prepare(session, { pageSize: 1 }), sum.prepare(session, { pageSize: 1 })])
+    await first.dispose()
+    const cuts: unknown[] = []
+    ctx.on('session/event', () => { cuts.push(ctx.sessionProjections.checkpoint(session)) })
+    session.append([['turn/start', { turn: 3 }], ['turn/start', { turn: 4 }]])
+    const expected = { count: { ver: 1, seq: 3, val: 4 }, sequenceSum: { ver: 1, seq: 3, val: 6 } }
+    expect(cuts).toEqual([expected, expected])
+    expect(shared.stateIfReady(session)).toEqual({ ready: true, state: 4 })
+  })
+
+  it('uses only the valid checkpoint prefix during SessionStore preparation', async () => {
+    const ctx = await harness()
+    const apply = vi.fn((state: number) => state + 1)
+    const handle = await ctx.sessionProjections.registerPrepared({
+      key: 'count', stateSchema: z.number(), stateVersion: 1, init: () => 0, apply,
+    })
+    const seed = Session.create(SessionId('checkpoint-source')).append([
+      ['turn/start', { turn: 1 }], ['turn/start', { turn: 2 }],
+    ])
+    for (const [row, prefix] of [
+      [{ ver: 1, seq: SessionSeq(0), val: 1 }, 1],
+      [undefined, 0],
+      [{ ver: 2, seq: SessionSeq(0), val: 99 }, 0],
+      [{ ver: 1, seq: SessionSeq(0), val: 'invalid' }, 0],
+      [{ ver: 1, seq: SessionSeq(9), val: 99 }, 0],
+    ] as const) {
+      apply.mockClear()
+      const session = ctx.sessions.prepare(undefined, { seed }, (subject, events) => {
+        ctx.sessionProjections.prepare(subject, row === undefined ? {} : { count: row }, events)
+      })
+      const pages = vi.spyOn(session, 'readHistoryPages')
+      await handle.prepare(session, { pageSize: 1 })
+      expect(pages).not.toHaveBeenCalled()
+      expect(handle.stateOf(session)).toBe(session.seq)
+      expect(apply).toHaveBeenCalledTimes(session.seq - prefix)
+    }
   })
 
   it('keeps a shared recovery alive when one waiter cancels', async () => {
@@ -120,21 +244,30 @@ describe('prepared host projection recovery', () => {
     await prepared.dispose()
   })
 
-  it('cancels an in-flight recovery when its registration is disposed', async () => {
+  it.each(['handle', 'fiber'] as const)('drains recovery when its %s is disposed', async (release) => {
     const ctx = await harness()
+    const owner = await ctx.plugin(Object.assign(function projectionOwner() {}, { inject: ['sessionProjections'] }))
     const session = Session.create(SessionId('prepared-disposed'))
     session.append('turn/start', { turn: 1 })
     const gate = pauseFirstPage(session)
-    const handle = await ctx.sessionProjections.registerPrepared({
+    const apply = vi.fn((count: number) => count + 1)
+    const subscribed = vi.spyOn(session, 'onCommit')
+    const handle = await owner.ctx.sessionProjections.registerPrepared({
       key: 'test/prepared-dispose', stateSchema: z.number(), stateVersion: 1,
-      init: () => 0, apply: count => count + 1,
+      init: () => 0, apply,
     })
     const preparing = handle.prepare(session, { pageSize: 1 })
     await gate.entered
-    const disposing = handle.dispose()
+    session.append('turn/start', { turn: 2 })
+    const disposing = release === 'handle' ? handle.dispose() : owner.dispose()
+    await gate.aborted
+    expect(subscribed.mock.calls[0]?.[1].aborted).toBe(true)
+    session.append('turn/start', { turn: 3 })
     gate.release()
     await expect(preparing).rejects.toThrow('registration disposed')
     await disposing
+    expect(apply).not.toHaveBeenCalled()
+    expect(subscribed).toHaveBeenCalledTimes(1)
   })
 
   it('waits for an abandoned recovery to stop before allowing a retry', async () => {
@@ -149,6 +282,7 @@ describe('prepared host projection recovery', () => {
     const cancel = new AbortController()
     const first = handle.prepare(session, { pageSize: 1, signal: cancel.signal })
     await gate.entered
+    session.append('turn/start', { turn: 2 })
     const reason = new Error('stop the only waiter')
     cancel.abort(reason)
     await gate.aborted
@@ -156,7 +290,7 @@ describe('prepared host projection recovery', () => {
     gate.release()
     await expect(first).rejects.toBe(reason)
     await retry
-    expect(handle.stateOf(session)).toBe(1)
+    expect(handle.stateOf(session)).toBe(2)
     await handle.dispose()
   })
 

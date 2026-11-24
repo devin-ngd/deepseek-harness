@@ -444,12 +444,14 @@ describe('time-context projection fold edges', () => {
     const lookup = vi.spyOn(cold, 'eventAt')
     const snapshot = vi.spyOn(cold, 'snapshotEvents')
     const own = vi.spyOn(cold, 'ownEvents')
+    const pages = vi.spyOn(cold, 'readHistoryValues')
     ctx.sessionProjections.hydrate(cold, jsonRows, suffix, cut)
     await fire(ctx, sessionAgent(cold), 1, 1)
     // The supplied suffix is already hydrated; later lifecycle records may still be read.
     expect(lookup.mock.calls.every(([seq]) => seq >= events.length)).toBe(true)
     expect(snapshot).not.toHaveBeenCalled()
     expect(own).not.toHaveBeenCalled()
+    expect(pages).not.toHaveBeenCalled()
     lookup.mockRestore()
     snapshot.mockRestore()
     own.mockRestore()
@@ -534,6 +536,48 @@ describe('time-context projection fold edges', () => {
     })
     await fire(ctx, sessionAgent(session), 1, 1)
     expect(contextTexts(session).at(-1)).toContain('mixed ["America/New_York","Asia/Shanghai"]')
+  })
+
+  it.each(['complete', 'cancel'] as const)('reads a fixed historical cut across pages (%s)', async (outcome) => {
+    const { ctx } = await mount({ refreshIntervalMs: 0 })
+    onTestFinished(() => ctx.fiber.dispose())
+    const session = Session.create(brandString<SessionId>('historical-cut'))
+    openMessageTurn(session, 1, '+08:00')
+    openMessageTurn(session, 1, 'Asia/Shanghai')
+    openMessageTurn(session, 2, 'UTC')
+    const controller = new AbortController()
+    const read = session.readHistoryValues.bind(session)
+    const pages = vi.spyOn(session, 'readHistoryValues').mockImplementation(async function* (options, select) {
+      const source = read({ ...options, pageSize: 1 }, select)
+      openMessageTurn(session, 3, 'Europe/London')
+      for await (const page of source) {
+        yield page
+        if (outcome === 'cancel') controller.abort(new Error('stop historical request'))
+      }
+    })
+    await fire(ctx, sessionAgent(session), 1, 1, controller.signal)
+    expect(pages).toHaveBeenCalledWith({ signal: controller.signal }, expect.any(Function))
+    if (outcome === 'cancel') expect(contextTexts(session)).toEqual([])
+    else expect(contextTexts(session).at(-1)).toContain('mixed ["Asia/Shanghai","UTC"]')
+  })
+
+  it('reads the zone of a restored message with an uncopyable unrelated field', async () => {
+    const { ctx } = await mount({ refreshIntervalMs: 0 })
+    onTestFinished(() => ctx.fiber.dispose())
+    const seed = Session.create(brandString<SessionId>('historical-detached'))
+    openMessageTurn(seed, 1, 'Asia/Shanghai')
+    openMessageTurn(seed, 2, 'UTC')
+    const events = seed.snapshotEvents().map(event => event.seq === 1 && event.type === 'user/message'
+      ? { ...event, data: { ...event.data, source: { ...event.data.source, opaque: undefined } } }
+      : event)
+    const session = Session.fromRestore(seed.id, events, seed.header, SessionLogOffset(0), 'detached')
+    ctx.sessionProjections.checkpoint(session)
+    const pages = vi.spyOn(session, 'readHistoryValues')
+    const lookup = vi.spyOn(session, 'eventAt')
+    await fire(ctx, sessionAgent(session), 1, 1)
+    expect(pages).toHaveBeenCalledOnce()
+    expect(lookup).not.toHaveBeenCalled()
+    expect(contextTexts(session).at(-1)).toContain('mixed ["Asia/Shanghai","UTC"]')
   })
 
   it('clears the open-turn injection time at the next turn start', async () => {

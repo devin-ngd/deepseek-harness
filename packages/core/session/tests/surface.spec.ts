@@ -292,6 +292,11 @@ describe('SurfaceManager', () => {
     ] as SessionEvent[]
 
     const surface = new SurfaceManager(events, SessionLogOffset(baseSeq))
+    expect(surface.eventAtPosition(0)).toBe(events[2])
+    expect(surface.eventAtPosition(1)).toBe(events[1])
+    expect(surface.eventAtPosition(2)).toBeUndefined()
+    expect(surface.eventAtPosition(-1)).toBeUndefined()
+    expect(surface.eventAtPosition(baseSeq)).toBeUndefined()
     expect(surface.nodes).toEqual([baseSeq + 2, baseSeq + 1])
     expect(surface.replaceGeneration).toBe(1)
   })
@@ -481,13 +486,14 @@ describe('SurfaceManager', () => {
     s.append('step/end', { turn: 1, step: 1 })
     s.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
     expect(s.surface.nodes.length).toBe(0)
+    expect(s.surface.eventAtPosition(0)).toBeUndefined()
     expect(s.deriveMessages()).toEqual([])
   })
 
   it('picks up new events incrementally (delta processing)', () => {
     const s = surfaceSession()
     expect(s.surface.nodes.length).toBe(2)
-    s.append('tool/result', {
+    const result = s.append('tool/result', {
       turn: 1, step: 1,
       message: createToolResultMessage({
         callId: brandString<ToolCallId>('c1'),
@@ -495,6 +501,7 @@ describe('SurfaceManager', () => {
         isError: false,
       }),
     }, { surfaceOp: 'append' })
+    expect(s.surface.eventAtPosition(2)).toBe(result)
     expect(s.surface.nodes.length).toBe(3)
     expect(s.surface.nodes[2]!).toBe(4) // seq 4: after turn/end at seq 3
   })

@@ -41,9 +41,11 @@ ctx.sessions.get(sessionId)      // the live session
 ctx.sessions.list()              // every live session, in creation order
 ```
 
-`session.readHistoryPages({ pageSize, fromSeq?, toSeqExclusive?, signal? })` 在调用时捕获半开历史范围，返回只能消费一次的冻结分页异步迭代器。每个事件都是已分离、深度冻结的无损 JSON 副本，其对象身份不同于日志事件。`pageSize` 限制事件数量而非字节数；复制单个大事件时仍同步执行。读取器在页间让出事件循环，并在事件之间及页间响应取消。无法无损复制恢复事件时，迭代以 `SessionHistoryCopyError` 拒绝，其 `seq` 标识该事件。
+`session.completedTurnEndOffset` 是最后一个已提交或已恢复的 `turn/end` 之后的偏移量，尚无此类事件时为零。`session.readHistoryPages({ pageSize?, fromSeq?, toSeqExclusive?, signal? })` 在调用时捕获半开历史范围，返回只能消费一次的冻结分页异步迭代器。每页默认最多 128 个事件。每个事件都是已分离、深度冻结的无损 JSON 副本，其对象身份不同于日志事件。`pageSize` 限制事件数量而非字节数；复制单个大事件时仍同步执行。读取器在页间让出事件循环，并在事件之间及页间响应取消。无法无损复制恢复事件时，迭代以 `SessionHistoryCopyError` 拒绝，其 `seq` 标识该事件。`readHistoryValues(options, select)` 使用相同的范围与取消规则。它同步调用选择函数，返回每个选中值的结构化副本，允许跳过无关的恢复字段。
 
 ### 追加与派生
+
+`session.onCommit(listener, signal)` 订阅单个 Session 此后的提交，包括独立实例的追加和插件记录。日志和消息表面提交后、store 通知事件观察者前，每个非空追加都会按序交付一组冻结事件。监听器同步重入追加会失败。监听器报错会被记录，后续观察者仍会收到通知。取消 signal 即解除订阅。
 
 `session.append(type, data, opts?)` 提交一个类型化事件。它在读取载荷字段前拒绝只读实例，为有效 JSON 创建快照并冻结，再次检查写入权限后提交并通知观察者。`session.deriveMessages()` 把日志投影为模型看到的 `Message[]`，采用增量且有缓存的方式：
 
@@ -62,6 +64,8 @@ session.deriveMessages()         // the derived model history
 追加、seed/restore 与事件 adoption/snapshot 会拒绝任何 `header.system` 及恰好为空的可选请求头字段（`tools: []`、`adapterDefaults: {}`），而不规范化输入。工具结果的 `data.error` 仅在一等消息的 `isError === true` 时允许存在；失败标识仍是可选的。被拒绝的追加不会改变日志、派生状态或事件流。Adoption 校验事件局部元数据，但不校验所引用的历史或替换端点是否属于 surface。
 
 `system/message` 承载渲染后的系统提示词：第一条是 surface 第 0 号节点，准入依据已准备调用的能力，不具备能力的路由将非空渲染文本归并到首个系统节点，延续中的 `in-history` 序列则在缓存历史之后追加；空系统节点不投影为消息，因此清除提示词必须为所有生效的系统节点记录空内容替换，而非仅替换最新节点；当第 0 号节点是 `system/message` 时，surface 折叠拒绝覆盖它的替换，除非替换事件本身是恰好覆盖该节点的 `system/message`，而后续系统节点不受保护，压缩范围可以遮蔽它们（[决策](../../../.agents/notes/implemented/architecture/2026-09-02-system-prompt-as-surface-node.zh.md)）。
+
+`session.surface.eventAtPosition(position)` 按当前模型可见顺序返回指定位置的原始事件对象。位置从 0 起算，越界返回 `undefined`。节点替换后，同一位置可能对应另一个事件。需要读取投影后的消息内容时，使用 `session.deriveEventMessage(event)`。
 
 包根导出 `MESSAGE_PROJECTION_EVENT_TYPES`，包含通过 `@messageProjection` 声明的生成事件标识。`session.messageProjections` 提供该 Session 的解释器定义借用视图，也适用于独立实例；增量前缀读取器将其传给 `SurfaceManager`。移除已经使用的定义也会使这些读取器失效。
 

@@ -10,7 +10,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { Context, Service, type Fiber } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import z from '@deepseek-ai/schemastery'
-import type { Session, SessionEvent, SessionHeader, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionHeader, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
 import type {
   SessionPersistenceRevision,
@@ -523,7 +523,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
             const loaded = await readColdSessionLog(persistence, entry.header.id, signal)
             assertNotAborted(signal)
             assertSessionHeadersCompatible(entry.header, loaded.header)
-            entry.loaded = observeSession(loaded.header, loaded.inheritedEventCount, loaded.events)
+            entry.loaded = observeSession(loaded.header, loaded.inheritedEventCount, loaded.events.map(event => structuredClone(event)))
           }
           assertNotAborted(signal)
           const afterSnapshots = await persistence.list(listOptions)
@@ -547,13 +547,25 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
         }
       }
       const live = new Map<SessionId, ObservedSession>()
-      for (const session of this.ctx.sessions.list()) {
-        const observed = observeLive(session)
+      const cuts = this.ctx.sessions.list().map(session => ({
+        session, pages: session.readHistoryValues(signal === undefined ? {} : { signal }, event => event),
+      }))
+      for (const { session, pages } of cuts) {
+        const events: SessionEvent[] = []
+        try {
+          for await (const page of pages) events.push(...page)
+        } catch (error: unknown) {
+          assertNotAborted(signal)
+          throw error
+        }
+        const observed = observeSession(session.header, session.inheritedEventCount, events)
         const durable = persisted.get(session.id)
         if (durable !== undefined) assertSessionHeadersCompatible(observed.header, durable.header)
         live.set(session.id, observed)
       }
-      if (!sameSessionIds(initiallyLive, live)) continue
+      if (!sameSessionIds(initiallyLive, live) || this._persistenceBinding !== persistenceBinding) continue
+      if (cuts.length !== this.ctx.sessions.list().length
+        || cuts.some(({ session }) => this.ctx.sessions.get(session.id) !== session)) continue
       return { persistenceBinding, persisted, live }
     }
     throw new SessionQueryError(
@@ -869,18 +881,12 @@ function selectedDocumentsParams(query: string, persistenceVisible: boolean): Ar
   ]
 }
 
-function observeLive(session: Session): ObservedSession {
-  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-  return observeSession(session.header, session.inheritedEventCount, session.snapshotEvents())
-}
-
 function observeSession(
   header: SessionHeader,
   inheritedEventCount: SessionLogOffset,
-  events: readonly SessionEvent[],
+  detachedEvents: readonly SessionEvent[],
 ): ObservedSession {
   const detachedHeader = structuredClone(header)
-  const detachedEvents = events.map(event => structuredClone(event))
   return {
     header: detachedHeader,
     inheritedEventCount,

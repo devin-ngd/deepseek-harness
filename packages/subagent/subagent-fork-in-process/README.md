@@ -79,7 +79,7 @@ This backend supplies the balanced completed-turn prefix of the parent log as th
 
 ### Run flow
 
-`prepareContinuable()` captures the parent’s completed-turn prefix once at creation. `startActivation()` creates the child with that seed, and the subagent service composes the inherited preset and optional structured output. The provider advertises agent options, output, and depth capabilities; independent preset selection is unsupported.
+`prepareContinuable()` fixes the exclusive end of the seed at the last recorded `turn/end` before its first await. It reads only that prefix in cancellable pages, including inherited events. A restored event that cannot be copied as lossless JSON rejects preparation with its sequence number. Events after the cut are never copied. `startActivation()` creates the child with that seed, and the subagent service composes the inherited preset and optional structured output. The provider advertises agent options, output, and depth capabilities; independent preset selection is unsupported.
 
 ### Lifecycle binding
 

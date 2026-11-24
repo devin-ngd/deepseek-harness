@@ -49,9 +49,8 @@ function extendCache(
   // append cannot leave a partially advanced state behind.
   const pendingCuts: boolean[] = []
   let inProgressToolCalls = cache.inProgressToolCalls
-  for (const seq of tail) {
-    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    const event = session.eventAt(seq)
+  for (const [offset, seq] of tail.entries()) {
+    const event = session.surface.eventAtPosition(processed + offset)
     if (event === undefined || event.seq !== seq) {
       throw new Error(`tool-pairing balance: surface seq ${seq} has no matching session event (corrupt surface)`)
     }

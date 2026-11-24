@@ -14,7 +14,7 @@ import {
   type SessionSeq as SessionSeqType,
 } from '@deepseek-ai/dsh-session'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
-import { foldSessionTitle } from '@deepseek-ai/dsh-session-title'
+import { foldSessionTitle, registerTitleSnapshotReader } from '@deepseek-ai/dsh-session-title'
 import type { SessionTitleSnapshot } from '@deepseek-ai/dsh-session-title'
 import type {
   SessionEventResultFilter,
@@ -103,6 +103,7 @@ export abstract class SessionQueryEngine extends Service {
   static inject = ['sessions', 'sessionProjections']
 
   private readonly _readWindowMax: number
+  private _readTitle!: (session: Session) => SessionTitleSnapshot | undefined
   private _listMetadata!: ProjectionHandle<SessionListMetadata>
   private readonly _corpus: SessionCorpus
   private readonly _observations: SessionObservationReader
@@ -139,6 +140,7 @@ export abstract class SessionQueryEngine extends Service {
   /** Register the Session-list metadata projection for this service's lifetime. */
   protected async [Service.init](): Promise<void> {
     this._listMetadata = await this.ctx.sessionProjections.register(sessionListMetadataDefinition)
+    this._readTitle = await registerTitleSnapshotReader(this.ctx)
   }
 
   /**
@@ -283,13 +285,15 @@ export abstract class SessionQueryEngine extends Service {
     sessionIds: readonly SessionId[],
     signal?: AbortSignal,
   ): Promise<SessionTitleObservationResult[]> {
-    return this._corpus.projectMany(sessionIds, (source): SessionTitleObservation => {
-      const title = foldSessionTitle(source.events)
-      return {
-        session: structuredClone(source.header),
-        ...title === undefined ? {} : { title },
-      }
-    }, signal)
+    const observation = (header: Session['header'], title: SessionTitleSnapshot | undefined): SessionTitleObservation => ({
+      session: structuredClone(header),
+      ...title === undefined ? {} : { title },
+    })
+    return this._corpus.projectMany(sessionIds,
+      session => observation(session.header, this._readTitle(session)),
+      source => observation(source.header, foldSessionTitle(source.events)),
+      signal,
+    )
   }
 
   /**

@@ -11,6 +11,7 @@ import type { GenerateOptions, ToolSchema } from '@deepseek-ai/dsh-llm'
 import { Session, type SessionId, SessionLogOffset, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import * as values from '@deepseek-ai/dsh-util-values'
 import { inboxProjectionDefinition } from '../src/inbox.ts'
+import { runtimeContextPublishedDefinition } from '../src/runtime-context.ts'
 import { ReactLoopAgent } from '../src/agent.ts'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -77,10 +78,13 @@ describe('loop-owned request freezing', () => {
     expect(Object.isFrozen(assistantEvent.data.message)).toBe(false)
     ctx.effect(() => ctx.sessions.enter(session))
     ctx.sessions.announce(session)
+    const published = await loopCtx.sessionProjections.registerPrepared(runtimeContextPublishedDefinition)
+    await published.prepare(session, { pageSize: 16 })
     const inbox = await loopCtx.sessionProjections.register(inboxProjectionDefinition)
     const model = await loopCtx.sessionProjections.register(modelSelectionProjectionDefinition)
     const agent = new ReactLoopAgent(loopCtx, id, { provider: 'mock', model: 'mock' }, session,
-      { modelSelection: model.readerFor(session), inbox: inbox.readerFor(session) }, ctx.agents.turnBoundaryOf(session).lastTurn,
+      { modelSelection: model.readerFor(session), inbox: inbox.readerFor(session), runtimeContextPublished: published.readerFor(session) },
+      ctx.agents.turnBoundaryOf(session).lastTurn,
       new AbortController().signal)
     cleanups.push(async () => {
       agent.cancel({ kind: 'disposed' })
@@ -131,7 +135,8 @@ describe('loop-owned request freezing', () => {
     expect(freeze.mock.calls.filter(([value]) => value === userEvent.data)).toHaveLength(1)
     expect(freeze.mock.calls.filter(([value]) => value === replacement.data)).toHaveLength(1)
     const resumed = new ReactLoopAgent(loopCtx, id, { provider: 'mock', model: 'mock' }, session,
-      { modelSelection: model.readerFor(session), inbox: inbox.readerFor(session) }, ctx.agents.turnBoundaryOf(session).lastTurn,
+      { modelSelection: model.readerFor(session), inbox: inbox.readerFor(session), runtimeContextPublished: published.readerFor(session) },
+      ctx.agents.turnBoundaryOf(session).lastTurn,
       new AbortController().signal)
     cleanups.push(async () => {
       resumed.cancel({ kind: 'disposed' })

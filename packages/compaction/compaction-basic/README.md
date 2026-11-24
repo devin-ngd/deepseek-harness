@@ -117,7 +117,7 @@ The backend is built on four commitments:
 - **Summarization reuses the provider's warm prefix.** Replaying the system prompt held by the `system/message` at surface node 0, the last routed request's tools, and the shadowed-region messages byte-for-byte makes the auxiliary call a genuine prefix of the conversation, so only the trailing instruction and the summary output are uncached.
 - **`summarize()` is the sole subclass hook.** A template- or remote-summarizer subclass can override it while pressure, retention, cited source events, shrink validation, and shadowed-token accounting stay on the token meter.
 
-Transaction admission reads a prepared host-only projection for live Sessions. Independent or unprepared Sessions use the synchronous compatibility reader. If an existing live Session contains an event that cannot be copied for asynchronous preparation, the service logs the failure and uses that reader; other preparation errors fail activation.
+The plugin prepares transaction state when an Agent is created, when it mounts over live Sessions, or on the first compaction call for an independent Session. After preparation, the lock check and opening marker share one synchronous step. An event that cannot be copied for recovery produces a warning and uses the compatibility reader. A malformed active turn also requires that reader.
 
 ### Automatic triggers and overflow recovery
 

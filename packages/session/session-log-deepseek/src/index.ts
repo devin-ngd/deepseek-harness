@@ -127,18 +127,16 @@ function wireSurfaceOp(op: SurfaceOp): DeepSeekSessionLogWireSurfaceOp {
 }
 
 /**
- * UTF-8 length of one value's JSON text as the request body encodes it.
- * @returns `Infinity` when the value fails to serialize, which counts as exceeding every limit.
+ * Serialize an event exactly as the request body encodes it.
+ * @returns the JSON text, or undefined when the event cannot fit in any request.
  */
-function jsonBytes(value: DeepSeekSessionLogExtension | DeepSeekSessionLogWireEvent): number {
-  let text: string
+function wireText(value: DeepSeekSessionLogWireEvent): string | undefined {
   try {
-    text = JSON.stringify(value)
+    return JSON.stringify(value)
   } catch (_unserializable) {
     // No request can carry a value that fails to serialize.
-    return Number.POSITIVE_INFINITY
+    return undefined
   }
-  return Buffer.byteLength(text)
 }
 
 /**
@@ -193,7 +191,7 @@ export class SessionLogDeepSeekService extends Service {
     super(ctx, 'sessionLogDeepSeek')
     const { maxBytes } = config
     ctx.deepseekLlmApiExtensions.register('dsh_session_log', {
-      prepare: (request) => {
+      prepare: async (request) => {
         if (!config.enabled.get()) return undefined
         // TODO: Define an explicit wire result for direct or stale-session calls if they become a supported product path.
         if (request.sessionId === undefined) return undefined
@@ -208,8 +206,14 @@ export class SessionLogDeepSeekService extends Service {
         }
 
         const afterSeq = acceptedThrough(session)
-        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-        const pending = session.snapshotEvents(SessionLogOffset(afterSeq + 1))
+        // Stop at the first oversized event before inspecting the next payload.
+        const pending = session.readHistoryValues({
+          fromSeq: SessionLogOffset(afterSeq + 1), pageSize: 1, signal: request.signal,
+        }, (event) => {
+          const json = wireText(wireEvent(event))
+          const size = json === undefined ? Infinity : Buffer.byteLength(json)
+          return { seq: event.seq, size, json: size <= maxBytes ? json : undefined }
+        })
         const envelope = {
           version: 1,
           sessionFormatVersion: session.header.version,
@@ -217,24 +221,28 @@ export class SessionLogDeepSeekService extends Service {
           afterSeq: Number(afterSeq),
         } as const
         // Field bytes without events or throughSeq digits; each candidate prefix adds its own.
-        let bytes = jsonBytes({ ...envelope, throughSeq: 0, events: [] }) - 1
+        let bytes = Buffer.byteLength(JSON.stringify({ ...envelope, throughSeq: 0, events: [] })) - 1
         const events: DeepSeekSessionLogWireEvent[] = []
         // Field bytes with the last examined event; when none fits, the first event's own field size.
         let candidateBytes = 0
-        for (const event of pending) {
-          const wire = wireEvent(event)
-          const next = bytes + (events.length === 0 ? 0 : 1) + jsonBytes(wire)
-          candidateBytes = next + String(event.seq).length
-          if (candidateBytes > maxBytes) break
-          bytes = next
-          events.push(wire)
+        let firstSeq: SessionSeqType | undefined
+        let throughSeq: SessionSeqType | undefined
+        upload: for await (const page of pending) {
+          for (const event of page) {
+            firstSeq ??= event.seq
+            const next = bytes + (events.length === 0 ? 0 : 1) + event.size
+            candidateBytes = next + String(event.seq).length
+            if (event.json === undefined || candidateBytes > maxBytes) break upload
+            bytes = next
+            throughSeq = event.seq
+            events.push(JSON.parse(event.json) as DeepSeekSessionLogWireEvent)
+          }
         }
-        const last = events.length === 0 ? undefined : pending[events.length - 1]
-        if (last === undefined) {
-          const first = pending[0]
-          if (first !== undefined && this.blockedWarnings.get(session) !== first.seq) {
-            this.blockedWarnings.set(session, first.seq)
-            const seq = String(first.seq)
+        request.signal.throwIfAborted()
+        if (throughSeq === undefined) {
+          if (firstSeq !== undefined && this.blockedWarnings.get(session) !== firstSeq) {
+            this.blockedWarnings.set(session, firstSeq)
+            const seq = String(firstSeq)
             ctx.logger.warn(Number.isFinite(candidateBytes)
               ? `session-log-deepseek: event ${seq} of session "${session.id}" needs a ${String(candidateBytes)}-byte`
                 + ` dsh_session_log field, above maxBytes ${String(maxBytes)}; this session's upload stays at event ${seq}`
@@ -244,7 +252,6 @@ export class SessionLogDeepSeekService extends Service {
           }
           return undefined
         }
-        const throughSeq = last.seq
         const value: DeepSeekSessionLogExtension = { ...envelope, throughSeq: Number(throughSeq), events }
         return {
           value,

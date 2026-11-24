@@ -9,7 +9,7 @@ English | [中文](guide.zh.md)
 
 ## Change
 
-`@deepseek-ai/dsh-compaction-basic` requires `sessionProjections` when mounted as a Cordis plugin. It registers a host-only transaction projection before accepting work; unprepared Sessions retain the synchronous compatibility path.
+`@deepseek-ai/dsh-compaction-basic` requires `sessionProjections` when mounted as a Cordis plugin. It registers a host-only transaction projection before accepting work. A direct compaction call on an unprepared Session waits for recovery before checking the lock and opening the transaction.
 
 ## Migration
 

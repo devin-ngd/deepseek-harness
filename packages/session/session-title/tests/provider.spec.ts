@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import LlmRuntime, { createUserMessage, markAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
-import SessionStore, { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionTitleProviderId } from '@deepseek-ai/dsh-session-title/types'
@@ -297,13 +297,110 @@ describe('SessionTitleService Provider lifecycle', () => {
       generate,
     })
 
+    const read = session.readHistoryValues.bind(session)
+    const pageLengths: number[] = []
+    const pages = vi.spyOn(session, 'readHistoryValues').mockImplementation(async function* (options, select) {
+      for await (const page of read({ ...options, pageSize: 5 }, select)) {
+        pageLengths.push(page.length)
+        yield page
+      }
+    })
+    const snapshot = vi.spyOn(session, 'snapshotEvents')
     await ctx.sessionTitle.refresh(session)
 
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(pages).toHaveBeenCalledOnce()
+    const [options] = pages.mock.calls[0]!
+    expect(options.fromSeq).toBe(messages[0]!.seq + 1)
+    expect(options.toSeqExclusive).toBe(messages.at(-1)!.seq + 1)
+    expect(options.signal).toBe(generate.mock.calls[0]![0].signal)
+    expect(options.pageSize).toBeUndefined()
+    expect(pageLengths.length).toBeGreaterThan(1)
+    expect(Math.max(...pageLengths)).toBeLessThanOrEqual(5)
     expect(generate).toHaveBeenCalledOnce()
     expect(generate.mock.calls[0]?.[0].messages).toEqual(messages.map((message, index) => ({
       seq: message.seq,
       text: `Prompt ${String(index)}`,
     })))
+  })
+
+  it('reads titles across a restored event with an uncopyable unrelated field', async () => {
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(SessionTitleService, CONFIG)
+    const seed = Session.create(SessionId('uncopyable-seed'))
+    seed.append('turn/start', { turn: 1 })
+    const prompts = Array.from({ length: 70 }, (_, index) => appendHumanPrompt(seed, String(index)))
+    appendRoute(seed)
+    prompts.push(appendHumanPrompt(seed, 'Last eligible prompt'))
+    const id = SessionId('uncopyable-history')
+    const session = ctx.sessions.prepare(id, {
+      meta: { ...seed.header, id },
+      eventState: 'detached', inheritedEventCount: SessionLogOffset(0),
+      seed: seed.snapshotEvents().map(event => event.type === 'request/header'
+        ? { ...event, data: { ...event.data, extra: undefined } } : event),
+    })
+    ctx.sessions.enter(session)
+    ctx.sessions.announce(session)
+    await ctx.sessionTitle.refresh(session)
+    const generate = vi.fn(async (request: SessionTitleProviderRequest) => ({
+      title: 'Recovered', messageSeqs: request.messages.map(message => message.seq),
+    }))
+    ctx.sessionTitle.register({ id: brandString<SessionTitleProviderId>('recovered'), automatic: 'first-prompt', generate })
+    const snapshot = vi.spyOn(session, 'snapshotEvents')
+    const read = session.readHistoryValues.bind(session)
+    const pages = vi.spyOn(session, 'readHistoryValues').mockImplementation((options, select) => read({ ...options, pageSize: 5 }, select))
+    await ctx.sessionTitle.refresh(session)
+    expect(pages).toHaveBeenCalledOnce()
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(ctx.sessionTitle.get(session)?.messageSeqs).toEqual(prompts.map(event => event.seq))
+    expect(generate).toHaveBeenCalledOnce()
+  })
+
+  it.each(['append title', 'rename', 'cancel'] as const)('observes %s during provider pagination', async (action) => {
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(SessionTitleService, CONFIG)
+    const session = ctx.sessions.create(SessionId('pending-history'))
+    session.append('turn/start', { turn: 1 })
+    const first = appendHumanPrompt(session, 'First')
+    const second = appendHumanPrompt(session, 'Second')
+    const generate = vi.fn(async (request: SessionTitleProviderRequest) => ({
+      title: 'Generated', messageSeqs: request.messages.map(message => message.seq),
+    }))
+    ctx.sessionTitle.register({ id: brandString<SessionTitleProviderId>('pending'), automatic: 'first-prompt', generate })
+    const reading = deferred<undefined>()
+    const resume = deferred<undefined>()
+    const read = session.readHistoryValues.bind(session)
+    vi.spyOn(session, 'readHistoryValues').mockImplementation(async function* (options, select) {
+      yield* read(options, select)
+      reading.resolve(undefined)
+      await resume.promise
+    })
+    const controller = new AbortController()
+    const refresh = ctx.sessionTitle.refresh(session, controller.signal)
+    await reading.promise
+    if (action === 'rename') ctx.sessionTitle.rename(session, 'Pinned')
+    if (action === 'cancel') controller.abort(new Error('caller cancelled'))
+    if (action === 'append title') {
+      appendHumanPrompt(session, 'Past the watermark')
+      session.append('session/title', { title: 'New title', source: { kind: 'fallback' }, messageSeqs: [first.seq] })
+    }
+    resume.resolve(undefined)
+    if (action === 'append title') {
+      await expect(refresh).resolves.toMatchObject({ title: 'Generated', messageSeqs: [first.seq, second.seq] })
+      expect(generate.mock.calls[0]![0].currentTitle?.title).toBe('New title')
+    } else {
+      await expect(refresh).rejects.toThrow(action === 'rename' ? /rename/ : /caller cancelled/)
+      expect(generate).not.toHaveBeenCalled()
+      expect(ctx.sessionTitle.get(session)?.title).toBe(action === 'rename' ? 'Pinned' : 'First')
+    }
   })
 
   it('cuts a first-message provider request at its scheduled watermark when a newer prompt lands first', async () => {
@@ -363,12 +460,16 @@ describe('SessionTitleService Provider lifecycle', () => {
     session.append('turn/start', { turn: 1 })
     const first = appendHumanPrompt(session, 'First prompt')
     appendHumanPrompt(session, 'Later prompt')
+    const pages = vi.spyOn(session, 'readHistoryValues')
+    const snapshot = vi.spyOn(session, 'snapshotEvents')
     const latestTitle = session.append('session/title', {
       title: 'Later fallback', messageSeqs: [first.seq], source: { kind: 'fallback' },
     })
     appendRoute(session)
 
     const request = await requested.promise
+    expect(pages).not.toHaveBeenCalled()
+    expect(snapshot).not.toHaveBeenCalled()
     expect(request.messages).toEqual([{ seq: first.seq, text: 'First prompt' }])
     expect(request.currentTitle).toMatchObject({
       title: 'Later fallback', eventSeq: latestTitle.seq, source: { kind: 'fallback' },

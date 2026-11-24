@@ -63,7 +63,9 @@ const state = todoProjectionHandle.stateOf(session)
 const { asOfSeq, values } = ctx.sessionProjections.snapshot(session)
 ```
 
-A host-only owner that can await preparation may use `registerPrepared(definition)`, then await `handle.prepare(session, { pageSize, signal })` before a synchronous read. Recovery folds bounded copies through a fixed cut and catches up events appended while it runs; simultaneous callers share the fold but cancel independently. A live Session continues advancing through its event feed. An independent Session must be prepared again after it appends; a missing, stale, or in-progress state fails explicitly instead of synchronously reading history. Disposal cancels and drains the final registration’s recovery. Checkpoint writes retain any previously prepared row but omit a Session without one. Cold `restore` and `hydrate` omit these host-only units, so their failures cannot block unrelated reads; their owners prepare them separately.
+A host-only owner may use `registerPrepared(definition)` and await `handle.prepare(session, { pageSize, signal })` before synchronous reads. On hot reload, the new owner prepares its existing Sessions. Recovery subscribes to commits before capturing the history cut, pages that fixed prefix once, then folds buffered commits in order. Concurrent callers share recovery and can cancel independently. Losing the last waiter or registration drops buffered commits and drains the recovery.
+
+After preparation, each commit advances the exact Session’s state, including independent Sessions and Sessions later entered into a store. A batch advances the whole projection before store event observers run. A fold failure removes that unit’s checkpoint row and is reported by its readers until successful preparation. The last registration release stops updates. Cold `restore` and `hydrate` omit explicitly prepared units.
 
 `handle.stateIfReady(session)` returns `{ ready: true, state }` at the current cut and `{ ready: false }` when preparation is missing, stale, or in progress; stored preparation failures still throw. It never starts recovery or reads history.
 

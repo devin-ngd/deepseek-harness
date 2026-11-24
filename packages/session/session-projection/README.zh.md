@@ -63,7 +63,9 @@ const state = todoProjectionHandle.stateOf(session)
 const { asOfSeq, values } = ctx.sessionProjections.snapshot(session)
 ```
 
-可以等待准备完成的 host-only 单元可使用 `registerPrepared(definition)`，随后在同步读取前等待 `handle.prepare(session, { pageSize, signal })`。恢复按页折叠固定截面的副本，并追赶恢复期间追加的事件；并发调用共享折叠，但各自独立取消。活跃 Session 通过事件流继续推进；独立 Session 追加后必须再次准备。状态缺失、过期或仍在恢复时会明确失败，不会同步读取历史。最后一个注册方释放时会取消并等待恢复结束。检查点写入保留已准备的旧行，没有准备行的 Session 则省略该单元。冷 `restore` 和 `hydrate` 会省略这些 host-only 单元，其失败不会阻塞其他读取；由各自的所有者单独准备。
+仅供 Host 使用的投影可以通过 `registerPrepared(definition)` 注册，并在同步读取前等待 `handle.prepare(session, { pageSize, signal })`。热加载后，新注册方需准备已有的 Session。恢复先订阅提交，再确定历史上界，分页读取一次固定范围，然后按顺序折叠期间缓存的提交。并发调用共享恢复任务，可各自取消。最后一个等待方取消或最后一个注册方释放时，会清空缓存并等待恢复任务结束。
+
+准备完成后，每次提交都会更新对应 Session 实例的状态，独立 Session 及其随后进入 store 的情形也适用。批量提交在 store 通知事件观察者前更新整批投影。某个单元折叠失败时，其检查点行会被移除，读取该单元会抛出错误，直到重新准备成功。最后一个注册方释放后停止更新。冷 `restore` 和 `hydrate` 跳过显式准备的单元。
 
 `handle.stateIfReady(session)` 在状态覆盖当前截面时返回 `{ ready: true, state }`，准备缺失、过期或仍在进行时返回 `{ ready: false }`；已保存的准备失败仍会抛出。此方法不会启动恢复或读取历史。
 

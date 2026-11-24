@@ -53,7 +53,7 @@ function browserTimeZone(value: string): string {
 
 /**
  * Derive the unique, mixed, or missing browser zone for the selected request messages.
- * @param messages - proposed messages, or entered plus proposed messages selected by the legacy reader.
+ * @param messages - messages proposed for this request.
  * @param enteredTimeZones - reported zones from committed messages, before the proposed messages.
  * @returns Sorted, duplicate-free browser-zone facts.
  * @throws TypeError when a user-rpc source carries an invalid or noncanonical zone.

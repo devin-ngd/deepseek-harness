@@ -325,7 +325,7 @@ interface Registration {
   readonly def: ErasedDefinition
   readonly cells: WeakMap<Session, UnitCell>
   readonly preparationFailures: WeakMap<Session, { readonly error: unknown }>
-  readonly preparedOnly: boolean
+  readonly commits: { lifetime: AbortController; sessions: WeakSet<Session> } | undefined
   readonly recoveries: WeakMap<Session, PendingRecovery>
   readonly activeRecoveries: Set<PendingRecovery>
   /**
@@ -377,15 +377,15 @@ export class SessionProjectionRegistry extends Service {
       for (const registration of this.registrations.values()) {
         if (registration.refs === 0) continue
         if (registration.cells.has(session)) continue
-        if (registration.preparedOnly && registration.preparationFailures.has(session)) continue
+        if (registration.commits !== undefined && registration.preparationFailures.has(session)) continue
         try {
-          registration.cells.set(session, {
+          this.installCell(registration, session, {
             state: registration.def.init(session.header, session.inheritedEventCount),
             observedSeq: -1,
             views: [undefined, undefined],
           })
         } catch (error: unknown) {
-          if (!registration.preparedOnly) throw error
+          if (registration.commits === undefined) throw error
           registration.preparationFailures.set(session, { error })
         }
       }
@@ -520,13 +520,14 @@ export class SessionProjectionRegistry extends Service {
       const existing = this.registrations.get(key)
       if (existing === undefined || existing.refs === 0) {
         registration = {
-          def: erased, cells: new WeakMap(), preparationFailures: new WeakMap(), preparedOnly,
+          def: erased, cells: new WeakMap(), preparationFailures: new WeakMap(),
+          commits: preparedOnly ? { lifetime: new AbortController(), sessions: new WeakSet() } : undefined,
           recoveries: new WeakMap(), activeRecoveries: new Set(), refs: 1,
         }
         this.registrations.set(key, registration)
         this.summaryKeySet = undefined
       } else {
-        if (existing.preparedOnly !== preparedOnly) {
+        if ((existing.commits !== undefined) !== preparedOnly) {
           throw new Error(`session projection key ${JSON.stringify(key)} is already registered with different preparation semantics`)
         }
         if (existing.def.stateVersion !== erased.stateVersion) {
@@ -542,6 +543,7 @@ export class SessionProjectionRegistry extends Service {
         lifetime.abort(new Error(`session projection ${JSON.stringify(key)} registration disposed`))
         registration.refs -= 1
         if (registration.refs === 0) {
+          registration.commits?.lifetime.abort(lifetime.signal.reason)
           const pending = [...registration.activeRecoveries]
           for (const recovery of pending) recovery.controller.abort(lifetime.signal.reason)
           this.summaryKeySet = undefined
@@ -738,7 +740,7 @@ export class SessionProjectionRegistry extends Service {
   checkpoint(session: Session): ProjectionCheckpoint {
     const rows: ProjectionCheckpoint = {}
     for (const registration of this.registrations.values()) {
-      const cell = registration.refs === 0 || registration.preparedOnly
+      const cell = registration.refs === 0 || registration.commits !== undefined
         ? registration.cells.get(session)
         : this.cellFor(registration, session)
       if (cell === undefined) continue
@@ -770,7 +772,7 @@ export class SessionProjectionRegistry extends Service {
   restoreFloor(checkpoint: ProjectionCheckpoint): SessionLogOffset | undefined {
     let floor: number | undefined
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0 || registration.preparedOnly) continue
+      if (registration.refs === 0 || registration.commits !== undefined) continue
       const row = checkpoint[registration.def.key]
       const need = row !== undefined && row.ver === registration.def.stateVersion
         ? Math.max(row.seq + 1, 0)
@@ -860,7 +862,7 @@ export class SessionProjectionRegistry extends Service {
     const values: Record<string, unknown> = {}
     const refreshed: ProjectionCheckpoint = {}
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0 || registration.preparedOnly) continue
+      if (registration.refs === 0 || registration.commits !== undefined) continue
       const def = registration.def
       const state = this.restoreUnit(def, checkpoint[def.key], events, baseSeq, header, inheritedEventCount, false)
       if (def.wire !== undefined) values[def.key] = def.wire.viewSchema.parse(def.wire.view(state))
@@ -937,7 +939,7 @@ export class SessionProjectionRegistry extends Service {
       const row = checkpoint[def.key]
       try {
         const state = this.restoreUnit(def, row, events, SessionLogOffset(0), session.header, session.inheritedEventCount, true)
-        registration.cells.set(session, { state, observedSeq: endSeq, views: [undefined, undefined] })
+        this.installCell(registration, session, { state, observedSeq: endSeq, views: [undefined, undefined] })
         registration.preparationFailures.delete(session)
       } catch (error: unknown) {
         registration.cells.delete(session)
@@ -965,7 +967,7 @@ export class SessionProjectionRegistry extends Service {
     const endSeq: SessionSeqCursor = events.at(-1)?.seq ?? cursorBefore(baseSeq)
     let complete = true
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0 || registration.preparedOnly) continue
+      if (registration.refs === 0 || registration.commits !== undefined) continue
       const current = registration.cells.get(session)
       if (current?.observedSeq !== endSeq) {
         complete = false
@@ -975,7 +977,7 @@ export class SessionProjectionRegistry extends Service {
     if (complete) {
       const values: Record<string, unknown> = {}
       for (const registration of this.registrations.values()) {
-        if (registration.refs === 0 || registration.preparedOnly) continue
+        if (registration.refs === 0 || registration.commits !== undefined) continue
         if (registration.def.wire === undefined) continue
         const current = registration.cells.get(session) as UnitCell
         values[registration.def.key] = this.viewCell(registration, current)
@@ -990,7 +992,7 @@ export class SessionProjectionRegistry extends Service {
       session.inheritedEventCount,
     )
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0 || registration.preparedOnly) continue
+      if (registration.refs === 0 || registration.commits !== undefined) continue
       const row = restored.checkpoint[registration.def.key]
       /* v8 ignore next -- restore() writes a row for every registration in the same synchronous pass. */
       if (row === undefined) continue
@@ -1009,7 +1011,7 @@ export class SessionProjectionRegistry extends Service {
   /** Materialize ordinary registered unit cells at the Session's current cursor. */
   private materializeCells(session: Session): void {
     for (const registration of this.registrations.values()) {
-      if (registration.refs === 0 || registration.preparedOnly) continue
+      if (registration.refs === 0 || registration.commits !== undefined) continue
       this.cellFor(registration, session)
     }
   }
@@ -1033,13 +1035,13 @@ export class SessionProjectionRegistry extends Service {
     options: { pageSize: number; signal?: AbortSignal },
     lifetime: AbortSignal,
   ): Promise<void> {
-    if (!registration.preparedOnly) throw new Error('session projection was not registered for explicit preparation')
+    if (registration.commits === undefined) throw new Error('session projection was not registered for explicit preparation')
     if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1) {
       throw new RangeError('session projection preparation pageSize must be a positive safe integer')
     }
     const signal = options.signal === undefined ? lifetime : AbortSignal.any([lifetime, options.signal])
-    signal.throwIfAborted()
     for (;;) {
+      signal.throwIfAborted()
       const existing = registration.cells.get(session)
       const pending = registration.recoveries.get(session)
       if (pending === undefined && existing?.observedSeq === cursorBefore(session.seq)
@@ -1079,7 +1081,10 @@ export class SessionProjectionRegistry extends Service {
       recovery.waiters += 1
       try {
         await waitForRecovery(recovery.promise, signal)
-        continue
+        signal.throwIfAborted()
+        const failure = registration.preparationFailures.get(session)
+        if (failure !== undefined) throw failure.error
+        return
       } finally {
         recovery.waiters -= 1
         if (recovery.waiters === 0 && !recovery.finished) {
@@ -1096,28 +1101,66 @@ export class SessionProjectionRegistry extends Service {
 
   /** Fold bounded event pages and atomically install a state at the current Session cut. */
   private async recoverCell(registration: Registration, session: Session, pageSize: number, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted()
     const previous = registration.cells.get(session)
-    let state = previous === undefined
-      ? registration.def.init(session.header, session.inheritedEventCount)
-      : previous.state
-    let offset = previous === undefined ? 0 : previous.observedSeq + 1
-    for (;;) {
-      signal.throwIfAborted()
+    const suffix: (readonly SessionEvent[])[] = []
+    const subscription = new AbortController()
+    const stopBuffering = (): void => {
+      subscription.abort()
+      suffix.length = 0
+    }
+    signal.addEventListener('abort', stopBuffering, { once: true })
+    try {
+      session.onCommit((events) => { suffix.push(events) }, subscription.signal)
       const end = session.seq
+      let state = previous === undefined
+        ? registration.def.init(session.header, session.inheritedEventCount)
+        : previous.state
       for await (const page of session.readHistoryPages({
-        fromSeq: SessionLogOffset(offset), toSeqExclusive: end, pageSize, signal,
+        fromSeq: SessionLogOffset(previous === undefined ? 0 : previous.observedSeq + 1),
+        toSeqExclusive: end, pageSize, signal,
       })) {
+        signal.throwIfAborted()
         for (const event of page) state = registration.def.apply(state, event)
-        offset += page.length
       }
       signal.throwIfAborted()
-      if (offset !== session.seq) continue
-      registration.cells.set(session, {
-        state, observedSeq: cursorBefore(SessionLogOffset(offset)), views: [undefined, undefined],
-      })
+      let observedSeq = cursorBefore(end)
+      for (const group of suffix) {
+        for (const event of group) {
+          if (event.seq < end) continue
+          state = registration.def.apply(state, event)
+          observedSeq = event.seq
+        }
+      }
+      signal.throwIfAborted()
+      this.installCell(registration, session, { state, observedSeq, views: [undefined, undefined] })
       registration.preparationFailures.delete(session)
-      return
+    } finally {
+      signal.removeEventListener('abort', stopBuffering)
+      stopBuffering()
     }
+  }
+
+  /** Prepared cells follow exact-Session commits, including whole batches before store publication. */
+  private installCell(registration: Registration, session: Session, cell: UnitCell): void {
+    registration.cells.set(session, cell)
+    const commits = registration.commits
+    if (commits === undefined || commits.sessions.has(session)) return
+    commits.sessions.add(session)
+    session.onCommit((events) => {
+      const current = registration.cells.get(session)
+      if (current === undefined) return
+      try {
+        for (const event of events) {
+          current.state = registration.def.apply(current.state, event)
+          current.observedSeq = event.seq
+        }
+      } catch (error: unknown) {
+        registration.cells.delete(session)
+        registration.preparationFailures.set(session, { error })
+        this.ctx.logger.warn(`session projection ${JSON.stringify(registration.def.key)} failed for session ${JSON.stringify(session.id)}`, error)
+      }
+    }, commits.lifetime.signal)
   }
 
   /** Read (or lazily build, folding the full in-memory log) one unit's cell. */
@@ -1125,7 +1168,7 @@ export class SessionProjectionRegistry extends Service {
     const failure = registration.preparationFailures.get(session)
     if (failure !== undefined) throw failure.error
     let cell = registration.cells.get(session)
-    if (registration.preparedOnly) {
+    if (registration.commits !== undefined) {
       if (cell === undefined || registration.recoveries.has(session) || cell.observedSeq !== cursorBefore(session.seq)) {
         throw new Error(`session projection ${JSON.stringify(registration.def.key)} requires Session preparation`)
       }
@@ -1182,13 +1225,9 @@ export class SessionProjectionRegistry extends Service {
     const changes: { key: Extract<keyof SessionProjectionMap, string>; val: unknown }[] = []
     try {
       for (const registration of this.registrations.values()) {
-        if (registration.refs === 0) continue
+        if (registration.refs === 0 || registration.commits !== undefined) continue
         const failure = registration.preparationFailures.get(session)
-        if (registration.preparedOnly) {
-          const prepared = registration.cells.get(session)
-          if (failure !== undefined || registration.recoveries.has(session) || prepared === undefined
-            || prepared.observedSeq !== (event.seq === 0 ? -1 : event.seq - 1)) continue
-        } else if (failure !== undefined) throw failure.error
+        if (failure !== undefined) throw failure.error
         let cell = registration.cells.get(session)
         if (cell !== undefined && cell.observedSeq >= event.seq) continue
         if (cell === undefined) {
@@ -1211,16 +1250,7 @@ export class SessionProjectionRegistry extends Service {
           )
         }
         const previousState = cell.state
-        let next: unknown
-        try {
-          next = registration.def.apply(previousState, event)
-        } catch (error: unknown) {
-          if (!registration.preparedOnly) throw error
-          registration.cells.delete(session)
-          registration.preparationFailures.set(session, { error })
-          this.ctx.logger.warn(`session projection ${JSON.stringify(registration.def.key)} failed for session ${JSON.stringify(session.id)}`, error)
-          continue
-        }
+        const next = registration.def.apply(previousState, event)
         const changed = !Object.is(next, previousState)
         cell.state = next
         cell.observedSeq = event.seq

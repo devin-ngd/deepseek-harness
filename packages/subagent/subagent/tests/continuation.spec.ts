@@ -23,6 +23,7 @@ import { type ToolCallId, createUserMessage, LlmAdapter, type ReasoningEffortId 
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { MockAdapter, maxTokensResponse, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import SubagentRuntime, {
+  AssistantOutputFold,
   SubagentError,
   SUBAGENT_DESCRIPTOR_VERSION,
 } from '../src/index.ts'
@@ -2456,20 +2457,22 @@ describe('continuable review regressions', () => {
     expect(ends[0]!.stopReason).toBe('error')
   })
 
-  it('reports a pre-disposal teardown failure on the terminal edge', async () => {
+  it('reports a committed output fold failure at settlement', async () => {
     const hold = Promise.withResolvers<undefined>()
     const adapter = new GatedAdapter([{ chunks: textResponse('answer'), gate: hold.promise }])
     const { ctx, parent } = await setupWith(adapter)
     const ends: SubagentRunEndInfo[] = []
     ctx.on('subagent/end', info => void ends.push(info))
 
-    await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'parent' })
-    const capture = vi.spyOn(activationResults, 'captureLocalResult').mockImplementationOnce(() => { throw new Error('capture failed') })
+    const started = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'parent' })
+    const failure = new Error('capture failed')
+    const capture = vi.spyOn(AssistantOutputFold.prototype, 'push').mockImplementationOnce(() => { throw failure })
 
     try {
       const drained = drainManager(ctx)
       hold.resolve(undefined)
       await expect(drained).rejects.toMatchObject({ code: 'ACTIVATION_TEARDOWN_FAILED' })
+      await expect(started.result).rejects.toBe(failure)
       await vi.waitFor(() => { expect(ends).toHaveLength(1) })
       expect(ends[0]!.stopReason).toBe('error')
     } finally {

@@ -893,6 +893,25 @@ describe('SQLite reconciliation and source lifecycle', () => {
     expect(TestPersistence.entries.get(shared.id)?.events).toEqual(persistedEvents)
   })
 
+  it('retries if a live owner is replaced under the same id during a paged read', async () => {
+    const ctx = await liveContext()
+    const id = brandString<SessionId>('replaced-during-read')
+    const first = ctx.sessions.prepare(id, { seed: messageEvents('old needle') })
+    const detach = ctx.sessions.enter(first)
+    ctx.sessions.announce(first)
+    const read = first.readHistoryValues.bind(first)
+    vi.spyOn(first, 'readHistoryValues').mockImplementation((options, select) => {
+      const pages = read(options, select)
+      queueMicrotask(() => {
+        detach()
+        ctx.sessions.create(id, { seed: messageEvents('replacement needle') })
+      })
+      return pages
+    })
+    await expect(ctx.sessionQuery.searchSessions({ query: 'replacement' }))
+      .resolves.toMatchObject({ items: [{ header: { id } }] })
+  })
+
   it('retries when one live owner replaces another during persistence observation', async () => {
     TestPersistence.reset()
     const ctx = await liveContext()

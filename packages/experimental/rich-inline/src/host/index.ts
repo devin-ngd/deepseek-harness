@@ -1,6 +1,6 @@
 /** Durable RichInline Host: trusted mounts, draft CAS, action outbox, and explicit completion. */
 import { randomUUID, createHash } from 'node:crypto'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import type { Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -17,6 +17,8 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { SessionRequestId, PromptContentPart } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm/types'
 import type { SessionId, SessionEvent } from '@deepseek-ai/dsh-session/types'
+import { SessionHistoryCopyError, type Session } from '@deepseek-ai/dsh-session'
+import type { PreparedProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import {
@@ -46,6 +48,7 @@ import { installProjectDefaults, isRichChild } from './project-defaults.ts'
 import { deriveRichTaskUsage } from '../shared/usage.ts'
 import type { RichTaskUsage } from '../shared/usage.ts'
 import { installRichSourceOffload, readRichSource } from './source.ts'
+import { richTurnProjection, type RichTurnState } from './turn-projection.ts'
 
 /** Deployment bounds; protocols and required authorization rules are fixed. */
 export interface Config {
@@ -70,6 +73,8 @@ export interface Config {
   readonly maxFormatRepairAttempts: number
   readonly sourceOffloadMinBytes: number
   readonly sourceReadMaxChars: number
+  /** Maximum events per page when preparing an existing Session. Defaults to 128. */
+  readonly recoveryPageSize: number
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -108,7 +113,7 @@ function savedDraft(draft: RichDraft, revision: number): RichBlockRecord['draft'
 /** Host authority and generated Remote namespace. It exposes no shell, credentials, or file paths. */
 export class RichInline extends TypertRemoteService {
   static inject = [
-    'typert', 'storage', 'storageDomain', 'sessionController', 'sessionPersistence', 'sessionQuery', 'tools', 'attachments', 'fileUploads', 'agents', 'systemPrompt', 'sessions',
+    'typert', 'storage', 'storageDomain', 'sessionController', 'sessionPersistence', 'sessionQuery', 'tools', 'attachments', 'fileUploads', 'agents', 'systemPrompt', 'sessions', 'sessionProjections',
   ]
   static Config = z.object({
     activePresets: z.array(z.string().min(1)).default([]),
@@ -125,6 +130,7 @@ export class RichInline extends TypertRemoteService {
     maxFormatRepairAttempts: z.natural().max(2).default(1),
     sourceOffloadMinBytes: z.natural().min(1).default(4_096),
     sourceReadMaxChars: z.natural().min(1).max(RICH_MAX_CONTENT_BYTES).default(8_192),
+    recoveryPageSize: z.natural().min(1).default(128),
   })
   private readonly config: Config
   private readonly domain: Promise<RichLedgerDomain>
@@ -134,6 +140,8 @@ export class RichInline extends TypertRemoteService {
   private readonly dispatching = new Map<SessionId, Promise<void>>()
   private readonly tasks = new Set<Promise<void>>()
   private readonly retryTimers = new Map<SessionId, ReturnType<typeof setTimeout>>()
+  private turnProjection: PreparedProjectionHandle<RichTurnState> | undefined
+  private readonly compatibilitySessions = new WeakSet<Session>()
   private closed = false
 
   /**
@@ -142,6 +150,9 @@ export class RichInline extends TypertRemoteService {
    */
   constructor(ctx: Context, config: Config) {
     super(ctx, 'richInline', { namespace: 'richInline' })
+    if (!Number.isSafeInteger(config.recoveryPageSize) || config.recoveryPageSize < 1) {
+      throw new Error('rich-inline: recoveryPageSize must be a positive safe integer')
+    }
     this.config = config
     this.domain = ctx.storage.domain.open(richLedgerSpec)
     this.startup = this.recover()
@@ -178,9 +189,7 @@ export class RichInline extends TypertRemoteService {
     ctx.on('session/event', (session, event) => {
       if (session.header.origin === 'subagent' || isRichChild(ctx.agents.get(session.id))) return
       if (event.type === 'tool/result' || event.type === 'user/message' || event.type === 'turn/end' || event.type === 'tool/ptc-dispatch') {
-        // oxlint-disable-next-line typescript/no-deprecated -- Capture the turn at this event's emission, before queued observer work runs.
-        const start = session.snapshotEvents().findLast(item => item.type === 'turn/start')
-        this.track(this.observe(session.id, event, start?.type === 'turn/start' ? start.data.turn : null))
+        this.track(this.observe(session.id, event, this.latestTurn(session)))
       }
     })
     ctx.effect(() => async () => {
@@ -191,6 +200,44 @@ export class RichInline extends TypertRemoteService {
       await Promise.allSettled([...this.tasks, ...this.chains.values(), ...this.dispatching.values()])
       await (await this.domain).close()
     }, 'rich-inline.ledger-lifetime')
+  }
+
+  protected async [Service.init](): Promise<void> {
+    const ctx = this.ctx
+    const ready = ctx.sessionProjections.registerPrepared(richTurnProjection)
+    ctx.on('agent/created', async ({ agent, signal }) => {
+      if (ctx.sessions.get(agent.session.id) !== agent.session) return
+      const handle = await ready
+      ctx.fiber.assertActive()
+      await this.prepareTurn(handle, agent.session, signal)
+    })
+    this.turnProjection = await ready
+    for (const session of ctx.sessions.list()) await this.prepareTurn(this.turnProjection, session)
+  }
+
+  private async prepareTurn(handle: PreparedProjectionHandle<RichTurnState>, session: Session, signal?: AbortSignal): Promise<void> {
+    try {
+      await handle.prepare(session, { pageSize: this.config.recoveryPageSize, ...signal === undefined ? {} : { signal } })
+      this.compatibilitySessions.delete(session)
+    } catch (error: unknown) {
+      signal?.throwIfAborted()
+      this.ctx.fiber.assertActive()
+      if (!(error instanceof SessionHistoryCopyError)) throw error
+      this.compatibilitySessions.add(session)
+      this.ctx.logger.warn(`rich-inline: could not prepare Session ${JSON.stringify(session.id)}; using synchronous compatibility reader`, error)
+    }
+  }
+
+  private latestTurn(session: Session): number | null {
+    const handle = this.turnProjection
+    if (handle !== undefined && !this.compatibilitySessions.has(session)) {
+      const prepared = handle.stateIfReady(session)
+      if (prepared.ready && prepared.state.kind === 'none') return null
+      if (prepared.ready && prepared.state.kind === 'turn') return prepared.state.value
+    }
+    // oxlint-disable-next-line typescript/no-deprecated -- Preserve synchronous reads for unprepared or malformed history.
+    const start = session.snapshotEvents().findLast(item => item.type === 'turn/start')
+    return start?.type === 'turn/start' ? start.data.turn : null
   }
 
   private authoringEnabled(agent?: Agent): boolean {
@@ -804,11 +851,27 @@ export class RichInline extends TypertRemoteService {
 
   private async cancelPending(sessionId: SessionId, candidate: RichActionRecord): Promise<void> {
     const agent = await this.resolveAgent(sessionId)
-    const message = [...agent.inbox.nextTurn, ...agent.inbox.nextStep].find(input =>
+    const pendingMessage = () => [...agent.inbox.nextTurn, ...agent.inbox.nextStep].find(input =>
       input.source.kind === 'user' && 'rpcId' in input.source && input.source.rpcId === candidate.agentRequestId)
-    // oxlint-disable-next-line typescript/no-deprecated -- Check committed claims before cancelling an unstarted prompt.
-    const wasClaimed = agent.session.snapshotEvents().some(event => event.type === 'user/message'
-      && event.data.source.kind === 'user' && 'rpcId' in event.data.source && event.data.source.rpcId === candidate.agentRequestId)
+    let message = pendingMessage()
+    let wasClaimed = false
+    if (message === undefined) {
+      const claimed = (event: SessionEvent): boolean => event.type === 'user/message'
+        && event.data.source.kind === 'user' && 'rpcId' in event.data.source && event.data.source.rpcId === candidate.agentRequestId
+      const watch = new AbortController()
+      try {
+        agent.session.onCommit((events) => { wasClaimed ||= events.some(claimed) }, watch.signal)
+        for await (const page of agent.session.readHistoryValues({}, claimed)) {
+          if (this.closed) return
+          wasClaimed ||= page.includes(true)
+          if (wasClaimed) break
+        }
+        message = pendingMessage()
+      } finally {
+        watch.abort()
+      }
+    }
+    if (this.closed) return
     if (message !== undefined) agent.inbox.remove(message.id)
     await this.ctx.sessionPersistence.flush()
     await this.serial(sessionId, async (record) => {
