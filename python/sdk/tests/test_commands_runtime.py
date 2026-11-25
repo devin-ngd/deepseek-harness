@@ -285,14 +285,21 @@ def _runtime(
             extra.write(f"- id: goal\n  config:\n    defaultMaxGoalRounds: {max_goal_rounds}\n")
     patches = (patch,) if capture_patch is None else (patch, capture_patch.resolve())
     dsh_bin = _dsh_bin()
+    launch_args = None
+    if dsh_bin is not None and os.name == "nt":
+        # Windows CreateProcess cannot execute the built JavaScript entry point directly.
+        node = shutil.which("node")
+        assert node is not None
+        launch_args = (node, dsh_bin, "--profile", "sdk", *(part for item in patches for part in ("--patch", str(item))))
     with _ModelServer(completions) as model_server, ThreadPoolExecutor(max_workers=2) as workers:
         harness = DeepSeekHarness(
             cwd=str(workspace), runtime_cwd=str(workspace), dsh_home=str(home),
             dsh_bin=dsh_bin, profile="sdk", patches=tuple(str(item) for item in patches), model=model,
+            _launch_args=launch_args,
             base_url=model_server.url, api_key="keyless-commands-runtime",
             initialize_timeout_seconds=60, request_timeout_seconds=20, shutdown_timeout_seconds=20,
             on_user_question=on_user_question,
-            env={"DSH_PERMISSION_MODE": initial_permission,
+            env={"DSH_HOME": str(home), "DSH_PERMISSION_MODE": initial_permission,
                  "DSH_TELEMETRY_DISABLED": "1", "DSH_TOOLS_MODE": "native"},
         )
         try:
