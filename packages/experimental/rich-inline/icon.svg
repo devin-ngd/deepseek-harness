@@ -1,0 +1,48 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="rich-inline-bg" x1="4" y1="3" x2="32" y2="33" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#172036"/>
+      <stop offset="0.55" stop-color="#0C111E"/>
+      <stop offset="1" stop-color="#070A12"/>
+    </linearGradient>
+    <linearGradient id="rich-inline-rim" x1="6" y1="3" x2="30" y2="33" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3B5280"/>
+      <stop offset="0.5" stop-color="#22314F"/>
+      <stop offset="1" stop-color="#131C30"/>
+    </linearGradient>
+    <radialGradient id="rich-inline-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(24 11) rotate(135) scale(18)">
+      <stop offset="0" stop-color="#818CF8" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rich-inline-card" x1="8" y1="8" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#131D33"/>
+      <stop offset="1" stop-color="#0A101D"/>
+    </linearGradient>
+    <linearGradient id="rich-inline-card-stroke" x1="8" y1="8" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#6366F1" stop-opacity="0.35"/>
+    </linearGradient>
+    <linearGradient id="rich-inline-accent" x1="10" y1="15" x2="26" y2="25" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="0.55" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#818CF8"/>
+    </linearGradient>
+    <linearGradient id="rich-inline-pill" x1="10.5" y1="22.5" x2="25.5" y2="22.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0EA5E9"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="30" height="30" rx="7" fill="url(#rich-inline-bg)"/>
+  <rect x="3" y="3" width="30" height="30" rx="7" fill="url(#rich-inline-glow)"/>
+  <rect x="3.5" y="3.5" width="29" height="29" rx="6.5" stroke="url(#rich-inline-rim)"/>
+  <rect x="7.5" y="8" width="21" height="20" rx="4" fill="url(#rich-inline-card)" stroke="url(#rich-inline-card-stroke)"/>
+  <line x1="8" y1="12.5" x2="28" y2="12.5" stroke="#243556"/>
+  <circle cx="10.5" cy="10.3" r="0.9" fill="#38BDF8"/>
+  <circle cx="13.2" cy="10.3" r="0.9" fill="#818CF8"/>
+  <path d="M12.2 15.2L10.3 17L12.2 18.8" stroke="url(#rich-inline-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M15.6 15.2L17.5 17L15.6 18.8" stroke="url(#rich-inline-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="19.5" y="15.3" width="6" height="1.5" rx="0.75" fill="#38BDF8" fill-opacity="0.85"/>
+  <rect x="19.5" y="17.6" width="4.2" height="1.5" rx="0.75" fill="#64748B" fill-opacity="0.7"/>
+  <rect x="10.5" y="21.2" width="15" height="3.8" rx="1.9" fill="url(#rich-inline-pill)"/>
+  <circle cx="23.4" cy="23.1" r="1.15" fill="#F8FAFC"/>
+</svg>

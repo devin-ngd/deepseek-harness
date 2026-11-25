@@ -2,6 +2,7 @@
   "name": "@deepseek-ai/dsh-rich-inline",
   "description": "Durable message-inline HTML interactions with host-owned authorization",
   "version": "0.2.2-rc.4",
+  "icon": "./icon.svg",
   "type": "module",
   "license": "MIT",
   "publishConfig": {
@@ -36,6 +37,7 @@
         "types": "./lib/types/shared/theme.d.ts",
         "default": "./lib/types/shared/theme.js"
       },
+      "./icon": "./icon.svg",
       "./package.json": "./package.json"
     }
   },
@@ -77,9 +79,11 @@
       "default": "./lib/types/shared/theme.js"
     },
     "./src/*": "./src/*",
+    "./icon": "./icon.svg",
     "./package.json": "./package.json"
   },
   "files": [
+    "icon.svg",
     "locale/*.json",
     "lib/index.js",
     "lib/client.js",
