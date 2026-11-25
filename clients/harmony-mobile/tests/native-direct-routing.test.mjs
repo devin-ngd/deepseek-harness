@@ -26,7 +26,7 @@ for (const scenario of [
   test('published routes choose ' + scenario.result + ' after ' + scenario.attempts.join(', '), async () => {
     const attempts = []
     const result = await selectNativePublishedEndpoint({
-      wifi: scenario.wifi, mesh: scenario.mesh, discoveryPort: port,
+      wifi: scenario.wifi, mesh: scenario.mesh, discoveryPort: port, onWifiSubnet: () => true,
       discover: async () => { attempts.push('discovery'); return undefined },
       lookup: async () => ({ wlan: desktop, tailnet, port }),
       reverse: async () => { attempts.push('reverse'); return scenario.reverse },
@@ -40,6 +40,22 @@ for (const scenario of [
     })
     assert.equal(result, scenario.result)
     assert.deepEqual(attempts, scenario.attempts)
+  })
+}
+
+for (const wifi of [true, false]) {
+  test('one connection survives a transient Tailnet dial on ' + (wifi ? 'off-subnet Wi-Fi' : 'cellular'), async () => {
+    const attempts = []
+    const path = await selectNativePublishedEndpoint({
+      wifi, mesh: true, discoveryPort: port, onWifiSubnet: () => false,
+      discover: async () => undefined,
+      lookup: async () => ({ wlan: desktop, tailnet, port }),
+      reverse: async () => { assert.fail('unexpected reverse connection') },
+      meshCanReach: async address => address === tailnet,
+      dial: async address => { attempts.push(address); return attempts.length === 2 },
+    })
+    assert.equal(path, 'tailnet')
+    assert.deepEqual(attempts, [tailnet, tailnet])
   })
 }
 

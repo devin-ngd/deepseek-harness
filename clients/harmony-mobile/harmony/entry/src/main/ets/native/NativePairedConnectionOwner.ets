@@ -194,6 +194,7 @@ export class NativePairedConnectionOwner {
     let selected: NativePort | undefined
     const options: NativeEndpointSelection = {
       wifi: network.wifi !== undefined, mesh: network.mesh, discoveryPort: port,
+      onWifiSubnet: (address: string): boolean => network.wifi !== undefined && isIpv4InSubnet(address, network.wifi.address, network.wifi.prefixLength),
       discover: (): Promise<string | undefined> => discoverNativeLanAddress(port, scope, ports.primitives, signal, budget, network.wifi),
       lookup: (): Promise<NativeDeviceEndpoints | null> => this.lookupEndpoints(authority, ports, trust, signal, budget),
       reverse: async (): Promise<boolean> => {
