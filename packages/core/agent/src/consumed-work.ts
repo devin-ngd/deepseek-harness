@@ -76,7 +76,7 @@ export function foldConsumedWork(events: readonly SessionEvent[]): ConsumedWork 
  * Account for an operation's committed events in sequence order.
  * @returns an incremental reader with the same selection rules as the complete log fold.
  */
-export function createConsumedWorkFold() {
+export function createConsumedWorkFold(): { push(event: SessionEvent): void; collect(): ConsumedWork } {
   const stepped = new Set<number>()
   const claimed = new Set<number>()
   let open: number | undefined

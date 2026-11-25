@@ -682,6 +682,12 @@ declare class Session {
     ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : []
     ): SessionEvent<T>;
   /**
+   * Check whether this Session stores the supplied event object at its sequence.
+   * @param event - event supplied by an observer.
+   * @returns true only for the canonical object, including an earlier committed event.
+   */
+  containsEvent(event: SessionEvent): boolean;
+  /**
    * The {@link EpochHeader} in force after the log's last header event — the
    * header the NEXT request will be compared against — or undefined before
    * the first `request/header` snapshot. The live, incrementally-maintained

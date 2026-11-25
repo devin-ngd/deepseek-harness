@@ -12,17 +12,17 @@ There is no privileged core to patch: you extend dsh by mounting a plugin beside
 
 ## Profiles and bundles
 
-A running `dsh` is a plugin tree composed at boot from ordered layers.
+At boot, `dsh` builds a plugin tree from ordered layers.
 
-A **profile** is a named composition stored in the Harness home. It lists the bundles it stacks, holds any out-of-tree plugins it installs, and keeps the user's own `cordis.patch.yml`. `web`, `headless`, `sdk`, `sdk-minimal`, and `acp` ship as templates.
+A **profile** in the Harness home stores an ordered bundle list, installed external plugins, and the user's `cordis.patch.yml`. Templates ship for `web`, `headless`, `sdk`, `sdk-minimal`, and `acp`.
 
-A **bundle** is a distribution format for Cordis config rows and the code they mount, so whatever it inserts stays patchable by the layers above it.
+A **bundle** distributes Cordis config rows and their code. Later layers can patch its rows.
 
-Each declares itself in its own `package.json` under a `dsh` field: `dsh.profile` lists a profile's bundles, and `dsh.bundle` points at a bundle's patch file.
+In `package.json`, `dsh.profile` lists a profile's bundles. `dsh.bundle` points to its package's patch file.
 
 [`dsh-base`](../packages/bundle/base/README.md) is the shared first layer of the `web`, `headless`, `sdk`, and `acp` profiles: model adapters, tools, persistence, sandbox and approval policy, settings, credentials, telemetry. [`dsh-web-app`](../packages/bundle/web-app/README.md) adds the browser application, [`dsh-headless`](../packages/bundle/headless/README.md) adds a one-shot runner with no server, [`dsh-sdk-app`](../packages/bundle/sdk-app/README.md) adds the SDK JSON-RPC server, and [`dsh-acp-app`](../packages/bundle/acp-app/README.md) adds the automation-only ACP server. [`dsh-sdk-minimal`](../packages/bundle/sdk-minimal/README.md) is the deliberate exception: one bundle owns its complete explicit SDK tree and does not apply `dsh-base`.
 
-Layers apply to an empty entry list: the profile's ordered bundles, its `cordis.patch.yml`, the home patch, then `--patch` overlays. A patch targets a row by id and replaces its whole config, or inserts new rows. A `preset` patch applies these operations inside that declaration’s `config.plugins`, with the same layer precedence.
+Starting with an empty list, apply the profile's bundles, `cordis.patch.yml`, home patch, then `--patch` overlays. Patches replace a row's whole config by id or insert rows. A `preset` patch does the same inside `config.plugins`.
 
 YAML controls HMR: base enables config-only `dsh-hmr`; headless, SDK and ACP disable it; `sdk-minimal` omits it. Profile patches override these defaults. HMR coordinates watching and reloads; the launcher provides profile data and readiness.
 

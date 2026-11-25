@@ -77,7 +77,8 @@ export function createLifecycleEmitter(
  * @returns its terminal stop reason; `completed` only for an epoch that both
  *   closed cleanly and had nothing left to run.
  */
-export function epochStopReason({ end, droppedUnrun }: ConsumedWork): SubagentResult['stopReason'] {
+export function epochStopReason(work: ConsumedWork): SubagentResult['stopReason'] {
+  const { end, droppedUnrun } = work
   switch (end?.data.reason.kind) {
     case 'max-tokens':
       return 'max-tokens'

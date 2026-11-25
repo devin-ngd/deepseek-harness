@@ -718,11 +718,17 @@ function defaultExport(ctx: FileCtx): ts.ClassDeclaration | ts.FunctionDeclarati
   return null
 }
 
-/** Find the exported `apply` function declaration in the entry file, or null. */
-function applyExport(ctx: FileCtx): ts.FunctionDeclaration | null {
+/** Find the exported `apply` function in the entry file, or null. */
+function applyExport(ctx: FileCtx): ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression | null {
   for (const stmt of ctx.sf.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.name?.text === 'apply'
       && stmt.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) return stmt
+    if (!ts.isVariableStatement(stmt) || !stmt.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) continue
+    for (const declaration of stmt.declarationList.declarations) {
+      const value = declaration.initializer
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === 'apply' && value !== undefined
+        && (ts.isArrowFunction(value) || ts.isFunctionExpression(value))) return value
+    }
   }
   return null
 }

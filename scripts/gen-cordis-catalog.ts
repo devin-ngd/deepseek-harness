@@ -197,6 +197,7 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   richInline: 'default-only experimental Host provider behind the package entry — packages/experimental/rich-inline/README.md owns the API',
   richAuthoringPolicy: 'optional Host-supplied Agent policy — packages/experimental/rich-inline/README.md owns excludes() and absence semantics',
   chatLiveProcess: 'client-side Session presentation registry — packages/client/ui-chat/README.md owns the API',
+  chatChangedFiles: 'client-side edited-files presentation registry — packages/client/ui-deliverables/README.md owns the API',
   invocation: 'not a service: per-call accessor (RemoteInvocation | undefined) the Gateway derives for each Remote call — packages/api/gateway/README.md owns the contract',
   webTerminals: 'client-side terminal view models — packages/api/terminal-controller/README.md owns the API',
   appReady: 'not a service: launcher-provided successful-startup signal — packages/boot/cmdline/README.md owns the launcher contract',

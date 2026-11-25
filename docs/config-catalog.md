@@ -4584,6 +4584,23 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-fs-search -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-goal -->
+<a id="deepseek-aidsh-tool-goal"></a>
+
+## `@deepseek-ai/dsh-tool-goal`
+
+- `inject`: `agents` · `goals` · `tools` · `systemPrompt` · `sessionProjections`
+- `source`: [`packages/goal/tool-goal/src/index.ts:33`](../packages/goal/tool-goal/src/index.ts)
+
+```ts config-catalog
+/** Model policy and hard lower bounds for goal-state updates. */
+export interface Config {
+  /** Minimum admitted goal rounds before the model may self-report `blocked`. */
+  blockedAfterConsecutiveRounds?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-goal -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-jobs -->
 <a id="deepseek-aidsh-tool-jobs"></a>
 
@@ -5579,7 +5596,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-session-title-llm` | — | [`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts) |
 | `@deepseek-ai/dsh-ssh-helper-runtime` | — | [`packages/ssh/ssh-helper-runtime/src/index.ts`](../packages/ssh/ssh-helper-runtime/src/index.ts) |
 | `@deepseek-ai/dsh-timeout` | — | [`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts) |
-| `@deepseek-ai/dsh-tool-goal` | — | [`packages/goal/tool-goal/src/index.ts`](../packages/goal/tool-goal/src/index.ts) |
 | `@deepseek-ai/dsh-tool-testkit` | — | [`packages/test-support/tool-testkit/src/index.ts`](../packages/test-support/tool-testkit/src/index.ts) |
 | `@deepseek-ai/dsh-typert-generator` | — | [`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts) |
 | `@deepseek-ai/dsh-typert-protocol` | — | [`packages/typert/protocol/src/index.ts`](../packages/typert/protocol/src/index.ts) |

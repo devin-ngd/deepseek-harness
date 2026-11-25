@@ -4,7 +4,8 @@
 
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
-import { createConsumedWorkFold } from '@deepseek-ai/dsh-agent/consumed-work'
+import { createConsumedWorkFold, type ConsumedWork } from '@deepseek-ai/dsh-agent/consumed-work'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { AssistantOutputFold } from './assistant-output.ts'
 import { epochStopReason } from './lifecycle.ts'
@@ -101,7 +102,10 @@ export type LocalActivation = Extract<Activation, { kind: 'local' }>
  * @param session - the exact child Session for this activation.
  * @returns synchronous result readers and the subscription disposer.
  */
-export function observeLocalWork(session: Session) {
+export function observeLocalWork(session: Session): {
+  collect(): { output: readonly ContentBlock[]; work: ConsumedWork }
+  dispose(): void
+} {
   const subscription = new AbortController()
   const output = new AssistantOutputFold()
   const work = createConsumedWorkFold()
