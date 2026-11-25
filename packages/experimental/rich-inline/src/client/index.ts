@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SyncedConfig } from '@deepseek-ai/dsh-client-config/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import richRemote from '@deepseek-ai/dsh-experimental-rich-inline/remote'
+import richRemote from '@deepseek-ai/dsh-rich-inline/remote'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -59,7 +59,7 @@ export async function apply(ctx: Context, config: SyncedConfig<RichClientConfig>
 }
 
 /** Plugins page key of this bundle's own detail page. */
-const RICH_PACKAGE_NAME = '@deepseek-ai/dsh-experimental-rich-inline'
+const RICH_PACKAGE_NAME = '@deepseek-ai/dsh-rich-inline'
 
 /**
  * Follow the profile theme through the shared settings mirror and offer it on this bundle's Plugins page while the

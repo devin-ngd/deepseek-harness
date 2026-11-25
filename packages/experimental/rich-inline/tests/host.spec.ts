@@ -43,7 +43,7 @@ it('projects every Client-facing field through the Host volatile schema', () => 
   expect(resolved.compactLiveProcess.get()).toBe(true)
   expect(resolved.htmlQuestions.get()).toBe(true)
   expect(resolved.theme.get()).toBe('cyber')
-  expect(syncedValues(RichInline.Config, resolved, '@deepseek-ai/dsh-experimental-rich-inline')).toEqual({
+  expect(syncedValues(RichInline.Config, resolved, '@deepseek-ai/dsh-rich-inline')).toEqual({
     activePresets: [],
     pollIntervalMs: 1000,
     compactLiveProcess: true,

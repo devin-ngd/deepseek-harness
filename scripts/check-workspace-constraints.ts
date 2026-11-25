@@ -101,7 +101,7 @@ export interface PackageManifest {
   exports?: Record<string, ExportTarget | undefined>
   files?: string[]
   icon?: string
-  publishConfig?: { access?: string }
+  publishConfig?: { access?: string; exports?: Record<string, ExportTarget | undefined> }
   repository?: { type?: string; url?: string; directory?: string }
   peerDependencies?: Record<string, string>
   devDependencies?: Record<string, string>
@@ -580,6 +580,12 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
   }
 
   if (dir.startsWith('packages/') && manifest.name?.startsWith('@deepseek-ai/dsh-')) {
+    if (manifest.name === '@deepseek-ai/dsh-rich-inline') {
+      const publishedExports = Object.fromEntries(Object.entries(manifest.exports ?? {}).filter(([key]) => key !== './src/*'))
+      if (manifest.exports?.['./src/*'] !== './src/*' || JSON.stringify(manifest.publishConfig?.exports) !== JSON.stringify(publishedExports)) {
+        errors.push(`${label}: publishConfig.exports must match workspace exports except ./src/*`)
+      }
+    }
     const peer = manifest.peerDependencies?.['@deepseek-ai/cordis']
     const dev = manifest.devDependencies?.['@deepseek-ai/cordis']
 

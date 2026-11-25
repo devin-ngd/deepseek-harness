@@ -306,7 +306,7 @@ async function loopbackRelay(record: DeviceBinding, policy: PairedRelayPolicy, c
 }
 
 async function richReconnectFixture(ctx: Context, world: string, origin: string, client: WorkspaceClient) {
-  ctx.effect(() => ctx.typert.register(validateTypertManifest('@deepseek-ai/dsh-experimental-rich-inline', RICH_TYPERT)))
+  ctx.effect(() => ctx.typert.register(validateTypertManifest('@deepseek-ai/dsh-rich-inline', RICH_TYPERT)))
   const code = { key: 'workspace-reconnected-rich', html: '<label>Note<input name="note"></label>', css: '', js: '', fallbackText: 'Note form', stateSchemaVersion: 1 }
   const replay = await installWorkspaceRichReplay(ctx, world, code)
   onTestFinished(() => replay.dispose())

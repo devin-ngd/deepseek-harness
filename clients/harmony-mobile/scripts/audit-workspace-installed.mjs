@@ -10,7 +10,7 @@ const archive = 'C:/Users/wpdev/AppData/Local/Programs/DeepSeek Harness/resource
 const bytes = asar.extractFile(archive, 'dsh\\desktop-runtime.json'), runtime = JSON.parse(bytes.toString('utf8'))
 const shell = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'))
 const packages = []
-for (const name of ['@deepseek-ai/dsh-experimental-rich-inline', 'dsh-devflow', '@deepseek-ai/dsh-experimental-harmony-mobile']) {
+for (const name of ['@deepseek-ai/dsh-rich-inline', 'dsh-devflow', '@deepseek-ai/dsh-experimental-harmony-mobile']) {
   const path = join('C:/Users/wpdev/.dsh/profiles/desktop/node_modules', name, 'package.json')
   try { const value = JSON.parse(await readFile(path, 'utf8')); packages.push({ name: value.name, version: value.version, engines: value.engines, path }) }
   catch (error) { if (error.code !== 'ENOENT') throw error; packages.push({ name, missingAtExpectedPublicPath: true }) }

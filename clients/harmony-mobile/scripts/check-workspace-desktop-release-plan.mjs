@@ -24,7 +24,7 @@ assert.equal(sameDrive.snapshotsVerified, 71)
 
 const targetProfile = 'C:\\dsh-release-fixture\\profiles\\desktop'
 assert.ok(archives.every(archive => win32.parse(archive.path).root.toLowerCase() !== win32.parse(targetProfile).root.toLowerCase()))
-const harmony = '@deepseek-ai/dsh-experimental-harmony-mobile', rich = '@deepseek-ai/dsh-experimental-rich-inline'
+const harmony = '@deepseek-ai/dsh-experimental-harmony-mobile', rich = '@deepseek-ai/dsh-rich-inline'
 const oldHarmony = Object.keys(before.packages).find(key => key.startsWith(harmony + '@file:')).slice(harmony.length + 1)
 const oldRich = Object.keys(before.packages).find(key => key.startsWith(rich + '@file:')).slice(rich.length + 1)
 const richFile = 'file:E:/synthetic/rich-before (saved).tgz'

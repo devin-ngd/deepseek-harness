@@ -1,4 +1,4 @@
-/** Public research data and host-owned protection evidence. @module dsh-experimental-safe-external-research/types */
+/** Public research data and host-owned protection evidence. @module dsh-safe-external-research/types */
 
 /** One bounded result conforming to the shared result v1 schema. */
 export interface ResearchResult {

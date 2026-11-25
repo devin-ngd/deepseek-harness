@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/dsh-experimental-safe-external-research",
+  "name": "@deepseek-ai/dsh-safe-external-research",
   "description": "Controlled anonymous public research with a minimal worker and validated shared results",
   "version": "0.2.2-rc.4",
   "publishConfig": {
@@ -23,7 +23,10 @@
   },
   "files": [
     "lib/index.js",
-    "lib/types/**/*.d.ts"
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "lib/**/*.js.map",
+    "src"
   ],
   "license": "MIT",
   "dependencies": {

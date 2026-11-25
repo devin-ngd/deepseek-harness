@@ -95,7 +95,7 @@ export function apply(ctx: Context): void {
           peers.push({ name, path, sha256: actual })
         }
         const clients = []
-        const expectedClients: ReadonlyArray<readonly [string, string]> = [['@deepseek-ai/dsh-experimental-harmony-mobile', 'lib/client.js'], ['@deepseek-ai/dsh-experimental-rich-inline', 'lib/client.js'], ['dsh-devflow', 'lib/client.js']]
+        const expectedClients: ReadonlyArray<readonly [string, string]> = [['@deepseek-ai/dsh-experimental-harmony-mobile', 'lib/client.js'], ['@deepseek-ai/dsh-rich-inline', 'lib/client.js'], ['dsh-devflow', 'lib/client.js']]
         for (const [name, entry] of expectedClients) {
           const client = ctx.clientModules.clientPath(name); assert.ok(client, name)
           assert.equal(await realpath(client), await realpath(join(ctx.profileContext.dir, 'node_modules', name, entry)))

@@ -42,7 +42,7 @@ export async function loadProfileServices(world: string, configuration: string) 
       uploads: (await import('@deepseek-ai/dsh-client-file-upload')).default,
       defaultModel: (await import('@deepseek-ai/dsh-agent-default-model')).default,
       sessionController: (await import('@deepseek-ai/dsh-api-session-controller')).default,
-      richInline: (await import('@deepseek-ai/dsh-experimental-rich-inline')).default,
+      richInline: (await import('@deepseek-ai/dsh-rich-inline')).default,
     })
     let yml = configuration
     for (const [key, directory] of [['storage', 'state'], ['sessions', 'sessions'], ['home', 'home']] as const) {

@@ -3,7 +3,7 @@ description: "Opt-in message-inline HTML, CSS and JavaScript with isolated Deskt
 kind: "package-bundle"
 ---
 
-# @deepseek-ai/dsh-experimental-rich-inline
+# @deepseek-ai/dsh-rich-inline
 
 English | [中文](README.zh.md)
 
@@ -26,7 +26,7 @@ This optional profile layer adds arbitrary HTML fragments, CSS and JavaScript in
 
 ### Install into a profile
 
-This checkout includes the required chat slot and Desktop container changes. Build and launch with `pnpm run dev:desktop`; subsequent launches can use `pnpm run start:desktop`. In **Plugins → Add plugin**, enter the absolute local `.tgz` path, finish installation and enable **@deepseek-ai/dsh-experimental-rich-inline**. Disabling the switch removes the layer and stops new rich interactions; saved conversation data remains. This package is unpublished: do not install it by name from a public registry.
+This checkout includes the required chat slot and Desktop container changes. Build and launch with `pnpm run dev:desktop`; subsequent launches can use `pnpm run start:desktop`. In **Plugins → Add plugin**, enter the absolute local `.tgz` path, finish installation and enable **@deepseek-ai/dsh-rich-inline**. Disabling the switch removes the layer and stops new rich interactions; saved conversation data remains. This package is unpublished: do not install it by name from a public registry.
 
 After replacing an installed package, quit and relaunch Desktop completely. A page refresh or the plugin's Running indicator alone does not establish that the Host loaded its new module. In the next task's trajectory, verify the updated system prompt and `rich-inline:output-format` runtime context; the raw final answer should contain `rich-html` code. A Markdown compatibility notice means that answer did not use the new output contract.
 
@@ -34,7 +34,7 @@ Build the Host and Client halves before packing:
 
 ```powershell
 pnpm run build:lib
-pnpm --filter @deepseek-ai/dsh-experimental-rich-inline run bundle
+pnpm --filter @deepseek-ai/dsh-rich-inline run bundle
 pnpm --dir packages/experimental/rich-inline pack --pack-destination D:\Temp\dsh-rich-package
 ```
 
@@ -42,8 +42,8 @@ For a CLI-managed **Web** profile, the verified local install/removal path is:
 
 ```powershell
 $env:DSH_HOME = 'D:\Temp\dsh-rich-profile'
-node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.2-rc.1.tgz' --ignore-scripts --config.auto-install-peers=false
-node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-experimental-rich-inline'
+node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-rich-inline-0.2.2-rc.4.tgz' --ignore-scripts --config.auto-install-peers=false
+node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-rich-inline'
 ```
 
 The CLI refuses to manage `desktop`: use the application plugin manager. `dsh.bundle.patch` activates [cordis.patch.yml](cordis.patch.yml), inserting the `rich-inline` row. An npm dependency alone does not enable it. Acceptance uses the source [overlay](../../../apps/web/tests/rich-inline.overlay.yml).
@@ -137,7 +137,7 @@ The prompt asks for a concise answer first, moderate headings, restrained decora
 | Code or debugging | Semantic `pre`/`code`, `rich-callout`, `rich-warning` |
 | Animation or demonstration | A custom scene with theme colors and local motion controls |
 
-These classes are optional; arbitrary HTML/CSS/JS still works. Responsive grids collapse on narrow widths, wide tables scroll inside their wrapper, and the base sheet respects reduced-motion preferences. [Four runnable examples](examples/theme.ts) demonstrate answers, comparisons, a local form and a filtered bar chart. Consumers can import `RICH_CYBER_CSS`, `RICH_DARK_CSS` or `richThemeCss()` from `@deepseek-ai/dsh-experimental-rich-inline/theme`; the plugin already injects the sheet, so model answers should not duplicate it.
+These classes are optional; arbitrary HTML/CSS/JS still works. Responsive grids collapse on narrow widths, wide tables scroll inside their wrapper, and the base sheet respects reduced-motion preferences. [Four runnable examples](examples/theme.ts) demonstrate answers, comparisons, a local form and a filtered bar chart. Consumers can import `RICH_CYBER_CSS`, `RICH_DARK_CSS` or `richThemeCss()` from `@deepseek-ai/dsh-rich-inline/theme`; the plugin already injects the sheet, so model answers should not duplicate it.
 
 Example assistant output (the message UI renders the object):
 

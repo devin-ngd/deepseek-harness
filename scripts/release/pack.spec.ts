@@ -11,12 +11,12 @@ import { officialClientBuildEnvironment, writeClientBuildRecord } from '../clien
 import { runGate, type Gate } from '../run-gates.ts'
 import { removeFixtureSafely } from '../test-fixture-cleanup.ts'
 import { releaseFamily, tarballName } from './families.ts'
-import { packedIdentity, PUBLISH_ORDER_FILE, readPublishOrder } from './tarball.ts'
+import { packedIdentity, packedManifest, PUBLISH_ORDER_FILE, readPublishOrder, tarballFiles } from './tarball.ts'
 
 const require = createRequire(import.meta.url)
 const packScript = resolve(import.meta.dirname, 'pack.ts')
 const tsxHook = pathToFileURL(require.resolve('tsx/esm')).href
-const pnpmEntry = join(dirname(require.resolve('pnpm')), 'bin/pnpm.cjs')
+const pnpmEntry = join(dirname(require.resolve('pnpm')), 'bin/pnpm.mjs')
 const roots: string[] = []
 const commit = 'abcdef0'
 
@@ -114,6 +114,26 @@ afterEach(() => {
 })
 
 describe('release pack CLI', () => {
+  it('packs the published export map while retaining the workspace source entry', async () => {
+    const root = fixture()
+    const name = '@deepseek-ai/dsh-probe'
+    const directory = 'packages/util/probe'
+    const exports = { '.': './lib/index.js', './src/*': './src/*' }
+    packageFixture(root, directory, name, { exports, publishConfig: { exports: { '.': './lib/index.js' } } })
+    write(join(root, directory, 'src/internal.ts'), 'export const internal = 1\n')
+    write(join(root, 'apps/web/dist/index.html'), '<main></main>')
+    writeClientBuildRecord(root, officialClientBuildEnvironment(root, { DSH_CLIENT_COMMIT_HASH: commit }))
+    const fromWorkspace = createRequire(join(root, directory, 'package.json'))
+    expect(fromWorkspace.resolve(`${name}/src/internal.ts`)).toBe(join(root, directory, 'src/internal.ts'))
+
+    const result = await runPack(root, ['--family', 'dsh'])
+
+    expect(result.status, result.stderr).toBe(0)
+    const archive = join(root, 'packed/deepseek-ai-dsh-probe-1.2.3.tgz')
+    expect(packedManifest(archive).exports).toEqual({ '.': './lib/index.js' })
+    expect(tarballFiles(archive)).not.toContain('package/src/internal.ts')
+  }, 120_000)
+
   it.each([undefined, '1', '2'])('packs only public family members and records their publish order (concurrency=%s)', async (concurrency) => {
     const root = fixture()
     // Publication places zebra before alpha; pnpm's workspace dev edge points in the opposite direction.

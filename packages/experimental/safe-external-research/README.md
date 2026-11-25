@@ -3,7 +3,7 @@ description: "Configure anonymous public research, trusted shared Skill verifica
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-experimental-safe-external-research
+# @deepseek-ai/dsh-safe-external-research
 
 English | [中文](README.zh.md)
 
@@ -31,7 +31,7 @@ Mount this plugin explicitly in a development composition with tools, agents, LL
 
 Use an absolute `skillDirectory` pointing to the shared `~/.agents/skills/safe-external-research`, plus explicit `provider`, `model` and `allowedSources`. Each source is an HTTPS origin and path-segment prefix; requests must narrow those prefixes. Query strings, fragments, credentials, alternate ports and encoded path separators are rejected. Optional `searchUrl` names an anonymous HTML search endpoint; `searchQueryKey` carries only the initial public question. Search cannot receive worker-authored query text. Empty `searchUrl` disables search.
 
-`maxReads`, `maxSteps`, `maxResponseBytes`, `timeoutMs` and `maxTokens` bound each operation. `blockedTools` defaults to `web_search` and `web_fetch`; these calls are refused while this plugin is mounted. Add deployment-specific search tool names when needed. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-experimental-safe-external-research) lists defaults and limits.
+`maxReads`, `maxSteps`, `maxResponseBytes`, `timeoutMs` and `maxTokens` bound each operation. `blockedTools` defaults to `web_search` and `web_fetch`; these calls are refused while this plugin is mounted. Add deployment-specific search tool names when needed. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-safe-external-research) lists defaults and limits.
 
 ### Results and failures
 

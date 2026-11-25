@@ -42,7 +42,7 @@
     }
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-experimental-rich-inline": "workspace:*",
+    "@deepseek-ai/dsh-rich-inline": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-compaction": "workspace:*",
     "@deepseek-ai/dsh-deepseek-llm-api-extensions": "workspace:*",

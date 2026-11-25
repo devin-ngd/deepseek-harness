@@ -1,11 +1,43 @@
 {
-  "name": "@deepseek-ai/dsh-experimental-rich-inline",
+  "name": "@deepseek-ai/dsh-rich-inline",
   "description": "Durable message-inline HTML interactions with host-owned authorization",
   "version": "0.2.2-rc.4",
   "type": "module",
   "license": "MIT",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./lib/types/index.d.ts",
+        "default": "./lib/index.js"
+      },
+      "./client": {
+        "types": "./lib/types/client/index.d.ts",
+        "default": "./lib/client.js"
+      },
+      "./types": {
+        "types": "./lib/types/shared/types.d.ts",
+        "default": "./lib/types/shared/types.js"
+      },
+      "./validate": {
+        "types": "./lib/types/shared/validate.d.ts",
+        "default": "./lib/types/shared/validate.js"
+      },
+      "./typert": {
+        "types": "./lib/typert.host.d.ts",
+        "default": "./lib/typert.host.js"
+      },
+      "./remote": {
+        "types": "./lib/typert.remote-client.d.ts",
+        "default": "./lib/typert.remote-client.js"
+      },
+      "./locale/*.json": "./locale/*.json",
+      "./theme": {
+        "types": "./lib/types/shared/theme.d.ts",
+        "default": "./lib/types/shared/theme.js"
+      },
+      "./package.json": "./package.json"
+    }
   },
   "repository": {
     "type": "git",
@@ -54,11 +86,14 @@
     "cordis.patch.yml",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "lib/**/*.js.map",
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts",
-    "lib/typert.remote-client.d.ts.map"
+    "lib/typert.remote-client.d.ts.map",
+    "src"
   ],
   "dsh": {
     "client": {

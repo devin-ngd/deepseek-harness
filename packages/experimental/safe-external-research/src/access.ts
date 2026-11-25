@@ -1,4 +1,4 @@
-/** Anonymous bounded retrieval whose model interface accepts only source ids. @module dsh-experimental-safe-external-research/access */
+/** Anonymous bounded retrieval whose model interface accepts only source ids. @module dsh-safe-external-research/access */
 
 import { parse } from 'parse5'
 import type { DefaultTreeAdapterMap } from 'parse5'

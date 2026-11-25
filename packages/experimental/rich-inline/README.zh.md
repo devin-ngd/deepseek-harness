@@ -3,7 +3,7 @@ description: "可选的消息内 HTML、CSS、JavaScript 插件，使用隔离�
 kind: "package-bundle"
 ---
 
-# @deepseek-ai/dsh-experimental-rich-inline
+# @deepseek-ai/dsh-rich-inline
 
 [English](README.md) | 中文
 
@@ -26,7 +26,7 @@ kind: "package-bundle"
 
 ### 安装到配置
 
-本工作树包含必要的聊天插槽和桌面容器改动。用 `pnpm run dev:desktop` 构建并启动，之后可用 `pnpm run start:desktop` 启动已有构建。在 **Plugins → Add plugin** 输入本地 `.tgz` 绝对路径，完成安装并启用 **@deepseek-ai/dsh-experimental-rich-inline**。停用开关移除配置层并停止新的富交互，已保存的会话数据保留。本包尚未发布，不要按包名从公共 registry 安装。
+本工作树包含必要的聊天插槽和桌面容器改动。用 `pnpm run dev:desktop` 构建并启动，之后可用 `pnpm run start:desktop` 启动已有构建。在 **Plugins → Add plugin** 输入本地 `.tgz` 绝对路径，完成安装并启用 **@deepseek-ai/dsh-rich-inline**。停用开关移除配置层并停止新的富交互，已保存的会话数据保留。本包尚未发布，不要按包名从公共 registry 安装。
 
 替换已安装包后，完整退出并重新启动桌面应用。只刷新页面或看到插件 Running，不能证明 Host 已加载新模块。可在下一条任务的轨迹中核对新版系统提示词和 `rich-inline:output-format` 运行时上下文；最终原文应包含 `rich-html` 代码。出现 Markdown 兼容提示意味着该回答没有遵循新输出协议。
 
@@ -34,7 +34,7 @@ kind: "package-bundle"
 
 ```powershell
 pnpm run build:lib
-pnpm --filter @deepseek-ai/dsh-experimental-rich-inline run bundle
+pnpm --filter @deepseek-ai/dsh-rich-inline run bundle
 pnpm --dir packages/experimental/rich-inline pack --pack-destination D:\Temp\dsh-rich-package
 ```
 
@@ -42,8 +42,8 @@ CLI 管理的 **Web** 配置已验证以下安装/移除路径：
 
 ```powershell
 $env:DSH_HOME = 'D:\Temp\dsh-rich-profile'
-node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-experimental-rich-inline-0.2.2-rc.1.tgz' --ignore-scripts --config.auto-install-peers=false
-node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-experimental-rich-inline'
+node apps/cli/lib/bin.js plugin --profile web add 'D:\Temp\dsh-rich-package\deepseek-ai-dsh-rich-inline-0.2.2-rc.4.tgz' --ignore-scripts --config.auto-install-peers=false
+node apps/cli/lib/bin.js plugin --profile web remove '@deepseek-ai/dsh-rich-inline'
 ```
 
 CLI 拒绝管理 `desktop`，桌面端应使用应用插件管理器。`dsh.bundle.patch` 激活 [cordis.patch.yml](cordis.patch.yml)，插入 `rich-inline` 项。只有 npm 依赖不会启用插件。验收采用源码 [overlay](../../../apps/web/tests/rich-inline.overlay.yml)。
@@ -137,7 +137,7 @@ accent: auto
 | 代码或排错 | 语义化 `pre`/`code`、`rich-callout`、`rich-warning` |
 | 动画或演示 | 使用主题颜色的自定义场景与本地动画控制 |
 
-这些类均可选，仍支持任意 HTML/CSS/JS。响应式网格在窄屏收为单列，宽表格在自己的容器内滚动，基础样式尊重减少动画偏好。[四个可运行示例](examples/theme.ts) 展示问答、对比、本地表单和可筛选的条形图。开发者可从 `@deepseek-ai/dsh-experimental-rich-inline/theme` 导入 `RICH_CYBER_CSS`、`RICH_DARK_CSS` 或 `richThemeCss()`；插件已自动注入，模型回答无需重复附带整份样式。
+这些类均可选，仍支持任意 HTML/CSS/JS。响应式网格在窄屏收为单列，宽表格在自己的容器内滚动，基础样式尊重减少动画偏好。[四个可运行示例](examples/theme.ts) 展示问答、对比、本地表单和可筛选的条形图。开发者可从 `@deepseek-ai/dsh-rich-inline/theme` 导入 `RICH_CYBER_CSS`、`RICH_DARK_CSS` 或 `richThemeCss()`；插件已自动注入，模型回答无需重复附带整份样式。
 
 助手输出示例（消息界面渲染该对象）：
 

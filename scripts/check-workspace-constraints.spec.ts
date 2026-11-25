@@ -322,6 +322,18 @@ describe('dsh family version coherence', () => {
 })
 
 describe('package payload constraints', () => {
+  it('keeps Rich Inline workspace-only source exports out of the published export map', () => {
+    const dir = 'packages/experimental/rich-inline'
+    const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as WorkspaceManifest['manifest']
+    const errors = (candidate: WorkspaceManifest['manifest']) => checkWorkspaceManifest({ dir, manifest: candidate })
+      .filter(error => error.includes('publishConfig.exports must match'))
+    expect(errors(manifest)).toEqual([])
+    expect(errors({ ...manifest, publishConfig: { access: 'public' } })).toHaveLength(1)
+    expect(errors({ ...manifest, publishConfig: { ...manifest.publishConfig, exports: { ...manifest.exports } } })).toHaveLength(1)
+    expect(errors({ ...manifest, exports: { ...manifest.exports, './added': './lib/added.js' } })).toHaveLength(1)
+    expect(errors({ ...manifest, exports: { ...manifest.exports, './src/*': './lib/*' } })).toHaveLength(1)
+  })
+
   it.each([
     ['./art/icon.svg', ['art/icon.svg']],
     [{ import: './art/icon.svg', default: './art/fallback.svg' }, ['art/icon.svg', 'art/fallback.svg']],

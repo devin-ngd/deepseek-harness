@@ -18,7 +18,7 @@ export async function installedHost(root, version, label) {
   const json = path => { const bytes = extract(path); retainedFiles.set(path, bytes); return JSON.parse(bytes.toString('utf8')) }, hash = bytes => createHash('sha256').update(bytes).digest('hex')
   const descriptor = json('dsh/desktop-runtime.json')
   if (descriptor.release.version !== version || descriptor.release.hostProtocolVersion !== 4) throw new Error('The selected installed Host must be ' + version + ' / protocol4')
-  const richRoot = 'C:/Users/wpdev/.dsh/profiles/desktop/node_modules/@deepseek-ai/dsh-experimental-rich-inline'
+  const richRoot = 'C:/Users/wpdev/.dsh/profiles/desktop/node_modules/@deepseek-ai/dsh-rich-inline'
   const rich = JSON.parse(await readFile(join(richRoot, 'package.json'), 'utf8'))
   if (rich.version !== version) throw new Error('Installed rich-inline must be ' + version)
   const inputs = new Map(), builtins = new Set([...builtinModules, ...builtinModules.map(name => 'node:' + name)])

@@ -2,7 +2,7 @@ import type {} from '@deepseek-ai/dsh-session-query'
 /** Actual same-profile SessionController/RichInline binding; contains no fixture label or copied rich/session implementation. */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
-import type {} from '@deepseek-ai/dsh-experimental-rich-inline'
+import type {} from '@deepseek-ai/dsh-rich-inline'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { DesktopOperationPorts, DesktopCommandAuthorizer } from '../../src/desktop-adapter.ts'

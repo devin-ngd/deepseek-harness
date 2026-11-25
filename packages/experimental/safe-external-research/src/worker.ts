@@ -1,4 +1,4 @@
-/** Independent worker without parent composition. @module dsh-experimental-safe-external-research/worker */
+/** Independent worker without parent composition. @module dsh-safe-external-research/worker */
 
 import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'

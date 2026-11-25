@@ -3,7 +3,7 @@ description: "配置匿名公开研究、可信共享 Skill 校验、worker 工�
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-experimental-safe-external-research
+# @deepseek-ai/dsh-safe-external-research
 
 [English](README.md) | 中文
 
@@ -31,7 +31,7 @@ kind: "package-reference"
 
 使用绝对路径 `skillDirectory` 指向共享的 `~/.agents/skills/safe-external-research`，并显式提供 `provider`、`model` 和 `allowedSources`。每个来源是 HTTPS 源站及按路径段匹配的前缀；请求只能缩小这些前缀。查询参数、片段、凭据、其他端口和编码后的路径分隔符均被拒绝。可选 `searchUrl` 指定匿名 HTML 搜索端点；`searchQueryKey` 只携带初始公开问题。搜索不能接收 worker 编写的查询文本。空 `searchUrl` 禁用搜索。
 
-`maxReads`、`maxSteps`、`maxResponseBytes`、`timeoutMs` 和 `maxTokens` 限制每次操作。`blockedTools` 默认为 `web_search` 和 `web_fetch`；插件加载期间拒绝这些调用。部署有其他搜索工具时，应添加对应名称。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-experimental-safe-external-research) 列出默认值与限制。
+`maxReads`、`maxSteps`、`maxResponseBytes`、`timeoutMs` 和 `maxTokens` 限制每次操作。`blockedTools` 默认为 `web_search` 和 `web_fetch`；插件加载期间拒绝这些调用。部署有其他搜索工具时，应添加对应名称。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-safe-external-research) 列出默认值与限制。
 
 ### 结果与失败
 

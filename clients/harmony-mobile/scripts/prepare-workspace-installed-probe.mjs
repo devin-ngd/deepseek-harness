@@ -159,7 +159,7 @@ await writeFile(join(fixture, 'cordis.patch.yml'), '- insert:\n    - id: workspa
 await esbuild.build({ entryPoints: [resolve(deviceCommand ? 'integration/workspace-installed-device-command.ts' : scenario === 'metadata' ? 'integration/workspace-installed-probe.ts' : 'integration/workspace-installed-combination.ts')], outfile: join(fixture, 'index.mjs'), bundle: true, platform: 'node', format: 'esm', target: 'node24',
   external: ['@deepseek-ai/*'], plugins: [{ name: 'workspace-test-dependencies', setup(build) {
     build.onResolve({ filter: /^@deepseek-ai\/dsh-llm-replay$/ }, () => ({ path: join(root, 'packages/test-support/llm-replay/src/index.ts') }))
-    build.onResolve({ filter: /^@deepseek-ai\/dsh-experimental-rich-inline\/message-projections$/ }, async () => {
+    build.onResolve({ filter: /^@deepseek-ai\/dsh-rich-inline\/message-projections$/ }, async () => {
       const project = resolve('.'), spec = JSON.parse(await readFile('projection-source.json', 'utf8'))
       const inputs = await prepareProjectionInputs(project, root, spec)
       return { path: join(inputs.directory, 'shared/message-projections.ts') }

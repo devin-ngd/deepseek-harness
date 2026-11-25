@@ -64,7 +64,7 @@ if (sourceSettings) {
 } else {
   await cp(artifact.stage, candidate, { recursive: true, errorOnExist: true })
 }
-const richLink = join(candidate, 'node_modules/@deepseek-ai/dsh-experimental-rich-inline')
+const richLink = join(candidate, 'node_modules/@deepseek-ai/dsh-rich-inline')
 await mkdir(join(candidate, 'node_modules/@deepseek-ai'), { recursive: true })
 await symlink(join(root, 'packages/experimental/rich-inline'), richLink, 'junction')
 if (artifact !== undefined) for (const file of artifact.files) assert.equal(hash(await readFile(join(candidate, file.path.replace(/^package\//, '')))), file.sha256)
@@ -91,7 +91,7 @@ await writeFile(overlay, `- id: desktop-product-telemetry
     desktopPlatform: null
 - insert:
     - id: shell-fixture-rich-inline
-      name: '@deepseek-ai/dsh-experimental-rich-inline'
+      name: '@deepseek-ai/dsh-rich-inline'
       config:
         activePresets: []
         maxAutoRepairAttempts: 0

@@ -1418,48 +1418,6 @@ export interface InspectorOptions {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-inspector -->
 
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-safe-external-research -->
-<a id="deepseek-aidsh-experimental-safe-external-research"></a>
-
-## `@deepseek-ai/dsh-experimental-safe-external-research`
-
-- `inject`: `tools` · `systemPrompt` · `agents` · `llm` · `sessionPersistence`
-- `source`: [`packages/experimental/safe-external-research/src/index.ts:19`](../packages/experimental/safe-external-research/src/index.ts)
-
-```ts config-catalog
-/** Deployment policy supplied through Cordis. */
-export type Config = ResearchConfig
-
-/** Complete deployment policy; model callers cannot change it. */
-export interface ResearchConfig {
-  /** Absolute trusted shared Skill directory; every pinned file must match. */
-  skillDirectory: string
-  /** Explicit model provider for the independent worker. */
-  provider: string
-  /** Explicit model id within the configured provider. */
-  model: string
-  /** HTTPS origins and path prefixes that requests may narrow. */
-  allowedSources: string[]
-  /** Anonymous HTML search endpoint; empty disables search. */
-  searchUrl: string
-  /** Query parameter carrying only the initial public question. */
-  searchQueryKey: string
-  /** Host tool names refused while this research entry is mounted. */
-  blockedTools: string[]
-  /** Maximum reads and search requests per operation. */
-  maxReads: number
-  /** Maximum model steps per operation. */
-  maxSteps: number
-  /** Maximum UTF-8 bytes accepted for each response and extracted text. */
-  maxResponseBytes: number
-  /** Operation and individual HTTP deadline in milliseconds. */
-  timeoutMs: number
-  /** Maximum model output tokens for each worker step. */
-  maxTokens: number
-}
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-safe-external-research -->
-
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-speech-to-text -->
 <a id="deepseek-aidsh-experimental-speech-to-text"></a>
 
@@ -1774,6 +1732,23 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-goal -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-goal-round-driver -->
+<a id="deepseek-aidsh-goal-round-driver"></a>
+
+## `@deepseek-ai/dsh-goal-round-driver`
+
+- `inject`: `agents` · `goals` · `sessions`
+- `source`: [`packages/goal/goal-round-driver/src/index.ts:24`](../packages/goal/goal-round-driver/src/index.ts)
+
+```ts config-catalog
+/** Configuration for delayed continuation after a transient provider failure. */
+export interface Config {
+  /** Delay before continuing after a transient provider failure, in milliseconds. Zero disables automatic retries. */
+  retryDelayMs?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-goal-round-driver -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-headless -->
 <a id="deepseek-aidsh-headless"></a>
@@ -3168,6 +3143,48 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-repeat-tool-reminder -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-safe-external-research -->
+<a id="deepseek-aidsh-safe-external-research"></a>
+
+## `@deepseek-ai/dsh-safe-external-research`
+
+- `inject`: `tools` · `systemPrompt` · `agents` · `llm` · `sessionPersistence`
+- `source`: [`packages/experimental/safe-external-research/src/index.ts:19`](../packages/experimental/safe-external-research/src/index.ts)
+
+```ts config-catalog
+/** Deployment policy supplied through Cordis. */
+export type Config = ResearchConfig
+
+/** Complete deployment policy; model callers cannot change it. */
+export interface ResearchConfig {
+  /** Absolute trusted shared Skill directory; every pinned file must match. */
+  skillDirectory: string
+  /** Explicit model provider for the independent worker. */
+  provider: string
+  /** Explicit model id within the configured provider. */
+  model: string
+  /** HTTPS origins and path prefixes that requests may narrow. */
+  allowedSources: string[]
+  /** Anonymous HTML search endpoint; empty disables search. */
+  searchUrl: string
+  /** Query parameter carrying only the initial public question. */
+  searchQueryKey: string
+  /** Host tool names refused while this research entry is mounted. */
+  blockedTools: string[]
+  /** Maximum reads and search requests per operation. */
+  maxReads: number
+  /** Maximum model steps per operation. */
+  maxSteps: number
+  /** Maximum UTF-8 bytes accepted for each response and extracted text. */
+  maxResponseBytes: number
+  /** Operation and individual HTTP deadline in milliseconds. */
+  timeoutMs: number
+  /** Maximum model output tokens for each worker step. */
+  maxTokens: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-safe-external-research -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-sandbox-local -->
 <a id="deepseek-aidsh-sandbox-local"></a>
 
@@ -4089,7 +4106,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-subagent-fork-in-process`
 
 - `inject`: `subagents`
-- `source`: [`packages/subagent/subagent-fork-in-process/src/index.ts:29`](../packages/subagent/subagent-fork-in-process/src/index.ts)
+- `source`: [`packages/subagent/subagent-fork-in-process/src/index.ts:28`](../packages/subagent/subagent-fork-in-process/src/index.ts)
 
 ```ts config-catalog
 /** Config: the registry name to register the provider under. */
@@ -4258,7 +4275,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-time-context`
 
 - `inject`: `agents` · `sessionProjections`
-- `source`: [`packages/context/time-context/src/index.ts:52`](../packages/context/time-context/src/index.ts)
+- `source`: [`packages/context/time-context/src/index.ts:51`](../packages/context/time-context/src/index.ts)
 
 ```ts config-catalog
 /** Request-preparation clock formatting and append scheduling. Invalid values fail plugin load. */
@@ -4568,23 +4585,6 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-fs-search -->
-
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-goal -->
-<a id="deepseek-aidsh-tool-goal"></a>
-
-## `@deepseek-ai/dsh-tool-goal`
-
-- `inject`: `agents` · `goals` · `tools` · `systemPrompt`
-- `source`: [`packages/goal/tool-goal/src/index.ts:32`](../packages/goal/tool-goal/src/index.ts)
-
-```ts config-catalog
-/** Model policy and hard lower bounds for goal-state updates. */
-export interface Config {
-  /** Minimum admitted goal rounds before the model may self-report `blocked`. */
-  blockedAfterConsecutiveRounds?: number
-}
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-goal -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-jobs -->
 <a id="deepseek-aidsh-tool-jobs"></a>
@@ -5450,7 +5450,6 @@ export interface Config {
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `tools` · `worktrees` | [`packages/experimental/tool-worktree/src/index.ts`](../packages/experimental/tool-worktree/src/index.ts) |
 | `@deepseek-ai/dsh-fs-observation-policy` | — | [`packages/fs/fs-observation-policy/src/index.ts`](../packages/fs/fs-observation-policy/src/index.ts) |
 | `@deepseek-ai/dsh-fs-ssh` | `ssh` · `sandboxPolicy` | [`packages/ssh/fs-ssh/src/index.ts`](../packages/ssh/fs-ssh/src/index.ts) |
-| `@deepseek-ai/dsh-goal-round-driver` | `agents` · `goals` · `sessions` | [`packages/goal/goal-round-driver/src/index.ts`](../packages/goal/goal-round-driver/src/index.ts) |
 | `@deepseek-ai/dsh-harness-dev-context` | `systemPrompt` · `sessionProjections` · `webApp` | [`packages/context/harness-dev-context/src/index.ts`](../packages/context/harness-dev-context/src/index.ts) |
 | `@deepseek-ai/dsh-host-directory-picker-auto` | `webServer` · `connection` · `loader` | [`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts) |
 | `@deepseek-ai/dsh-host-directory-picker-native` | — | [`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts) |
@@ -5542,7 +5541,6 @@ export interface Config {
 | `@deepseek-ai/dsh-experimental-liveshare-protocol` | — | [`packages/experimental/liveshare-protocol/src/index.ts`](../packages/experimental/liveshare-protocol/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-plugin-market-bundle` | — | [`packages/experimental/plugin-market-bundle/src/index.ts`](../packages/experimental/plugin-market-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-ralph-bundle` | — | [`packages/experimental/ralph-bundle/src/index.ts`](../packages/experimental/ralph-bundle/src/index.ts) |
-| `@deepseek-ai/dsh-experimental-rich-inline` | — | [`packages/experimental/rich-inline/src/index.ts`](../packages/experimental/rich-inline/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-session-search` | — | [`packages/experimental/session-search/src/index.ts`](../packages/experimental/session-search/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-session-titles-bundle` | — | [`packages/experimental/session-titles-bundle/src/index.ts`](../packages/experimental/session-titles-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-terminal-bundle` | — | [`packages/experimental/terminal-bundle/src/index.ts`](../packages/experimental/terminal-bundle/src/index.ts) |
@@ -5566,6 +5564,7 @@ export interface Config {
 | `@deepseek-ai/dsh-plugin-detail` | — | [`packages/util/plugin-detail/src/index.ts`](../packages/util/plugin-detail/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-market-index` | — | [`packages/util/plugin-market-index/src/index.ts`](../packages/util/plugin-market-index/src/index.ts) |
 | `@deepseek-ai/dsh-remote-mock` | — | [`packages/test-support/remote-mock/src/index.ts`](../packages/test-support/remote-mock/src/index.ts) |
+| `@deepseek-ai/dsh-rich-inline` | — | [`packages/experimental/rich-inline/src/index.ts`](../packages/experimental/rich-inline/src/index.ts) |
 | `@deepseek-ai/dsh-sandbox-windows-acl` | — | [`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts) |
 | `@deepseek-ai/dsh-scope` | — | [`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts) |
 | `@deepseek-ai/dsh-sdk-client` | — | [`packages/sdk/client/src/index.ts`](../packages/sdk/client/src/index.ts) |
@@ -5582,6 +5581,7 @@ export interface Config {
 | `@deepseek-ai/dsh-session-title-llm` | — | [`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts) |
 | `@deepseek-ai/dsh-ssh-helper-runtime` | — | [`packages/ssh/ssh-helper-runtime/src/index.ts`](../packages/ssh/ssh-helper-runtime/src/index.ts) |
 | `@deepseek-ai/dsh-timeout` | — | [`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts) |
+| `@deepseek-ai/dsh-tool-goal` | — | [`packages/goal/tool-goal/src/index.ts`](../packages/goal/tool-goal/src/index.ts) |
 | `@deepseek-ai/dsh-tool-testkit` | — | [`packages/test-support/tool-testkit/src/index.ts`](../packages/test-support/tool-testkit/src/index.ts) |
 | `@deepseek-ai/dsh-typert-generator` | — | [`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts) |
 | `@deepseek-ai/dsh-typert-protocol` | — | [`packages/typert/protocol/src/index.ts`](../packages/typert/protocol/src/index.ts) |

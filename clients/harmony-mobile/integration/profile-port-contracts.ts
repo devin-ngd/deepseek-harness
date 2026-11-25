@@ -1,6 +1,6 @@
 /** Type-only compatibility check against existing Service Definitions; creates no Context or live binding. */
 import type SessionController from '@deepseek-ai/dsh-api-session-controller'
-import type RichInline from '@deepseek-ai/dsh-experimental-rich-inline'
+import type RichInline from '@deepseek-ai/dsh-rich-inline'
 import type { DesktopServicePorts } from '../src/desktop-adapter.ts'
 
 type Fits<Value extends true> = Value

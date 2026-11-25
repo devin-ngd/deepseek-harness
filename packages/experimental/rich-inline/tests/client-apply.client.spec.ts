@@ -26,13 +26,13 @@ import type { RichBlockId, RichClientConfig, RichMountId, RichSnapshot } from '.
 import { PendingQuestion } from '../../../client/ui-user-questions/src/client/contract/slots.ts'
 import { RichQuestion, type RichQuestionInjected } from '../src/client/RichQuestion.tsx'
 
-vi.mock('@deepseek-ai/dsh-experimental-rich-inline/remote', () => ({
-  default: { package: '@deepseek-ai/dsh-experimental-rich-inline', descriptors: [] },
+vi.mock('@deepseek-ai/dsh-rich-inline/remote', () => ({
+  default: { package: '@deepseek-ai/dsh-rich-inline', descriptors: [] },
 }))
 
 afterEach(() => { cleanup() })
 
-const PACKAGE = '@deepseek-ai/dsh-experimental-rich-inline'
+const PACKAGE = '@deepseek-ai/dsh-rich-inline'
 const SID = SessionId('rich-composer')
 const { apply, inject } = client
 

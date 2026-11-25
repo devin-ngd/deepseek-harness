@@ -1,4 +1,4 @@
-/** Trusted shared Skill loading and bounded result v1 validation. @module dsh-experimental-safe-external-research/contract */
+/** Trusted shared Skill loading and bounded result v1 validation. @module dsh-safe-external-research/contract */
 
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'

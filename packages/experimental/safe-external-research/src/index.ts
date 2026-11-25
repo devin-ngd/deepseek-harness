@@ -1,4 +1,4 @@
-/** Opt-in public research entry with worker-only model tool protection. @module dsh-experimental-safe-external-research */
+/** Opt-in public research entry with worker-only model tool protection. @module dsh-safe-external-research */
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'

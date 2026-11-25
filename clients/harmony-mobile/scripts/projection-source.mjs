@@ -37,14 +37,14 @@ export async function projectionPaths(project, root) {
   paths.playwright = [resolve(playwrightManifest, '..', playwright.exports['.'].types)]
   const vitestManifest = require.resolve('vitest/package.json')
   paths.vitest = [resolve(vitestManifest, '..', JSON.parse(await readFile(vitestManifest, 'utf8')).types)]
-  return { ...paths, zod: [join(dirname(require.resolve('zod')), 'index')], '@local/rich-source-host': [resolve(root, 'packages/experimental/rich-inline/src/host/source.ts')], '@local/rich-tool-source-host': [resolve(root, 'packages/experimental/rich-inline/src/host/tool-source.ts')], '@deepseek-ai/dsh-experimental-rich-inline/message-projections': [entry], '@noble/hashes/sha2.js': [sha.slice(0, -3)], '@noble/hashes/utils.js': [utils.slice(0, -3)] }
+  return { ...paths, zod: [join(dirname(require.resolve('zod')), 'index')], '@local/rich-source-host': [resolve(root, 'packages/experimental/rich-inline/src/host/source.ts')], '@local/rich-tool-source-host': [resolve(root, 'packages/experimental/rich-inline/src/host/tool-source.ts')], '@deepseek-ai/dsh-rich-inline/message-projections': [entry], '@noble/hashes/sha2.js': [sha.slice(0, -3)], '@noble/hashes/utils.js': [utils.slice(0, -3)] }
 }
 /** @param project - client directory. @param root - upstream dependency directory. @returns generated resolution facade; build tools record every consumed source hash. */
 export async function projectionTsconfig(project, root) {
   const path = join(project, '.build/projection.tsconfig.json')
   await mkdir(join(project, '.build'), { recursive: true })
   const paths = await projectionPaths(project, root)
-  await writeFile(path, JSON.stringify({ extends: join(root, 'tsconfig.base.json'), compilerOptions: { paths }, include: [resolve(root).replaceAll('\\', '/') + '/**/*', dirname(paths['@deepseek-ai/dsh-experimental-rich-inline/message-projections'][0]).replaceAll('\\', '/') + '/**/*'] }, null, 2) + '\n')
+  await writeFile(path, JSON.stringify({ extends: join(root, 'tsconfig.base.json'), compilerOptions: { paths }, include: [resolve(root).replaceAll('\\', '/') + '/**/*', dirname(paths['@deepseek-ai/dsh-rich-inline/message-projections'][0]).replaceAll('\\', '/') + '/**/*'] }, null, 2) + '\n')
   return path
 }
 /** @param project - client directory. @param root - DSH source root. @returns exact Vite aliases, including imports originating in the isolated checkout. */

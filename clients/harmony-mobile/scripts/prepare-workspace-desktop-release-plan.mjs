@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 const lab = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const yaml = createRequire(join(lab, '../../package.json'))('js-yaml')
 const harmony = '@deepseek-ai/dsh-experimental-harmony-mobile'
-const rich = '@deepseek-ai/dsh-experimental-rich-inline'
+const rich = '@deepseek-ai/dsh-rich-inline'
 const indirect = ['@deepseek-ai/dsh-deque@0.2.1-rc.2', '@deepseek-ai/dsh-native-command@0.2.1-rc.2']
 const proof = {
   path: 'evidence/workspace-desktop-lock-preflight-1794038319289.json',

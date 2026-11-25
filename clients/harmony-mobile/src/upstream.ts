@@ -3,10 +3,10 @@ export type {
   RichActionStatus, RichDraft, RichInvokeRequest, RichMountValue,
   RichReceipt, RichSaveDraftRequest, RichSnapshot, RichValues,
   RichMountRequest, RichActionRequest, RichMountRequestId,
-} from '@deepseek-ai/dsh-experimental-rich-inline/types'
+} from '@deepseek-ai/dsh-rich-inline/types'
 export {
   isRichJson, parseActionRequest, parseInvokeRequest, parseSaveDraftRequest,
-} from '@deepseek-ai/dsh-experimental-rich-inline/validate'
+} from '@deepseek-ai/dsh-rich-inline/validate'
 export type { Branded } from '@deepseek-ai/dsh-brand'
 export type { JsonValue } from '@deepseek-ai/dsh-util-values'
 export { isJsonValue } from '@deepseek-ai/dsh-util-values'

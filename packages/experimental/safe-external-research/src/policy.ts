@@ -1,4 +1,4 @@
-/** Input, URL, and presentation rules applied before external access. @module dsh-experimental-safe-external-research/policy */
+/** Input, URL, and presentation rules applied before external access. @module dsh-safe-external-research/policy */
 
 import { z } from 'zod'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
