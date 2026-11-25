@@ -40,7 +40,7 @@ const settings = z.object({ enabled: z.literal(true), desktopId: identifier, dev
     .refine(value => value.turnWindow === undefined || value.turnWindow.minMessages <= value.maxMessages).optional(),
   lan: z.object({ address: z.string().optional(), port: positive.max(65535),
     tailnet: z.object({ localAddress: tailnetAddress, peerAddress: tailnetAddress }).strict().refine(value => value.localAddress !== value.peerAddress).optional(),
-    rendezvous: z.object({ wlanInterface: z.string().min(1).max(128), tailnetInterface: z.string().min(1).max(128), tailnetPeerAddress: tailnetAddress }).strict()
+    rendezvous: z.object({ wlanInterface: z.string().min(1).max(128).optional(), tailnetInterface: z.string().min(1).max(128), tailnetPeerAddress: tailnetAddress }).strict()
       .refine(value => value.wlanInterface !== value.tailnetInterface).optional(),
   }).strict().refine(value => (value.address === undefined || value.tailnet === undefined && isDeviceLanEndpoint(value.address, value.port))
     && (value.rendezvous === undefined || value.address === undefined && value.tailnet === undefined)).optional(),

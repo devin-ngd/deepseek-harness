@@ -1,7 +1,7 @@
 /** Desktop LAN listener for the paired device carrier. */
 import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
-import { networkInterfaces } from 'node:os'
+import { readDesktopEndpoints, type DesktopEndpointInterfaces } from './desktop-lan-endpoints.ts'
 import type { IncomingMessage } from 'node:http'
 import WebSocket, { WebSocketServer } from 'ws'
 import { DEVICE_LAN_PATH, DEVICE_LAN_PROTOCOL, isDeviceLanEndpoint, isDeviceLanPort, isDeviceTailnetAddress } from '../src/device-lan-address.ts'
@@ -17,17 +17,7 @@ import type { DeviceEndpoints } from '../src/device-endpoint-exchange.ts'
 import type { ReverseLanOffer } from '../src/device-reverse-control.ts'
 import { dialDesktopReverse } from './desktop-reverse.ts'
 
-/** Explicit interface names keep unrelated private and VPN adapters out of the publication. */
-export interface DesktopEndpointInterfaces { readonly wlanInterface: string; readonly tailnetInterface: string; readonly tailnetPeerAddress: string }
-
-/** @param names - selected desktop interfaces. @param port - active listener port. @param interfaces - OS interface snapshot. @returns addresses from unambiguous IPv4 interfaces. */
-export function readDesktopEndpoints(names: DesktopEndpointInterfaces, port: number, interfaces = networkInterfaces()): DeviceEndpoints {
-  const candidates = (name: string, accept: (address: string) => boolean) => [...new Set((interfaces[name] ?? [])
-    .filter(row => row.family === 'IPv4' && !row.internal && accept(row.address)).map(row => row.address))]
-  const wlan = candidates(names.wlanInterface, address => isDeviceLanEndpoint(address, port))
-  const tailnet = candidates(names.tailnetInterface, isDeviceTailnetAddress)
-  return { wlan: wlan.length === 1 ? wlan[0]! : null, tailnet: tailnet.length === 1 ? tailnet[0]! : null, port }
-}
+export { readDesktopEndpoints, type DesktopEndpointInterfaces } from './desktop-lan-endpoints.ts'
 import { nodeRelaySocket } from './relay-upgrade.ts'
 
 /** Without a fixed address, TCP and discovery follow the desktop's current private IPv4 interfaces. */
