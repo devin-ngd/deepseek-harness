@@ -75,6 +75,11 @@ function snapshotMode(value: string | undefined): SnapshotMode {
 }
 
 const mode = snapshotMode(process.env.DSH_SNAPSHOT)
+function assertWindowsCordisRecording(scenario: string, currentMode: SnapshotMode, platform: NodeJS.Platform): void {
+  if (platform === 'win32' && scenario === 'cordis-inspect-jsdoc' && currentMode === 'record') {
+    throw new Error('cordis-inspect-jsdoc: Windows recording would replace the shared Session; use refresh to update the Windows oracle')
+  }
+}
 const RUNTIME_WORKSPACE_ENTRIES = ['.agents', '.dsh', '.snapshot-patches'] as const
 
 interface JsonObject {
@@ -1021,8 +1026,9 @@ async function verifyHeaders(scenario: HeadlessScenario, actualLogs: readonly Se
   if (promptOwner === undefined || schemaOwner === undefined) {
     throw new Error(`${scenario.name}: header sidecar source is not a headless scenario`)
   }
-  const prompt = await readFile(join(promptOwner.dir, 'system-prompt.expected.md'), 'utf8')
-  const schemas = parseToolSchemasSnapshot(await readFile(join(schemaOwner.dir, 'tool-schemas.expected.json'), 'utf8'))
+  const windowsOracle = process.platform === 'win32' && scenario.name === 'cordis-inspect-jsdoc'
+  const prompt = await readFile(join(promptOwner.dir, windowsOracle ? 'system-prompt.windows.expected.md' : 'system-prompt.expected.md'), 'utf8')
+  const schemas = parseToolSchemasSnapshot(await readFile(join(schemaOwner.dir, windowsOracle ? 'tool-schemas.windows.expected.json' : 'tool-schemas.expected.json'), 'utf8'))
   const schemaSets = [schemas.initial, ...schemas.changes]
   expect(schemaSets, `${scenario.name}: pin tool-schema count`).toHaveLength(pinned.length)
   const reconstructed = pinned.map((header, index) => restorePinnedToolSchemas(
@@ -1064,6 +1070,13 @@ async function verifyHeaders(scenario: HeadlessScenario, actualLogs: readonly Se
 }
 
 describe('headless recorded-session snapshots', () => {
+  it('rejects Windows Cordis recording before creating a Session', () => {
+    expect(() => { assertWindowsCordisRecording('cordis-inspect-jsdoc', 'record', 'win32') })
+      .toThrow('Windows recording would replace the shared Session')
+    expect(() => { assertWindowsCordisRecording('cordis-inspect-jsdoc', 'refresh', 'win32') }).not.toThrow()
+    expect(() => { assertWindowsCordisRecording('cordis-inspect-jsdoc', 'record', 'linux') }).not.toThrow()
+    expect(() => { assertWindowsCordisRecording('other', 'record', 'win32') }).not.toThrow()
+  })
   it('bootstraps only live recordings with no Session files', () => {
     expect(recordingFixtureNames(['snapshot.yml'], 'record')).toEqual([])
     expect(() => recordingFixtureNames(['snapshot.yml'], 'replay')).toThrow('missing parent')
@@ -1352,6 +1365,7 @@ describe('headless recorded-session snapshots', () => {
       ? [{ scenario, retainedToolInput: 'session.v3.jsonl' }] : [],
   ])
   for (const { scenario, retainedToolInput } of runs) {
+    const windowsOracle = process.platform === 'win32' && scenario.name === 'cordis-inspect-jsdoc'
     const skipped = scenario.manifest.platform === 'posix' && process.platform === 'win32'
       || scenario.manifest.platform === 'pwsh' && !hasPwsh
       // A read-only directory does not deny root, so the recorded refusal cannot replay.
@@ -1361,6 +1375,7 @@ describe('headless recorded-session snapshots', () => {
     const scenarioTest = skipped ? it.skip : mode === 'replay' ? it.concurrent : it
     const inputLabel = retainedToolInput === undefined ? '' : ' from retained V3 input'
     scenarioTest(`${mode}s ${scenario.name}${inputLabel} through dsh --profile headless`, async () => {
+      assertWindowsCordisRecording(scenario.name, mode, process.platform)
       let fixtureFiles = retainedToolInput === undefined
         ? recordingFixtureNames(await readdir(scenario.dir), mode) : [retainedToolInput]
       let fixtures = await fixtureSessions(scenario, fixtureFiles)
@@ -1601,7 +1616,7 @@ describe('headless recorded-session snapshots', () => {
       const expectedStderr = stderrFromSession(stderrLog)
       const actualContext = contextOf(actualLogs.map(log => log.content))
 
-      if (writesCurrentSessionFixtures(scenario.manifest, mode)) {
+      if (writesCurrentSessionFixtures(scenario.manifest, mode) && !(windowsOracle && mode === 'refresh')) {
         fixtures = await writeSessionFixtures(
           scenario,
           actualLogs,
@@ -1613,7 +1628,7 @@ describe('headless recorded-session snapshots', () => {
           sessionHeaderVersion(log.content, `harvested Session ${index}`),
         ))
       }
-      if (mode !== 'replay') await writeHeaderSidecars(scenario, actualLogs, actualContext)
+      if (mode !== 'replay' && !windowsOracle) await writeHeaderSidecars(scenario, actualLogs, actualContext)
 
       expect(result.stdout).toBe(`${finalTextFromSession(fixtures[0] as string)}\n`)
       expect(result.stderr).toBe(expectedStderr)
@@ -1624,6 +1639,22 @@ describe('headless recorded-session snapshots', () => {
           ? [] : fixtures.map((_, index) => writerSnapshotName(index)).sort())
       }
       let expected = retainedToolInput === undefined ? fixtures : await fixtureSessions(scenario)
+      if (windowsOracle) {
+        const filename = 'windows-session.expected.jsonl'
+        if (mode === 'refresh') {
+          const [content] = normalizeSessionSnapshots(actualLogs.map(log => log.content), actualContext, { nativeWriterOutput: true })
+          if (content === undefined) throw new Error(`${scenario.name}: missing Windows Session output`)
+          const primary = actualLogs[0]
+          if (primary === undefined) throw new Error(`${scenario.name}: missing Windows header`)
+          const [prompt, ...laterPrompts] = normalizedSystemPrompts(primary.content, actualContext)
+          const [schema, ...laterSchemas] = normalizedToolSchemas(primary.content, actualContext)
+          if (prompt === undefined || schema === undefined) throw new Error(`${scenario.name}: missing Windows prompt or tool schemas`)
+          await writeFile(join(scenario.dir, filename), content)
+          await writeFile(join(scenario.dir, 'system-prompt.windows.expected.md'), formatSystemPromptSnapshot(prompt, laterPrompts))
+          await writeFile(join(scenario.dir, 'tool-schemas.windows.expected.json'), formatToolSchemasSnapshot(schema, laterSchemas))
+        }
+        expected = [await readFile(join(scenario.dir, filename), 'utf8')]
+      }
       if (retainedToolInput !== undefined) {
         expect(await readFile(join(scenario.dir, retainedToolInput), 'utf8'), 'retained replay input bytes').toBe(primaryFixture)
       }
