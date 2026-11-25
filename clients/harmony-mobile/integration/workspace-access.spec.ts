@@ -43,6 +43,9 @@ import type { PairedRelayPolicy, PairedRelayPorts } from '../src/paired-relay.ts
 import { RELAY_CONTROL_PATH, RELAY_CONTROL_SUBPROTOCOL } from '../src/relay-control-protocol.ts'
 import { RELAY_PATH, RELAY_SUBPROTOCOL } from './relay-protocol.ts'
 import { nodeRelaySocket } from './relay-upgrade.ts'
+import { openDesktopLanPorts, type DesktopLanPorts } from './desktop-lan.ts'
+import { DEVICE_LAN_PATH, DEVICE_LAN_PROTOCOL } from '../src/device-lan-address.ts'
+import type { DeviceLinkPorts } from '../src/device-lan.ts'
 import type { CleanupScheduler } from './connection-lifetime.ts'
 import * as Desktop from '../desktop-plugin/src/index.ts'
 import { deviceWorkspaceOrigin } from '../src/workspace-origin.ts'
@@ -300,6 +303,44 @@ async function loopbackRelay(record: DeviceBinding, policy: PairedRelayPolicy, c
   }
   return {
     ports, upgrades,
+    watchPhoneDataWrites: () => { assert.ok(phoneData); return vi.spyOn(phoneData, 'send') },
+    dropPhoneData: () => { assert.ok(phoneData); phoneData.terminate() },
+  }
+}
+
+function loopbackLan(record: DeviceBinding, policy: PairedRelayPolicy, clock: () => number, scheduler: CleanupScheduler) {
+  const trust = { pairId: deviceRelayPairId(record), epoch: record.epoch, role: 'desktop' as const, audience: record.audience,
+    credentialId: p256CredentialId(record.desktopPublicSpki), expiresAt: clock() + policy.maxRoomTtlMs }
+  const limits = { host: record.audience, handshakeMs: policy.handshakeMs, maxFrameBytes: policy.e2e.maxFrameBytes,
+    maxBufferedBytes: policy.maxQueuedBytes, maxControlFrames: hostConfig.maxControlFrames }
+  const upgrades = { control: 0, data: 0, lan: 0 }
+  let desktop: DesktopLanPorts | undefined, phoneData: WebSocket | undefined, agreement = 50
+  const ports = async (role: 'desktop' | 'phone', primitives = nodeE2EPrimitives): Promise<DeviceLinkPorts> => {
+    if (role === 'desktop') {
+      const opened = await openDesktopLanPorts({ address: '127.0.0.1', port: 0 }, limits, trust, desktopKey, record.phonePublicSpki)
+      onTestFinished(() => opened.lan.close())
+      desktop = opened
+      return { ...opened, primitives }
+    }
+    assert.ok(desktop)
+    const port = desktop.port
+    let current: { socket: WebSocket; closed: Promise<void> } | undefined
+    const close = async () => { current?.socket.terminate(); await current?.closed }
+    return { signer: phoneKey, remotePublicSpki: record.desktopPublicSpki, primitives, scheduler, clock,
+      agreement: async () => { const scalar = ++agreement; return { key: new ImportedP256Agreement(fixtureKey(scalar).pkcs8), nonce: Buffer.alloc(32, scalar) } },
+      lan: { open: async signal => {
+        signal.throwIfAborted()
+        const socket = new WebSocket('ws://127.0.0.1:' + port + DEVICE_LAN_PATH, DEVICE_LAN_PROTOCOL,
+          { perMessageDeflate: false, handshakeTimeout: policy.handshakeMs })
+        current = { socket, closed: new Promise<void>(resolve => socket.once('close', resolve)) }
+        onTestFinished(close)
+        phoneData = socket
+        socket.once('open', () => { upgrades.lan++ })
+        return nodeRelaySocket(socket, hostConfig.maxControlFrames)
+      }, close },
+    }
+  }
+  return { ports, upgrades,
     watchPhoneDataWrites: () => { assert.ok(phoneData); return vi.spyOn(phoneData, 'send') },
     dropPhoneData: () => { assert.ok(phoneData); phoneData.terminate() },
   }
@@ -565,13 +606,15 @@ it('requires a new workspace grant after losing a close response and rejects a c
   }
   const global = { scope: 'global' }
   f.ctx.on('webserver/index-inject', (rows: IndexInjection[]) => { rows.push({ kind: 'global', name: '__DSH_WORKSPACE_LARGE_FIXTURE__', value: large }) })
-  const budgets = { ...configuration.relay, maxRoomTtlMs: 60000,
+  const direct = process.env.DSH_HARMONY_WORKSPACE_LAN_REVIEW === '1'
+  const reviewLifetimeMs = direct && devflow !== undefined ? 180000 : 60000
+  const budgets = { ...configuration.relay, maxRoomTtlMs: reviewLifetimeMs,
     ...(devflow === undefined ? { e2e: { ...configuration.relay.e2e, maxFrameBytes: 2097152, maxPlaintextBytes: 1048576 } } : {}) }
-  const relay = await loopbackRelay(f.record, budgets, f.now, f.scheduler)
+  const carrier = direct ? loopbackLan(f.record, budgets, f.now, f.scheduler) : await loopbackRelay(f.record, budgets, f.now, f.scheduler)
   const provider = new DeviceBindingProfileProvider(f.ctx, f.now)
   onTestFinished(() => provider.close())
   const limits = Desktop.resolveOptions({ enabled: true, desktopId: f.record.desktopId, profileId: 'desktop' }, f.now).limits
-  const expiresAt = f.now() + 60000
+  const expiresAt = f.now() + reviewLifetimeMs
   let beforeReply: { ingress: boolean; entered: PromiseWithResolvers<void>; release: PromiseWithResolvers<void> } | undefined
   let beforeSeal: { entered: PromiseWithResolvers<void>; release: PromiseWithResolvers<void> } | undefined
   const desktopPrimitives = { ...nodeE2EPrimitives, async encrypt(...input: Parameters<typeof nodeE2EPrimitives.encrypt>) {
@@ -597,13 +640,13 @@ it('requires a new workspace grant after losing a close response and rejects a c
     },
     trust: { pairId: deviceRelayPairId(f.record), epoch: f.record.epoch, role: 'desktop', audience: f.record.audience,
       credentialId: id<'harmony-device-credential'>(f.record.desktopCredentialId), expiresAt },
-    policy: budgets, limits, openPorts: () => relay.ports('desktop', desktopPrimitives),
+    policy: budgets, limits, openPorts: () => carrier.ports('desktop', desktopPrimitives),
   })
   const desktop = makeDesktop(f.access, true)
   const stop = await desktop.mount(f.ctx)
   onTestFinished(stop)
   let rpc: DeviceProductRpc | undefined
-  const core = new NativeDeviceCore(JSON.stringify(f.record), expiresAt, budgets, relay.ports('phone'), () => {}, raw => rpc?.receive(raw), undefined)
+  const core = new NativeDeviceCore(JSON.stringify(f.record), expiresAt, budgets, await carrier.ports('phone'), () => {}, raw => rpc?.receive(raw), undefined)
   onTestFinished(() => core.close())
   await core.initialize(); await core.ready()
   const oldBinding = core.binding
@@ -760,7 +803,7 @@ it('requires a new workspace grant after losing a close response and rejects a c
     beforeReply = closing
     closeReply = closeWorkspace()
     await Promise.race([closing.entered.promise, closeReply.then(() => assert.fail('workspace close response was not held'))])
-    relay.dropPhoneData()
+    carrier.dropPhoneData()
     await expect.poll(() => ({ phoneBindingAborted: oldBinding.signal.aborted, desktop: desktop.terminalState }), { timeout: budgets.handshakeMs })
       .toEqual({ phoneBindingAborted: true, desktop: 'closed' })
   } finally {
@@ -795,7 +838,7 @@ it('requires a new workspace grant after losing a close response and rejects a c
     return bytes
   } }
   let nextRpc: DeviceProductRpc | undefined
-  const nextCore = new NativeDeviceCore(JSON.stringify(f.record), expiresAt, budgets, relay.ports('phone', phonePrimitives), () => {}, raw => nextRpc?.receive(raw), undefined)
+  const nextCore = new NativeDeviceCore(JSON.stringify(f.record), expiresAt, budgets, await carrier.ports('phone', phonePrimitives), () => {}, raw => nextRpc?.receive(raw), undefined)
   onTestFinished(() => nextCore.close()); await nextCore.initialize(); await nextCore.ready()
   const nextBinding = nextCore.binding
   expect(nextBinding.id).not.toBe(oldBinding.id)
@@ -1116,15 +1159,15 @@ it('requires a new workspace grant after losing a close response and rejects a c
       } finally { await f.ctx.workspaceRegistry.unarchiveSession(sessionId) }
     }
   }
-  expect(relay.upgrades).toEqual({ control: 4, data: 4 })
-  const sent = relay.watchPhoneDataWrites()
+  expect(carrier.upgrades).toEqual(direct ? { control: 0, data: 0, lan: 2 } : { control: 4, data: 4 })
+  const sent = carrier.watchPhoneDataWrites()
   onTestFinished(() => { sent.mockRestore() })
   holdSeal = true
   const interrupted = reconnected.call({ method: 'workspace', argument: { operation: 'close' } })
     .then(value => ({ ok: true, value }) as const, error => ({ ok: false, error }) as const)
   try {
     await Promise.race([seal.entered.promise, interrupted.then(() => assert.fail('workspace close encryption was not held'))])
-    relay.dropPhoneData()
+    carrier.dropPhoneData()
     await expect.poll(() => ({ phoneBindingAborted: nextBinding.signal.aborted, desktop: nextDesktop.terminalState }), { timeout: budgets.handshakeMs })
       .toEqual({ phoneBindingAborted: true, desktop: 'closed' })
   } finally {
@@ -1140,7 +1183,7 @@ it('requires a new workspace grant after losing a close response and rejects a c
   if (devflow === undefined) expect(traces()).toEqual(enabledTraces)
   await writeFile(join(process.env.DSH_HARMONY_WORKSPACE_WORLD!, 'encrypted.json'), JSON.stringify({
     e2e: true, nativeDeviceCore: true, realP256: true, separateGrant: true, pairingRetained: true,
-    sockets: 'loopback-websocket', upgrades: relay.upgrades, networkKitPhoneOrigin: true, externalNetwork: false, tls: false,
+    sockets: direct ? 'direct-loopback-websocket' : 'loopback-websocket', upgrades: carrier.upgrades, networkKitPhoneOrigin: !direct, externalNetwork: false, tls: false,
     arkWeb: false, recoveredFromDataSocketLoss: true, reconnectedWithFreshProof: true, oldHandlesDenied: true,
     cancelledBeforeHostDispatchPreservedHandle: true, closeResponseLostAfterHostDispatch: true, pendingCloseRejectedOnRpcDisposal: true,
     closeEncryptionInterruptedBeforeSend: true, closeEncryptionDiagnostic: 'encrypted-failure',

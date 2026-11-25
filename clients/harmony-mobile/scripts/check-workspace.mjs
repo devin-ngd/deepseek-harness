@@ -19,6 +19,8 @@ const initialSelectionCandidateInput = process.env.DSH_HARMONY_WORKSPACE_INITIAL
 if (initialSelectionCandidateInput !== undefined && !accessDevflow) throw new Error('The isolated Workspace UI candidate requires --access-devflow')
 const archiveCandidateInput = accessDevflow ? process.env.DSH_HARMONY_WORKSPACE_ARCHIVE_CANDIDATE : undefined
 const access = accessDevflow || process.argv.length === 3 && process.argv[2] === '--access'
+const lanReview = process.env.DSH_HARMONY_WORKSPACE_LAN_REVIEW
+if (lanReview !== undefined && (!access || lanReview !== '1')) throw new Error('Direct LAN review requires a workspace access fixture')
 const deviceCommandPrevious = process.argv.length === 3 && process.argv[2] === '--device-command-previous'
 const deviceCommandBuilt = deviceCommandPrevious || process.argv.length === 3 && process.argv[2] === '--device-command-built'
 const commandClaim = process.argv.length === 3 && process.argv[2] === '--command-claim'
@@ -189,6 +191,7 @@ if (navigation) env.DSH_HARMONY_WORKSPACE_NAVIGATION = navigation.stage
 if (deviceBuild) env.DSH_HARMONY_DEVICE_COMMAND_ENTRY = join(deviceBuild.stage, 'lib/device.js')
 if (devflow) env.DSH_HARMONY_WORKSPACE_DEVFLOW = devflowPackage
 if (accessDevflow) env.DSH_HARMONY_WORKSPACE_ACCESS_DEVFLOW = '1'
+if (lanReview === '1') env.DSH_HARMONY_WORKSPACE_LAN_REVIEW = lanReview
 if (archiveManager) env.DSH_HARMONY_WORKSPACE_ARCHIVE_MANAGER_PANEL = archiveManager.dir
 if (compactSettings) env.DSH_HARMONY_WORKSPACE_COMPACT_SETTINGS = compactSettings.stage
 if (initialSelectionCandidate) env.DSH_HARMONY_WORKSPACE_INITIAL_SELECTION_STAGE = initialSelectionCandidate.stage
