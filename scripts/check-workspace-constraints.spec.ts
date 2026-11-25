@@ -12,6 +12,7 @@ import {
 } from './experimental-package-policy.ts'
 import {
   checkDshFamilyVersion,
+  checkHierarchyShape,
   checkWorkspaceManifest,
   checkWorkspaceProtocol,
   checkExperimentalDependencyIsolation,
@@ -33,6 +34,19 @@ const experimental = {
     publishConfig: { access: 'public' },
   },
 } satisfies WorkspaceManifest
+
+it('accepts only known generated residue in a manifest-less package directory', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-package-hierarchy-'))
+  onTestFinished(() => { rmSync(root, { recursive: true, force: true }) })
+  const removed = join(root, 'packages/core/removed')
+  for (const entry of ['lib', 'node_modules', '.typecheck']) mkdirSync(join(removed, entry), { recursive: true })
+  writeFileSync(join(removed, 'tsconfig.tsbuildinfo'), '{}')
+  expect(checkHierarchyShape(root)).toEqual([])
+  mkdirSync(join(removed, 'src'))
+  expect(checkHierarchyShape(root)).toEqual([expect.stringContaining('expected a package here')])
+  writeFileSync(join(removed, 'package.json'), '{}')
+  expect(checkHierarchyShape(root)).toEqual([])
+})
 
 describe('workspace dependency ranges', () => {
   const dependency = { dir: 'packages/core/runtime', manifest: { name: '@deepseek-ai/dsh-runtime' } }

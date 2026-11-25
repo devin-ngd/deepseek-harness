@@ -29,6 +29,7 @@ import {
   PACKAGE_ASSET_FILES_ENTRY,
 } from '../packages/client/modules/src/assets.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
+import { isGeneratedPackageResidue } from './package-residue.ts'
 
 const root = resolve(import.meta.dirname, '..')
 // Publication rules cover these package trees; dependency rules read all pnpm members.
@@ -621,12 +622,13 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
 }
 
 /**
- * Enforce `packages/<group>/<pkg>`: groups are open-named containers without a
- * package.json, and packages may be neither flat nor more deeply nested.
+ * Enforce the package hierarchy while retaining generated residue from removed packages.
+ * @param repositoryRoot - Repository containing the packages directory.
+ * @returns Hierarchy violations.
  */
-function checkHierarchyShape(): string[] {
+export function checkHierarchyShape(repositoryRoot: string): string[] {
   const errors: string[] = []
-  const packagesRoot = join(root, 'packages')
+  const packagesRoot = join(repositoryRoot, 'packages')
   for (const group of readdirSync(packagesRoot, { withFileTypes: true })) {
     if (!group.isDirectory()) continue
     const groupRel = join('packages', group.name)
@@ -638,7 +640,8 @@ function checkHierarchyShape(): string[] {
       if (!pkg.isDirectory()) continue
       if (localArtifactDirs.has(pkg.name)) continue
       const pkgRel = join(groupRel, pkg.name)
-      if (!existsSync(join(packagesRoot, group.name, pkg.name, 'package.json'))) {
+      if (!existsSync(join(packagesRoot, group.name, pkg.name, 'package.json'))
+        && !readdirSync(join(packagesRoot, group.name, pkg.name)).every(isGeneratedPackageResidue)) {
         errors.push(`${pkgRel}: expected a package here (no package.json found) — the hierarchy is exactly packages/<group>/<pkg>, no deeper nesting`)
       }
     }
@@ -730,7 +733,7 @@ export function main(): void {
     ...checkWorkspaceProtocol(manifests),
     ...checkExperimentalNameExceptions(manifests),
     ...checkExperimentalDependencyIsolation(manifests),
-    ...checkHierarchyShape(),
+    ...checkHierarchyShape(root),
     ...collectProjectReferenceFaceViolations(root),
   ]
   if (errors.length > 0) {
