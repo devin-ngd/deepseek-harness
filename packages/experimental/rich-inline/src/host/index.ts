@@ -1,7 +1,6 @@
 /** Durable RichInline Host: trusted mounts, draft CAS, action outbox, and explicit completion. */
 import { randomUUID, createHash } from 'node:crypto'
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -26,7 +25,8 @@ import {
   richMarkerIds, typedRichValuesValid,
 } from '../shared/validate.ts'
 import type {
-  RichActionId, RichActionRequest, RichActionStatus, RichApplyUpdateRequest, RichBlockId, RichDraft, RichFileGrant, RichGrantId,
+  RichActionId, RichActionRequest, RichActionStatus, RichApplyUpdateRequest, RichBlockId, RichClientConfig,
+  RichDraft, RichFileGrant, RichGrantId,
   RichInvokeRequest, RichManifest, RichMountId, RichMountRequest, RichMountRequestId, RichMountValue, RichReceipt,
   RichRegisterFileRequest, RichSaveDraftRequest, RichScope, RichSnapshot, RichRenderRequest, RichRenderReceipt,
   RichPollRequest, RichPollValue,
@@ -51,16 +51,9 @@ import { installRichSourceOffload, readRichSource } from './source.ts'
 import { richTurnProjection, type RichTurnState } from './turn-projection.ts'
 
 /** Deployment bounds; protocols and required authorization rules are fixed. */
-export interface Config {
-  /** Empty enables every root session; otherwise only these selected root presets author rich output. Children are excluded. */
-  readonly activePresets?: string[]
-  /** Client presentation controls; ordinary execution and question semantics are unchanged. */
-  readonly compactLiveProcess?: boolean
-  readonly htmlQuestions?: boolean
+export interface Config extends RichClientConfig {
   /** Defaults for fresh sessions in these exact project directories; explicit UI selections can override them. */
   readonly projectDefaults?: { readonly path: string; readonly preset: string }[]
-  /** Built-in sheet; user settings change it live without remounting the plugin. */
-  readonly theme: Volatile<RichAppearance['theme']>
   readonly accent: RichAppearance['accent']
   readonly maxContentBytes: number
   readonly maxInputBytes: number
@@ -116,8 +109,10 @@ export class RichInline extends TypertRemoteService {
     'typert', 'storage', 'storageDomain', 'sessionController', 'sessionPersistence', 'sessionQuery', 'tools', 'attachments', 'fileUploads', 'agents', 'systemPrompt', 'sessions', 'sessionProjections',
   ]
   static Config = z.object({
-    activePresets: z.array(z.string().min(1)).default([]),
-    compactLiveProcess: z.boolean().default(true), htmlQuestions: z.boolean().default(true),
+    activePresets: z.array(z.string().min(1)).default([]).volatile(),
+    pollIntervalMs: z.number().min(250).max(60000).default(1000).volatile(),
+    compactLiveProcess: z.boolean().default(true).volatile(),
+    htmlQuestions: z.boolean().default(true).volatile(),
     projectDefaults: z.array(z.object({ path: z.string().min(1).required(), preset: z.string().min(1).required() })).default([]),
     theme: z.union([...RICH_THEMES, 'none']).default('cyber').volatile(),
     accent: z.union(['auto', 'blue', 'violet', 'teal']).default('auto'),
@@ -243,7 +238,7 @@ export class RichInline extends TypertRemoteService {
   private authoringEnabled(agent?: Agent): boolean {
     if (isRichChild(agent)) return false
     if (agent !== undefined && this.ctx.get('richAuthoringPolicy')?.excludes(agent) === true) return false
-    const presets = this.config.activePresets ?? []
+    const presets = this.config.activePresets.get()
     if (presets.length === 0) return true
     const registry = this.ctx.get('agentPresets')
     if (registry === undefined) throw new Error('rich-inline: activePresets requires agent-preset-registry')
@@ -355,7 +350,7 @@ export class RichInline extends TypertRemoteService {
     }
     if (!referenced && authored.length !== 1) bad('Missing, invalid or duplicate rich publication in this message')
     await this.ctx.sessionPersistence.flush()
-    return this.serial(request.sessionId, async (record) => {
+    return await this.serial(request.sessionId, async (record) => {
       let block = record.blocks[request.blockId]
       if (block === undefined && authored.length === 1) {
         const code = authored[0]

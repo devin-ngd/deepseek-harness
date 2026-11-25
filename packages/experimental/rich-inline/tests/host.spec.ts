@@ -25,8 +25,7 @@ import type { RemoteAccessBinding } from '@deepseek-ai/dsh-api-remote-access'
 import { Peer } from '@deepseek-ai/dsh-client-connection'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import RichInline from '../src/host/index.ts'
-import type { Config } from '../src/host/index.ts'
-import type { RichAppearance } from '../src/shared/theme.ts'
+import { syncedValues } from '../../../client/modules/src/config-projection.ts'
 import { liveConfig } from '../../../settings/settings/tests/live-config.ts'
 import type { RichActionId, RichBlockId, RichInvokeRequest } from '../src/shared/types.ts'
 import type { RichSessionRecord } from '../src/host/ledger.ts'
@@ -36,6 +35,22 @@ import { authoredBlockId } from '../src/shared/authored.ts'
 import { legacyContent } from '../src/host/legacy.ts'
 import { offloadRichSources } from '../src/host/source.ts'
 import type { SessionPromptRequest } from '@deepseek-ai/dsh-api-session-controller/types'
+
+it('projects every Client-facing field through the Host volatile schema', () => {
+  const resolved = RichInline.Config({})
+  expect(resolved.pollIntervalMs.get()).toBe(1000)
+  expect(resolved.activePresets.get()).toEqual([])
+  expect(resolved.compactLiveProcess.get()).toBe(true)
+  expect(resolved.htmlQuestions.get()).toBe(true)
+  expect(resolved.theme.get()).toBe('cyber')
+  expect(syncedValues(RichInline.Config, resolved, '@deepseek-ai/dsh-experimental-rich-inline')).toEqual({
+    activePresets: [],
+    pollIntervalMs: 1000,
+    compactLiveProcess: true,
+    htmlQuestions: true,
+    theme: 'cyber',
+  })
+})
 
 const modelSelection = { provider: 'unit', model: 'unit' }
 const resources: { ctx: Context; root: string; remove: boolean }[] = []
@@ -53,11 +68,11 @@ afterEach(async () => {
     }
   }
 })
-/** Profile YAML before schema resolution turns `theme` into a live reference. */
-type ProfileConfig = Omit<Config, 'theme'> & { theme: RichAppearance['theme'] }
-const limits: ProfileConfig = { maxContentBytes: 2_097_152, maxInputBytes: 131_072, maxFileBytes: 10_485_760,
+/** Profile input before schema resolution wraps the live fields. */
+type ProfileConfig = NonNullable<Parameters<typeof RichInline.Config>[0]>
+const limits = { maxContentBytes: 2_097_152, maxInputBytes: 131_072, maxFileBytes: 10_485_760,
   maxBlocksPerSession: 128, maxActionsPerSession: 2_000, dispatchRetryDelayMs: 20, maxDispatchAttempts: 3, maxAutoRepairAttempts: 2,
-  maxFormatRepairAttempts: 1, sourceOffloadMinBytes: 4_096, sourceReadMaxChars: 8_192, recoveryPageSize: 128, theme: 'cyber', accent: 'blue' }
+  maxFormatRepairAttempts: 1, sourceOffloadMinBytes: 4_096, sourceReadMaxChars: 8_192, recoveryPageSize: 128, theme: 'cyber', accent: 'blue' } satisfies ProfileConfig
 
 async function harness(root?: string, seed: readonly SessionEvent[] = [], config: Partial<ProfileConfig> = {},
   options: { live?: boolean; preset?: string; remote?: boolean; origin?: 'subagent'; beforeRichMount?: (ctx: Context, session: Session) => void } = {}) {
@@ -127,7 +142,7 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
       toolSet.dispose()
     }
   }
-  const tool = async (name: string, args: Record<string, unknown>, admitted = true) => {
+  const tool = async (name: string, args: Record<string, unknown>, admitted = true, ptc = false) => {
     const callId = ToolCallId(`unit-${randomUUID()}`)
     const argumentsJson = JSON.stringify(args)
     const signal = new AbortController().signal
@@ -140,8 +155,13 @@ async function harness(root?: string, seed: readonly SessionEvent[] = [], config
       })
       const result = batch.results[0]?.result
       if (result === undefined) throw new Error('Executor omitted the fixture tool result')
-      session.append('tool/result', { turn: 1, step: 1, message: createToolResultMessage({ callId, content: result.content, isError: result.isError }),
-        ...result.meta === undefined ? {} : { meta: result.meta } }, { surfaceOp: 'append' })
+      if (ptc) {
+        session.append('tool/ptc-dispatch', { rootCallId: callId, parentCallId: callId, subCallId: callId, name,
+          arguments: args, content: result.content, isError: result.isError })
+      } else {
+        session.append('tool/result', { turn: 1, step: 1, message: createToolResultMessage({ callId, content: result.content, isError: result.isError }),
+          ...result.meta === undefined ? {} : { meta: result.meta } }, { surfaceOp: 'append' })
+      }
       return result
     } finally {
       toolSet?.dispose()
@@ -330,6 +350,47 @@ describe('data-only document updates', () => {
 
 describe('code-only assistant messages', () => {
   const code = { key: 'news', html: '<h1>News</h1>', css: '', js: '', fallbackText: 'News', stateSchemaVersion: 1 }
+  it('holds its Session observation until a queued mount finishes', async () => {
+    const h = await harness()
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const serial = Reflect.get(h.host, 'serial') as (id: SessionId, run: (record: RichSessionRecord) => Promise<void>) => Promise<void>
+    const chains = Reflect.get(h.host, 'chains') as Map<SessionId, Promise<void>>
+    const blocked = serial.call(h.host, h.session.id, async () => { entered.resolve(undefined); await release.promise })
+    await entered.promise
+    const firstTail = chains.get(h.session.id)
+    const message = createAssistantMessage({ content: [{ type: 'text', text: `\`\`\`rich-html\n${JSON.stringify(code)}\n\`\`\`` }], source: { provider: 'unit', model: 'unit' } })
+    h.session.append('assistant/message', { turn: 1, step: 1, message, stream: [] }, { surfaceOp: 'append' })
+    let disposed = false
+    const observation: SessionObservation = {
+      source: 'live',
+      get header() {
+        if (disposed) throw new Error('observation was released before mount used it')
+        return h.session.header
+      },
+      inheritedEventCount: h.session.inheritedEventCount,
+      events: h.session.snapshotEvents(),
+      cursor: SessionSeq(h.session.seq - 1),
+      retain: () => { throw new Error('not used') },
+      [Symbol.dispose]: () => { disposed = true },
+    }
+    const observe = vi.spyOn(h.ctx.sessionQuery, 'observeSession').mockResolvedValue(observation)
+    const mounting = h.host.mount({ sessionId: h.session.id, messageId: message.id, blockId: authoredBlockId(message.id, code.key) })
+    void mounting.catch(() => {})
+    try {
+      await vi.waitFor(() => { expect(chains.get(h.session.id)).not.toBe(firstTail) })
+      expect(disposed).toBe(false)
+      release.resolve(undefined)
+      await blocked
+      expect((await mounting).snapshot.manifest.html).toBe(code.html)
+      expect(disposed).toBe(true)
+    } finally {
+      release.resolve(undefined)
+      await blocked
+      await mounting.catch(() => {})
+      observe.mockRestore()
+    }
+  })
   it('commits once from settled source and recovers without replaying actions', async () => {
     const h = await harness()
     const message = createAssistantMessage({ content: [{ type: 'text', text: `\`\`\`rich-html\n${JSON.stringify(code)}\n\`\`\`` }], source: { provider: 'unit', model: 'unit' } })
@@ -775,6 +836,18 @@ describe('RichInline Host', () => {
     })
     expect((await h.tool('rich_inline_progress', { actionId: request.actionId, done: 3, total: 3, label: 'late' })).isError).toBe(true)
     expect((await h.tool('rich_inline_progress', { actionId: 'foreign-action', done: 1, total: 1, label: 'foreign' })).isError).toBe(true)
+  })
+  it('observes PTC progress and completion without mounting a PTC executor', async () => {
+    const h = await harness()
+    const m = await h.bind(await h.publish())
+    const request = intent(m)
+    await h.host.invoke(request)
+    await h.claim()
+    const status = () => h.host.status({ sessionId: m.snapshot.scope.sessionId, mountId: m.mountId, actionId: request.actionId })
+    expect((await h.tool('rich_inline_progress', { actionId: request.actionId, done: 1, total: 2, label: 'working' }, true, true)).isError).toBe(false)
+    await vi.waitFor(async () => { expect((await status()).progress).toEqual({ done: 1, total: 2, label: 'working' }) })
+    expect((await h.tool('rich_inline_complete', { actionId: request.actionId, state: 'completed', values: { result: 'done' } }, true, true)).isError).toBe(false)
+    await vi.waitFor(async () => { expect(await status()).toMatchObject({ state: 'completed', terminal: true, values: { result: 'done' } }) })
   })
   it('cancels its queued prompt independently of BUSY without cancelling the whole Agent', async () => {
     const h = await harness()

@@ -1,6 +1,6 @@
 /** Opt-in rich message plugin: scoped durable RPC plus native generic HTML rendering. */
 import type { Context } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
+import type { SyncedConfig } from '@deepseek-ai/dsh-client-config/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import richRemote from '@deepseek-ai/dsh-experimental-rich-inline/remote'
@@ -27,21 +27,13 @@ import { ThemeSettings, ThemeToast } from './ThemeSettings.tsx'
 import { RichQuestion, type RichQuestionInjected } from './RichQuestion.tsx'
 import { createRichQuestionDraftStore } from './question-drafts.ts'
 import type { ThemeSettingsInjected } from './ThemeSettings.tsx'
+import type { RichAppearance } from '../shared/theme.ts'
+import type { RichClientConfig } from '../shared/types.ts'
 
-/** Deployment-configurable durable status refresh cadence. */
-export interface Config {
-  readonly pollIntervalMs: number
-  readonly activePresets?: readonly string[]
-  /** Compact live process records without changing the user's work-details preference. */
-  readonly compactLiveProcess?: boolean
-  /** Present questions and plan reviews with the plugin's trusted HTML forms. */
-  readonly htmlQuestions?: boolean
-}
-/** Validated polling bounds avoid hidden per-deployment timers. */
-export const Config = z.object({
-  pollIntervalMs: z.number().min(250).max(60000).default(1000), activePresets: z.array(z.string().min(1)).default([]),
-  compactLiveProcess: z.boolean().default(true), htmlQuestions: z.boolean().default(true),
-})
+/** Refresh cadence while the Host sends none. */
+const ABSENT_POLL_INTERVAL_MS = 1000
+const EMPTY_PRESETS: readonly string[] = []
+
 /** Client integration waits on the generated Host namespace and trusted UI services. */
 export const inject = ['slots', 'locale', 'remote', 'fileUpload']
 
@@ -50,12 +42,20 @@ function unwrap<T>(result: RemoteResult<T>): T {
   return result.value
 }
 
-/** @param ctx - browser Cordis context. @param config - validated refresh cadence. */
-export async function apply(ctx: Context, config: Config): Promise<void> {
+/**
+ * @param ctx - browser Cordis context.
+ * @param config - Host-synced presentation and refresh preferences.
+ * @returns disposer withdrawing UI contributions before unmounting the Remote namespace.
+ */
+export async function apply(ctx: Context, config: SyncedConfig<RichClientConfig>): Promise<() => Promise<void>> {
+  const lifecycle = { active: true }
+  ctx.effect(() => () => { lifecycle.active = false }, 'rich-inline: active guard')
   const disposeRemote = await ctx.remote.$mount(richRemote)
-  ctx.effect(() => disposeRemote, 'rich-inline: remote namespace')
+  if (!lifecycle.active) { await disposeRemote(); return async () => {} }
   ctx.effect(() => ctx.locale.register('richInline', { zh, en }), 'rich-inline: dictionaries')
-  await ctx.inject(['remote.richInline'], scope => activate(scope, config))
+  const ui = ctx.inject(['remote.richInline'], scope => activate(scope, config))
+  try { await ui } catch (error) { await ui.dispose(); await disposeRemote(); throw error }
+  return async () => { await ui.dispose(); await disposeRemote() }
 }
 
 /** Plugins page key of this bundle's own detail page. */
@@ -87,32 +87,87 @@ function followSettings(ctx: Context, appearance: RichAppearanceSource): void {
   }, ThemeToast))
 }
 
-async function activate(ctx: Context, config: Config): Promise<void> {
+async function activate(ctx: Context, config: SyncedConfig<RichClientConfig>): Promise<void> {
+  const lifecycle = { active: true }
+  ctx.effect(() => () => { lifecycle.active = false }, 'rich-inline: activation guard')
   const remote = ctx.remote.richInline
-  const appearance = new RichAppearanceSource(unwrap(await remote.appearance()))
-  const enabled = (sessionId: SessionId): boolean => {
-    if ((config.activePresets?.length ?? 0) === 0) return true
-    const selected = ctx.sessions.list.getSnapshot().byId[sessionId]?.projectionValues?.agentPreset
-    return typeof selected === 'string' && config.activePresets?.includes(selected) === true
+  let initial: RemoteResult<RichAppearance>
+  try {
+    initial = await remote.appearance()
+  } catch (error) {
+    if (!lifecycle.active) return
+    throw error
   }
-  if (config.compactLiveProcess !== false) ctx.inject(['chatLiveProcess', 'sessions'], (scope) => {
-    scope.effect(() => scope.chatLiveProcess.register({ enabled, subscribe: listener => scope.sessions.list.subscribe(listener) }),
-      'rich-inline: compact live process')
+  if (!lifecycle.active) return
+  const appearance = new RichAppearanceSource(unwrap(initial))
+  ctx.effect(() => config.theme.subscribe(() => {
+    const next = config.theme.get()
+    if (next !== undefined) appearance.accept(next)
+  }), 'rich-inline: synced theme')
+  const enabled = (sessions: Context['sessions'], sessionId: SessionId): boolean => {
+    const presets = config.activePresets.get() ?? EMPTY_PRESETS
+    if (presets.length === 0) return true
+    const selected = sessions.list.getSnapshot().byId[sessionId]?.projectionValues?.agentPreset
+    return typeof selected === 'string' && presets.includes(selected)
+  }
+  const modePresentation = (sessions: Context['sessions']) => ({
+    enabled: (sessionId: SessionId) => enabled(sessions, sessionId),
+    subscribe: (listener: () => void) => {
+      const offSessions = sessions.list.subscribe(listener)
+      const offPresets = config.activePresets.subscribe(listener)
+      return () => { offSessions(); offPresets() }
+    },
   })
-  if (config.htmlQuestions !== false) ctx.inject(['uiSession', 'sessions'], scope => scope.slots.inject('conversation.composer', () => scope.slots.register({
-    name: 'conversation.composer', locale: 'richInline', priority: -10,
-    select: ({ pendingInteraction }: ComposerChainProps): PendingQuestion | null =>
-      (pendingInteraction?.kind === 'question' || pendingInteraction?.kind === 'plan-review')
-        && enabled(pendingInteraction.sessionId) ? pendingInteraction : null,
-    store: createRichQuestionDraftStore(),
-    inject: (sessionId): RichQuestionInjected => ({
-      hooks: { appearance },
-      keyedHooks: { questionCard: (key) => {
-        const pending = scope.uiSession.pendingInteractions.getSnapshot().get(sessionId)
-        return (pending?.kind === 'question' || pending?.kind === 'plan-review') && pending.key === key ? pending : undefined
-      } },
-    }),
-  }, RichQuestion)))
+  ctx.inject(['chatChangedFiles', 'sessions'], (scope) => {
+    scope.effect(() => scope.chatChangedFiles.register(modePresentation(scope.sessions)), 'rich-inline: compact changed files')
+  })
+  ctx.inject(['chatLiveProcess', 'sessions'], (scope) => {
+    scope.effect(() => {
+      let offProcess: (() => void) | undefined
+      const syncProcess = (): void => {
+        const activeProcess = config.compactLiveProcess.get() !== false
+        if (activeProcess && offProcess === undefined) {
+          offProcess = scope.chatLiveProcess.register(modePresentation(scope.sessions))
+        } else if (!activeProcess && offProcess !== undefined) {
+          offProcess()
+          offProcess = undefined
+        }
+      }
+      const offConfig = config.compactLiveProcess.subscribe(syncProcess)
+      syncProcess()
+      return () => { offConfig(); offProcess?.(); offProcess = undefined }
+    }, 'rich-inline: compact live process')
+  })
+  ctx.inject(['uiSession', 'sessions'], (scope) => {
+    scope.effect(() => {
+      let offComposer: (() => void) | undefined
+      const syncComposer = (): void => {
+        const activeQuestions = config.htmlQuestions.get() !== false
+        if (activeQuestions && offComposer === undefined) {
+          offComposer = scope.slots.inject('conversation.composer', () => scope.slots.register({
+            name: 'conversation.composer', locale: 'richInline', priority: -10,
+            select: ({ pendingInteraction }: ComposerChainProps): PendingQuestion | null =>
+              (pendingInteraction?.kind === 'question' || pendingInteraction?.kind === 'plan-review')
+                && enabled(scope.sessions, pendingInteraction.sessionId) ? pendingInteraction : null,
+            store: createRichQuestionDraftStore(),
+            inject: (sessionId): RichQuestionInjected => ({
+              hooks: { appearance },
+              keyedHooks: { questionCard: (key) => {
+                const pending = scope.uiSession.pendingInteractions.getSnapshot().get(sessionId)
+                return (pending?.kind === 'question' || pending?.kind === 'plan-review') && pending.key === key ? pending : undefined
+              } },
+            }),
+          }, RichQuestion))
+        } else if (!activeQuestions && offComposer !== undefined) {
+          offComposer()
+          offComposer = undefined
+        }
+      }
+      const offConfig = config.htmlQuestions.subscribe(syncComposer)
+      syncComposer()
+      return () => { offConfig(); offComposer?.(); offComposer = undefined }
+    }, 'rich-inline: html questions')
+  })
   const rpc: RichRpc = {
     mount: async request => unwrap(await remote.mount(request)),
     snapshot: async request => unwrap(await remote.snapshot(request)),
@@ -137,7 +192,9 @@ async function activate(ctx: Context, config: Config): Promise<void> {
     const items = controllers(sessionId)
     let existing = items.get(key)
     if (existing === undefined) {
-      existing = new RichBlockController(sessionId, rpc, native, config.pollIntervalMs, appearance.getSnapshot,
+      existing = new RichBlockController(sessionId, rpc, native,
+        () => config.pollIntervalMs.get() ?? ABSENT_POLL_INTERVAL_MS,
+        appearance.getSnapshot,
         () => ({ text: copyText('copyPart'), image: copyText('copyImage'), copied: copyText('copied'), failed: copyText('copyFailed'),
           ...native?.contentActions === 1 ? { menu: { plain: copyText('copyPlain'), markdown: copyText('copyMarkdown'), copyLink: copyText('copyLink'),
             openLink: copyText('openLink'), more: copyText('moreActions'), selectAll: copyText('selectContent'), openFailed: copyText('openLinkFailed') } } : {} }))
@@ -160,8 +217,7 @@ async function activate(ctx: Context, config: Config): Promise<void> {
     name: 'conversation.chat.assistant-block', locale: 'richInline',
     select: owner => owner.block.kind !== 'text' ? null : richParts(owner.block.text, owner.streaming || owner.interrupted === true),
     inject: (sessionId): RichInjected => ({
-      activePresets: config.activePresets ?? [],
-      hooks: { appearance },
+      hooks: { appearance, activePresets: config.activePresets },
       keyedHooks: { rich: key => controller(sessionId, key) },
       open: (key, messageId, blockId) => controller(sessionId, key).open(messageId, blockId),
       close: key => controller(sessionId, key).close(),

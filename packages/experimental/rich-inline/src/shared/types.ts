@@ -1,8 +1,10 @@
 /** Browser-safe rich message transport and saved state. */
+import type { Volatile } from '@deepseek-ai/cordis'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { MessageId } from '@deepseek-ai/dsh-llm/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { RichAppearance } from './theme.ts'
 export type { RichTaskUsage, RichUsageCount, RichUsageSession } from './usage.ts'
 
 /** Stable identity of one published rich block. */
@@ -130,3 +132,16 @@ export interface RichActionRequest extends RichMountRequestId { readonly actionI
 export interface RichRegisterFileRequest extends RichMountRequestId { readonly receiptId: Branded<'file-upload-receipt-id'> }
 /** Trusted renderer accepts or keeps a pending replacement without silently overwriting edits. */
 export interface RichApplyUpdateRequest extends RichMountRequestId { readonly discardDraft: boolean }
+/** Browser-synced subset of Host-owned plugin configuration. */
+export interface RichClientConfig {
+  /** Empty enables every root session; otherwise only these selected root presets author rich output. Children are excluded. */
+  readonly activePresets: Volatile<string[]>
+  /** Durable status refresh cadence, synchronized to the Client presentation. */
+  readonly pollIntervalMs: Volatile<number>
+  /** Compact live execution summary in rich-enabled sessions. */
+  readonly compactLiveProcess: Volatile<boolean>
+  /** Rich composer card for user questions and plan reviews in rich-enabled sessions. */
+  readonly htmlQuestions: Volatile<boolean>
+  /** Built-in sheet; user settings change it live without remounting the plugin. */
+  readonly theme: Volatile<RichAppearance['theme']>
+}

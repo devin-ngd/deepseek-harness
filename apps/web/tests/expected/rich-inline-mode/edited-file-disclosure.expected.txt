@@ -1,0 +1,5 @@
+- button "Edited 1 file" [expanded]
+- text: +1 -0
+- list:
+  - listitem:
+    - button "View changes to mode-report.txt": mode-report.txt +1 -0

@@ -3,6 +3,7 @@
   "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo" },
   "include": ["src/client/**/*.ts", "src/client/**/*.tsx", "src/shared/**/*.ts", "src/css-modules.d.ts"],
   "references": [
+    { "path": "../../client/config" },
     { "path": "../../client/ui-user-questions" },
     { "path": "../../interaction/user-questions" },
     { "path": "../../../vendor/cordis" }, { "path": "../../../vendor/schemastery" },

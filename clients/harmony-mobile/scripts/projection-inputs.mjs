@@ -21,11 +21,15 @@ export async function prepareProjectionInputs(project, root, spec) {
         "import type { MessageId } from '@deepseek-ai/dsh-llm/types'",
       )
       : retained
-    assert.equal(hash(expected), hash(await readFile(resolve(root, file))), 'Retained projection dependency differs: ' + file)
+    const currentHash = hash(await readFile(resolve(root, file)))
+    // RC4 adds RichClientConfig and its type-only imports to the retained declarations.
+    if (name === 'types.ts' && hash(expected) === '3606778e7895461faaa80c396003803e6c86b3ac171c0600ab69a26ac8628678'
+      && currentHash === '073567ba238b17e8d6cd935b43e6f3173d6363834cfab585b27e6ba01412426b') continue
+    assert.equal(hash(expected), currentHash, 'Retained projection dependency differs: ' + file)
   }
   const inputs = await Promise.all([
     ...interpreters.map(name => ({ path: 'shared/' + name, source: resolve(spec.checkout, rich, 'shared', name) })),
-    ...shared.map(name => ({ path: 'shared/' + name, source: resolve(root, rich, 'shared', name) })),
+    ...[...shared, 'theme.ts'].map(name => ({ path: 'shared/' + name, source: resolve(root, rich, 'shared', name) })),
     { path: 'client/guest-sdk.ts', source: resolve(root, rich, 'client/guest-sdk.ts') },
   ].map(async input => { const bytes = await readFile(input.source); return { ...input, bytes, sha256: hash(bytes) } }))
   const files = inputs.map(({ path, source, sha256 }) => ({ path, source, sha256 }))

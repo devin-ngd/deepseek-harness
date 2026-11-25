@@ -187,11 +187,14 @@ function Preview({ source, stopped, t, appearance }: { source: string; stopped: 
   </section>
 }
 
+const EMPTY_PRESETS: readonly string[] = []
+
 /** @param props - scoped owner, parsed markers and private injected verbs. @returns inline content in original order. */
 export function RichMessage(props: RichMessageProps) {
   const { matched, messageId, t } = props
   const selectedPreset = props.useSessions(state => state.byId[props.sessionId]?.projectionValues?.agentPreset)
-  const legacyEnabled = props.activePresets.length === 0 || typeof selectedPreset === 'string' && props.activePresets.includes(selectedPreset)
+  const activePresets = props.useActivePresets(value => value ?? EMPTY_PRESETS)
+  const legacyEnabled = activePresets.length === 0 || typeof selectedPreset === 'string' && activePresets.includes(selectedPreset)
   const appearance = props.useAppearance(value => value)
   const labels = useMemo<MarkdownLabels>(() => ({
     code: { copyLabel: t('copy'), copiedLabel: t('copied'), toolbarLabels: { codeLabel: t('code'), wrapLabel: t('wrap'), unwrapLabel: t('unwrap') } },

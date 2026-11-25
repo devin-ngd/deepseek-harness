@@ -149,7 +149,9 @@
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@deepseek-ai/dsh-util-crypto": "workspace:*"
+    "@deepseek-ai/dsh-util-crypto": "workspace:*",
+    "@deepseek-ai/dsh-client-config": "workspace:*",
+    "@deepseek-ai/dsh-client-test-runtime": "workspace:*"
   },
   "engines": {
     "dsh": "0.2.2-rc.4"

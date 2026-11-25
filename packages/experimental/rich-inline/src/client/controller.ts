@@ -90,12 +90,12 @@ export class RichBlockController {
    * @param sessionId - trusted Session binding.
    * @param rpc - generated Host service adapter.
    * @param native - trusted Desktop adapter, absent on Web.
-   * @param pollIntervalMs - deployment-configured refresh cadence.
+   * @param pollIntervalMs - deployment-configured refresh cadence, or a live reader of it.
    * @param appearance - reads the current profile preferences, shared with streaming previews.
    * @param copyLabels - localized copy controls; omitted for consumers without that UI.
    */
   constructor(private readonly sessionId: SessionId, private readonly rpc: RichRpc,
-    private readonly native: NativeRichBridge | undefined, private readonly pollIntervalMs: number,
+    private readonly native: NativeRichBridge | undefined, private readonly pollIntervalMs: number | (() => number),
     private readonly appearance: () => RichAppearance, private readonly copyLabels?: () => RichCopyLabels) {
     this.view = { snapshot: null, reservation: null, height: 160, error: null, closed: false,
       supported: native !== undefined, inputWarning: false, repairing: false }
@@ -331,12 +331,13 @@ export class RichBlockController {
 
   private schedule(generation: number): void {
     if (generation !== this.generation || this.view.closed || this.timer !== null) return
+    const delay = typeof this.pollIntervalMs === 'function' ? this.pollIntervalMs() : this.pollIntervalMs
     this.timer = setTimeout(() => {
       this.timer = null
       void this.refresh(generation).catch((error: unknown) => {
         if (generation === this.generation) this.publish({ error: String(error) })
       }).finally(() => { this.schedule(generation) })
-    }, this.pollIntervalMs)
+    }, delay)
   }
 
   private refresh(generation: number): Promise<void> {
