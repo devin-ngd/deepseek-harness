@@ -1,0 +1,35 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="hr-bg" x1="4" y1="3" x2="32" y2="33" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#172036"/>
+      <stop offset="0.55" stop-color="#0C111E"/>
+      <stop offset="1" stop-color="#070A12"/>
+    </linearGradient>
+    <linearGradient id="hr-rim" x1="6" y1="3" x2="30" y2="33" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3B5280"/>
+      <stop offset="0.5" stop-color="#22314F"/>
+      <stop offset="1" stop-color="#131C30"/>
+    </linearGradient>
+    <radialGradient id="hr-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(18 18) scale(16)">
+      <stop offset="0" stop-color="#6366F1" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hr-line" x1="8" y1="18" x2="28" y2="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="0.5" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#818CF8"/>
+    </linearGradient>
+    <linearGradient id="hr-core" x1="12" y1="12" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#132038"/>
+      <stop offset="1" stop-color="#09101D"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="30" height="30" rx="7" fill="url(#hr-bg)"/>
+  <rect x="3" y="3" width="30" height="30" rx="7" fill="url(#hr-glow)"/>
+  <rect x="3.5" y="3.5" width="29" height="29" rx="6.5" stroke="url(#hr-rim)"/>
+  <line x1="9.5" y1="18" x2="26.5" y2="18" stroke="url(#hr-line)" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M18 10.5L25.5 18L18 25.5L10.5 18L18 10.5Z" fill="url(#hr-core)" stroke="url(#hr-line)" stroke-width="1.6" stroke-linejoin="round"/>
+  <circle cx="9" cy="18" r="2.1" fill="#0B1324" stroke="#38BDF8" stroke-width="1.5"/>
+  <circle cx="27" cy="18" r="2.1" fill="#0B1324" stroke="#818CF8" stroke-width="1.5"/>
+  <circle cx="18" cy="18" r="2.4" fill="#34D399"/>
+</svg>

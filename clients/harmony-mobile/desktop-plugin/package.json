@@ -1,6 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-harmony-mobile",
   "version": "0.0.0-rc2.37",
+  "icon": "./icon.svg",
   "private": true,
   "type": "module",
   "description": "Default-disabled private Harmony mobile profile adapter with independent authenticated peer admission",
@@ -40,9 +41,15 @@
     "./device": {
       "types": "./lib/types/desktop-plugin/src/device-binding-command.d.ts",
       "default": "./lib/device.js"
-    }
+    },
+    "./icon": "./icon.svg",
+    "./pairing/icon": "./icon.svg",
+    "./test-session/icon": "./icon.svg",
+    "./device/icon": "./icon.svg",
+    "./product/icon": "./icon.svg"
   },
   "files": [
+    "icon.svg",
     "lib",
     "workspace-shell",
     "cordis.patch.yml",
