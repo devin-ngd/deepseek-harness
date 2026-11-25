@@ -39,6 +39,10 @@ packages/**/__pycache__/
 apps/web/dist/
 apps/cli/docs/
 .artifacts/
+/.build/
+/.hvigor/
+/debug.log
+/packages/experimental/inspector/.build/
 .dsh-build/
 .dsh-report/
 .ui-review/

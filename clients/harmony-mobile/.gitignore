@@ -8,14 +8,16 @@ harmony/entry/build/
 *.cer
 *.p7b
 *.keystore
-handoff/deploy-rc235-20261104/verify-*/verified-profile.json
-handoff/deploy-rc235-20261104/sign-sdk-user/
 
 # Device traces and local acceptance reports stay on the development machine.
 evidence/
 *.log
-handoff/workspace-phone-rc240-*/
-handoff/deploy-rc235-20261104/shots/
-handoff/deploy-rc235-20261104/layouts/
-handoff/deploy-rc235-20261104/rc2-48-signed.hap
-handoff/deploy-rc235-20261104/phone-workspace-diagnostics-*.json
+
+# Local archives and generated handoff copies. Keep phase29 fixtures visible to Git.
+/handoff/*.zip
+/handoff/deploy-rc*/
+/handoff/device-native-*/
+/handoff/mvp-rc*/
+/handoff/phone-*/
+/handoff/standard-plugin-workspace/
+/handoff/workspace-*/

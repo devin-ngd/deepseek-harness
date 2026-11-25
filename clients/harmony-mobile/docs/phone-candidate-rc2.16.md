@@ -7,14 +7,14 @@ description: 手机端 rc2.16 完整未签名候选、固定输入、归档核�
 
 ## 交付
 
-[完整封存 ZIP](../handoff/phone-rc2.16-20261029.zip)包含 [HAP](../handoff/phone-rc2.16-20261029/dsh-harmony-mobile-0.0.0-rc2.16-device-unsigned.hap)、完整原生工程、147 个实际消费模块的源码字节快照、构建入口和本轮验证回执。版本为 `0.0.0-rc2.16`，bundle 为 `local.dsh.mobile.offlineproduct`，versionCode 保持 2；设备模式开启，连接配置默认禁用。封存内容未放入真实身份、配对、路由或签名材料；同载荷 HAP 已按独立授权完成[原签名原位安装及离线核对](rc216-installation-20261029.md)，未开启实机联调窗口。
+[完整封存 ZIP](../handoff/phone-rc2.16-20261029.zip)包含 `dsh-harmony-mobile-0.0.0-rc2.16-device-unsigned.hap`、完整原生工程、147 个实际消费模块的源码字节快照、构建入口和本轮验证回执。版本为 `0.0.0-rc2.16`，bundle 为 `local.dsh.mobile.offlineproduct`，versionCode 保持 2；设备模式开启，连接配置默认禁用。封存内容未放入真实身份、配对、路由或签名材料；同载荷 HAP 已按独立授权完成[原签名原位安装及离线核对](rc216-installation-20261029.md)，未开启实机联调窗口。
 
 | 产物 | 字节数 | SHA256 |
 |---|---:|---|
 | 完整封存 ZIP | 2603483 | `089b82ae1db25fbf8e80aaa928d3d9c4382e1962cd99fd2c9f7f4910be699b62` |
 | 完整未签名 HAP | 5592795 | `deea95eb544f978f103098c6a1ae31968cd0564669d04860d510318415193255` |
 
-文件清单和复核方法见[封存 README](../handoff/phone-rc2.16-20261029/README.md)、[manifest](../handoff/phone-rc2.16-20261029/manifest.json)及 [SHA256SUMS](../handoff/phone-rc2.16-20261029/SHA256SUMS)。在解压目录执行 `python verify.py` 可离线复核每个封存文件、HAP CRC 与版本。ZIP 自身摘要由上述表格及[封存回执](../evidence/phone-candidate-rc2.16-20261029.json)记录。
+解压 ZIP 后，从 `README.md`、`manifest.json` 和 `SHA256SUMS` 查看文件清单和复核方法。在解压目录执行 `python verify.py` 可离线复核每个封存文件、HAP CRC 与版本。ZIP 自身摘要由上述表格及[封存回执](../evidence/phone-candidate-rc2.16-20261029.json)记录。
 
 ## 构建输入
 
