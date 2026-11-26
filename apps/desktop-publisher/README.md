@@ -16,6 +16,7 @@ Publish retained Desktop packages, change an existing release's rollout percenta
 - [Implementation](#implementation)
 - [Limitations](#limitations)
 
+<a id="use-this-package"></a>
 ## Use this package
 
 Use [Publish Desktop](../../.github/workflows/desktop-publish.yml) for initial publication and [Rollout & Website](../../.github/workflows/desktop-rollout.yml) for an already published version. The workflows own operator inputs, runner routing, credentials, and approval steps. Rollout installs only this workspace's production dependencies with lifecycle scripts disabled; invoke its entrypoints with Node from this package directory to avoid pnpm's automatic dependency repair.
@@ -26,6 +27,7 @@ The dependency-free preflights run before installation. Their executable regress
 node apps/desktop-publisher/tests/preinstall.mjs
 ```
 
+<a id="implementation"></a>
 ## Implementation
 
 <details>
@@ -39,6 +41,7 @@ Tests under `apps/desktop` may reuse the publisher's loopback COS fixture. Publi
 
 </details>
 
+<a id="limitations"></a>
 ## Limitations
 
 - This private tool is not published to npm and does not generate a standalone artifact. Workflow checkouts must contain the shared lockfile and workspace metadata.

@@ -16,6 +16,7 @@ kind: "package-library"
 - [实现](#implementation)
 - [限制](#limitations)
 
+<a id="use-this-package"></a>
 ## 使用此包
 
 首次发布使用 [Publish Desktop](../../.github/workflows/desktop-publish.yml)，已发布版本使用 [Rollout & Website](../../.github/workflows/desktop-rollout.yml)。工作流负责操作输入、运行器路由、凭据和审批步骤。放量仅安装此 workspace 的生产依赖，并禁用生命周期脚本；从此包目录使用 Node 调用入口，避免 pnpm 自动修复依赖。
@@ -26,6 +27,7 @@ kind: "package-library"
 node apps/desktop-publisher/tests/preinstall.mjs
 ```
 
+<a id="implementation"></a>
 ## 实现
 
 <details>
@@ -39,6 +41,7 @@ Desktop 构建和签名脚本保留在 `apps/desktop`；发布代码不导入 De
 
 </details>
 
+<a id="limitations"></a>
 ## 限制
 
 - 此私有工具不发布到 npm，也不生成独立产物。工作流 checkout 必须包含共用锁文件和 workspace 元数据。

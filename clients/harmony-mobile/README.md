@@ -33,7 +33,7 @@ ArkUI owns selection, input, task state and cancellation. The native owner suppl
 
 Native chat shows the final text or mounted rich result by default. The rich result fills the available height between the fixed header and conversation controls. Scroll within the result to read longer content. Open the process disclosure to read the intermediate messages, including prose next to a Rich marker. Pull down at the top to load earlier messages. See [device qualification](docs/workspace-review.md#当前日常部署与真机边界).
 
-In rendezvous mode, a phone on Wi-Fi first dials the desktop's WLAN address from local discovery or its signed address publication. If the WLAN dial fails, the phone briefly listens on its own Wi-Fi address and asks the paired desktop to connect. If the reverse connection fails, the phone dials the desktop's Tailnet address when a matching Mesh route exists. Each data connection requires the saved pairing and a fresh encrypted handshake. See the [desktop setup](desktop-plugin/README.md) for the matching desktop and relay versions.
+In rendezvous mode, the phone uses local discovery, signed desktop address publication, and the saved pairing to connect. Each data connection requires a fresh encrypted handshake. See the [desktop setup](desktop-plugin/README.md) for WLAN and Tailnet route order, retry behavior, and desktop and relay requirements.
 
 All client writes stay here. `source.json` is a read-only dependency locator. Preserve installed DSH, unrelated repository changes, old HAPs, manifests, public generations and receipts. Use existing dependencies and the approved API26 toolchain; new candidates remain separate from the frozen phase69 package.
 
