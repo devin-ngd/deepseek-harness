@@ -4,7 +4,15 @@ exports[`bounded final format correction > logs one correction, removes tools, d
 [
   {
     "text": "Rich inline output format check: The substantive result is plain text or Markdown, not generated HTML/CSS/JavaScript.
-The work above is already done. Correct only the presentation of the existing result, in the user's language. Do not repeat any tool call or external operation; tools are disabled for this correction. Return only a valid rich-html fenced JSON object with key, html, css, js, fallbackText and stateSchemaVersion. Create an actual styled webpage fragment with a clear layout and appropriate local controls (for example search or filtering for a list), not Markdown copied into a pre, article or text box. Put all explanations inside the HTML. Preserve the existing facts and sources. If necessary facts are missing, show that limitation in the HTML. 不要再输出 Markdown。只生成 HTML/CSS/JavaScript 代码，渲染由插件完成。",
+The work above is already done. Correct only the presentation of the existing result, in the user's language. Do not repeat any tool call or external operation; tools are disabled for this correction.
+Return exactly one closed rich-html fenced JSON object and nothing else in this message. Hard rules the publication must satisfy:
+1. Fields in this exact order: key, html, css, js, fallbackText, stateSchemaVersion (values optional). No additional fields.
+2. key is a fresh short name you invent now: it must match ^[A-Za-z][A-Za-z0-9_-]{0,31}$ (starts with a letter; then only letters, digits, underscore or hyphen; at most 32 characters) and must differ from every key used earlier in this conversation. Never copy or invent {{...}} placeholder forms such as {{SECRET_...}} or {{NAME_...}} in the key or any other field: host placeholders are filled only by the host; a generated one is always invalid output.
+3. Every string value must be valid JSON: escape each newline as \\n and each double quote inside strings as \\", and keep non-ASCII characters unescaped.
+4. One opening fence and one closing fence, each on its own line; no prose, explanation, blank paragraph or extra code fence before or after the fenced object.
+5. Author an actual styled webpage fragment with a clear layout and useful local controls (for example search or filtering for a list), not Markdown copied into a pre, article or text box. Put all explanations inside the HTML. Preserve the existing facts and sources. If necessary facts are missing, show that limitation in the HTML.
+6. Shape example (adapt content, do not copy the key verbatim): {"key":"summary1","html":"<section class='rich-answer' data-rich-copy><p>…</p></section>","css":"","js":"","fallbackText":"…","stateSchemaVersion":1}
+不要再输出 Markdown。只生成 HTML/CSS/JavaScript 代码块，渲染由插件完成；key 必须是字母开头的短标识符，任何字段里都禁止 {{...}} 形态。",
     "type": "text",
   },
 ]

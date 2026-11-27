@@ -47,7 +47,7 @@ export function apply(ctx: Context): void {
     text: RICH_OUTPUT_FORMAT_GUIDANCE + '\n' + richAppearanceReminder({ theme: 'cyber', accent: 'auto' }) })
   ctx.on('agent/created', ({ agent }) => {
     agent.ctx.tools.restrict({ allow: ['rich_inline_complete', 'rich_inline_progress', 'rich_inline_publish', 'rich_inline_read', 'rich_inline_update'] })
-    agent.ctx.systemPrompt.section({ name: 'rich-source-fixture', order: 0, complete: true,
+    agent.ctx.systemPrompt.section({ name: 'rich-source-fixture', order: 0, complete: true, interpolate: false,
       text: 'You are an AI agent powered by DeepSeek Harness.\n\nSynthetic rich-inline source projection verification.\n\n'
         + RICH_AUTHORING_GUIDANCE + '\n\n' + RICH_APPEARANCE_GUIDANCE })
     return undefined
