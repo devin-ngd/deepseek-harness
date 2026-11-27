@@ -60,9 +60,13 @@ function parsedValues(value: JsonValue | undefined, maxBytes: number): RichValue
 export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueBytes: number): void {
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_read',
-    description: 'Read a bounded immutable HTML/CSS/JS or values fragment using a sourceRef from prior Rich artifact context. References are scoped to your current Session, including inherited sources. Read only needed fields and ranges; this never mounts content or runs actions. Original full source remains in the audit log.',
-    parameters: { sourceRef: { type: 'string', required: true }, field: { type: 'string', required: true, description: 'Declared html, css, js, fallbackText or values (JSON) from this immutable authored or confirmed replacement snapshot.' },
-      offset: { type: 'integer', required: true }, length: { type: 'integer', required: true } },
+    description: 'Read one field of an immutable Rich block snapshot in this session. Returns a text fragment and nextOffset, or null at the end.',
+    parameters: {
+      sourceRef: { type: 'string', required: true, description: 'Exact reference from earlier Rich artifact context, including inherited references.' },
+      field: { type: 'string', required: true, enum: ['html', 'css', 'js', 'fallbackText', 'values'], description: 'Snapshot field to read. Values are returned as JSON text.' },
+      offset: { type: 'integer', required: true, description: 'Zero-based UTF-16 offset. Use the returned nextOffset to continue.' },
+      length: { type: 'integer', required: true, description: 'Positive number of UTF-16 code units to read, subject to the per-call limit.' },
+    },
     output: { schema: { type: 'object', additionalProperties: false, properties: {
       sourceRef: { type: 'string', required: true }, sourceHash: { type: 'string', required: true }, field: { type: 'string', required: true },
       offset: { type: 'integer', required: true }, totalChars: { type: 'integer', required: true }, text: { type: 'string', required: true },
@@ -76,13 +80,14 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
   }), { when: ({ agent }) => owner.canRead(agent) }), 'rich-inline.read-tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_publish',
-    description: 'Author complete HTML/CSS/JavaScript for an interactive block inside chat. The plugin owns validation, isolated execution, rendering, and bounded error feedback; publication is not runtime success. Do not render with browser/shell tools or deliver screenshots/files unless explicitly requested. For visual tasks, your final reply contains only the exact returned rich-inline marker(s), with essential instructions inside the HTML; no explanatory prose unless requested. The isolated SDK is window.rich: onState(callback), getState(), getDraft(), setDraft(fields), submit(values,{actionId,fileGrants}), status(actionId), cancel(actionId), bindForm(form). onState fires after initialization and updates. Keep filters, tabs, and animation local. Never access host files, credentials, or network. For render feedback, repair the existing blockId and preserve stateSchemaVersion and confirmed values. Existing block updates need no additional marker. Use rich_inline_complete only after processing a submitted business interaction.',
+    description: 'Replace the HTML, CSS, and JavaScript of an existing Rich block, including repairs requested by Render feedback. Returns the block ID and revisions. For a new block, emit a rich-html fenced result.',
     parameters: {
-      blockId: { type: 'string', description: 'Existing block owned by this session, omitted for a new block.' },
-      expectedRenderRevision: { type: 'integer', description: 'Required when repairing Render feedback: use its renderRevision to refuse stale code replacement.' },
+      blockId: { type: 'string', description: 'ID of the existing block in this session. Omission is supported for legacy tool callers creating a block.' },
+      expectedRenderRevision: { type: 'integer', description: 'Required for Render feedback repairs. Copy the renderRevision from that feedback.' },
       html: { type: 'string', required: true }, css: { type: 'string', required: true }, js: { type: 'string', required: true },
       fallbackText: { type: 'string', required: true, description: 'Useful plain-text content if scripting or rendering is unavailable.' },
-      stateSchemaVersion: { type: 'integer', required: true }, values: { type: 'json' },
+      stateSchemaVersion: { type: 'integer', required: true, description: 'State schema version. Keep the existing version when repairing a block.' },
+      values: { type: 'json', description: 'Replacement confirmed values. Omit to preserve the existing values.' },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: {
@@ -100,13 +105,13 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
   }), { when: ({ agent }) => owner.canAuthor(agent) }), 'rich-inline.publish-tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_update',
-    description: 'Replace confirmed state and readable fallback of an existing interactive block without changing HTML/CSS/JavaScript or unsent inputs. Use window.rich.onState in the published page to render values. Supply the current render and data revisions from publication or interactive input; a stale revision is rejected. Progress in an ordinary task may use this tool without an actionId. Tool or task completion must still come from its actual outcome. No new marker is needed.',
+    description: 'Replace the confirmed values and fallback text of an existing Rich block. Keeps the code and unsent inputs. Returns the new data revision.',
     parameters: {
-      blockId: { type: 'string', required: true },
-      expectedRenderRevision: { type: 'integer', required: true },
-      expectedDataRevision: { type: 'integer', required: true },
-      values: { type: 'json', required: true },
-      fallbackText: { type: 'string', required: true },
+      blockId: { type: 'string', required: true, description: 'ID of the existing block in this session.' },
+      expectedRenderRevision: { type: 'integer', required: true, description: 'Current render revision from the block publication or interactive input.' },
+      expectedDataRevision: { type: 'integer', required: true, description: 'Current data revision. Use the new revision returned by a successful update for the next write.' },
+      values: { type: 'json', required: true, description: 'Complete replacement values, including entries that should remain.' },
+      fallbackText: { type: 'string', required: true, description: 'Readable text representing the new confirmed state.' },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: {
@@ -123,8 +128,12 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
   }), { when: ({ agent }) => owner.canAuthor(agent) }), 'rich-inline.update-tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_complete',
-    description: 'Settle the exact actionId supplied in an interactive user input after its requested work is complete. Completed means the work succeeded; failed means its failure is known. This does not promise exactly-once external effects. Return structured values for the block. Do not settle another session or infer completion from being idle.',
-    parameters: { actionId: { type: 'string', required: true }, state: { type: 'string', enum: ['completed', 'failed'], required: true }, values: { type: 'json' } },
+    description: 'Settle a submitted Rich action once its outcome is known. Returns the settlement and structured values for the block.',
+    parameters: {
+      actionId: { type: 'string', required: true, description: 'Exact actionId from the submitted interactive input.' },
+      state: { type: 'string', enum: ['completed', 'failed'], required: true, description: 'Use completed for confirmed success and failed for known failure.' },
+      values: { type: 'json', description: 'Structured result values for the block.' },
+    },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: {
         actionId: { type: 'string', required: true }, state: { type: 'string', enum: ['completed', 'failed'], required: true }, values: { type: 'json', required: true },
@@ -142,8 +151,13 @@ export function installRichTools(ctx: Context, owner: RichToolOwner, maxValueByt
   }), { when: ({ agent }) => owner.canAuthor(agent) }), 'rich-inline.complete-tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'rich_inline_progress',
-    description: 'Report progress for the exact actionId supplied in an interactive input. Progress is not completion. Use non-negative integer done and total, with done no larger than total; label describes the work already performed.',
-    parameters: { actionId: { type: 'string', required: true }, done: { type: 'integer', required: true }, total: { type: 'integer', required: true }, label: { type: 'string', required: true } },
+    description: 'Report intermediate progress for a submitted Rich action that is still in progress.',
+    parameters: {
+      actionId: { type: 'string', required: true, description: 'Exact actionId from the submitted interactive input.' },
+      done: { type: 'integer', required: true, description: 'Units completed, from zero through total.' },
+      total: { type: 'integer', required: true, description: 'Total units of work, a non-negative integer.' },
+      label: { type: 'string', required: true, description: 'Short description of work already performed.' },
+    },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: {
         actionId: { type: 'string', required: true }, done: { type: 'integer', required: true }, total: { type: 'integer', required: true }, label: { type: 'string', required: true },

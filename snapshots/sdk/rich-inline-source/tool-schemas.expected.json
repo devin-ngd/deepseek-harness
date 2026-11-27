@@ -2,21 +2,25 @@
   "initial": [
     {
       "name": "rich_inline_complete",
-      "description": "Settle the exact actionId supplied in an interactive user input after its requested work is complete. Completed means the work succeeded; failed means its failure is known. This does not promise exactly-once external effects. Return structured values for the block. Do not settle another session or infer completion from being idle.",
+      "description": "Settle a submitted Rich action once its outcome is known. Returns the settlement and structured values for the block.",
       "parameters": {
         "type": "object",
         "properties": {
           "actionId": {
-            "type": "string"
+            "type": "string",
+            "description": "Exact actionId from the submitted interactive input."
           },
           "state": {
             "type": "string",
+            "description": "Use completed for confirmed success and failed for known failure.",
             "enum": [
               "completed",
               "failed"
             ]
           },
-          "values": {}
+          "values": {
+            "description": "Structured result values for the block."
+          }
         },
         "required": [
           "actionId",
@@ -26,21 +30,25 @@
     },
     {
       "name": "rich_inline_progress",
-      "description": "Report progress for the exact actionId supplied in an interactive input. Progress is not completion. Use non-negative integer done and total, with done no larger than total; label describes the work already performed.",
+      "description": "Report intermediate progress for a submitted Rich action that is still in progress.",
       "parameters": {
         "type": "object",
         "properties": {
           "actionId": {
-            "type": "string"
+            "type": "string",
+            "description": "Exact actionId from the submitted interactive input."
           },
           "done": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Units completed, from zero through total."
           },
           "total": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Total units of work, a non-negative integer."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "Short description of work already performed."
           }
         },
         "required": [
@@ -53,17 +61,17 @@
     },
     {
       "name": "rich_inline_publish",
-      "description": "Author complete HTML/CSS/JavaScript for an interactive block inside chat. The plugin owns validation, isolated execution, rendering, and bounded error feedback; publication is not runtime success. Do not render with browser/shell tools or deliver screenshots/files unless explicitly requested. For visual tasks, your final reply contains only the exact returned rich-inline marker(s), with essential instructions inside the HTML; no explanatory prose unless requested. The isolated SDK is window.rich: onState(callback), getState(), getDraft(), setDraft(fields), submit(values,{actionId,fileGrants}), status(actionId), cancel(actionId), bindForm(form). onState fires after initialization and updates. Keep filters, tabs, and animation local. Never access host files, credentials, or network. For render feedback, repair the existing blockId and preserve stateSchemaVersion and confirmed values. Existing block updates need no additional marker. Use rich_inline_complete only after processing a submitted business interaction.",
+      "description": "Replace the HTML, CSS, and JavaScript of an existing Rich block, including repairs requested by Render feedback. Returns the block ID and revisions. For a new block, emit a rich-html fenced result.",
       "parameters": {
         "type": "object",
         "properties": {
           "blockId": {
             "type": "string",
-            "description": "Existing block owned by this session, omitted for a new block."
+            "description": "ID of the existing block in this session. Omission is supported for legacy tool callers creating a block."
           },
           "expectedRenderRevision": {
             "type": "integer",
-            "description": "Required when repairing Render feedback: use its renderRevision to refuse stale code replacement."
+            "description": "Required for Render feedback repairs. Copy the renderRevision from that feedback."
           },
           "html": {
             "type": "string"
@@ -79,9 +87,12 @@
             "description": "Useful plain-text content if scripting or rendering is unavailable."
           },
           "stateSchemaVersion": {
-            "type": "integer"
+            "type": "integer",
+            "description": "State schema version. Keep the existing version when repairing a block."
           },
-          "values": {}
+          "values": {
+            "description": "Replacement confirmed values. Omit to preserve the existing values."
+          }
         },
         "required": [
           "html",
@@ -94,22 +105,32 @@
     },
     {
       "name": "rich_inline_read",
-      "description": "Read a bounded immutable HTML/CSS/JS or values fragment using a sourceRef from prior Rich artifact context. References are scoped to your current Session, including inherited sources. Read only needed fields and ranges; this never mounts content or runs actions. Original full source remains in the audit log.",
+      "description": "Read one field of an immutable Rich block snapshot in this session. Returns a text fragment and nextOffset, or null at the end.",
       "parameters": {
         "type": "object",
         "properties": {
           "sourceRef": {
-            "type": "string"
+            "type": "string",
+            "description": "Exact reference from earlier Rich artifact context, including inherited references."
           },
           "field": {
             "type": "string",
-            "description": "Declared html, css, js, fallbackText or values (JSON) from this immutable authored or confirmed replacement snapshot."
+            "description": "Snapshot field to read. Values are returned as JSON text.",
+            "enum": [
+              "html",
+              "css",
+              "js",
+              "fallbackText",
+              "values"
+            ]
           },
           "offset": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Zero-based UTF-16 offset. Use the returned nextOffset to continue."
           },
           "length": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Positive number of UTF-16 code units to read, subject to the per-call limit."
           }
         },
         "required": [
@@ -122,22 +143,28 @@
     },
     {
       "name": "rich_inline_update",
-      "description": "Replace confirmed state and readable fallback of an existing interactive block without changing HTML/CSS/JavaScript or unsent inputs. Use window.rich.onState in the published page to render values. Supply the current render and data revisions from publication or interactive input; a stale revision is rejected. Progress in an ordinary task may use this tool without an actionId. Tool or task completion must still come from its actual outcome. No new marker is needed.",
+      "description": "Replace the confirmed values and fallback text of an existing Rich block. Keeps the code and unsent inputs. Returns the new data revision.",
       "parameters": {
         "type": "object",
         "properties": {
           "blockId": {
-            "type": "string"
+            "type": "string",
+            "description": "ID of the existing block in this session."
           },
           "expectedRenderRevision": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Current render revision from the block publication or interactive input."
           },
           "expectedDataRevision": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Current data revision. Use the new revision returned by a successful update for the next write."
           },
-          "values": {},
+          "values": {
+            "description": "Complete replacement values, including entries that should remain."
+          },
           "fallbackText": {
-            "type": "string"
+            "type": "string",
+            "description": "Readable text representing the new confirmed state."
           }
         },
         "required": [
@@ -154,21 +181,25 @@
     [
       {
         "name": "rich_inline_complete",
-        "description": "Settle the exact actionId supplied in an interactive user input after its requested work is complete. Completed means the work succeeded; failed means its failure is known. This does not promise exactly-once external effects. Return structured values for the block. Do not settle another session or infer completion from being idle.",
+        "description": "Settle a submitted Rich action once its outcome is known. Returns the settlement and structured values for the block.",
         "parameters": {
           "type": "object",
           "properties": {
             "actionId": {
-              "type": "string"
+              "type": "string",
+              "description": "Exact actionId from the submitted interactive input."
             },
             "state": {
               "type": "string",
+              "description": "Use completed for confirmed success and failed for known failure.",
               "enum": [
                 "completed",
                 "failed"
               ]
             },
-            "values": {}
+            "values": {
+              "description": "Structured result values for the block."
+            }
           },
           "required": [
             "actionId",
@@ -178,21 +209,25 @@
       },
       {
         "name": "rich_inline_progress",
-        "description": "Report progress for the exact actionId supplied in an interactive input. Progress is not completion. Use non-negative integer done and total, with done no larger than total; label describes the work already performed.",
+        "description": "Report intermediate progress for a submitted Rich action that is still in progress.",
         "parameters": {
           "type": "object",
           "properties": {
             "actionId": {
-              "type": "string"
+              "type": "string",
+              "description": "Exact actionId from the submitted interactive input."
             },
             "done": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Units completed, from zero through total."
             },
             "total": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Total units of work, a non-negative integer."
             },
             "label": {
-              "type": "string"
+              "type": "string",
+              "description": "Short description of work already performed."
             }
           },
           "required": [
@@ -205,17 +240,17 @@
       },
       {
         "name": "rich_inline_publish",
-        "description": "Author complete HTML/CSS/JavaScript for an interactive block inside chat. The plugin owns validation, isolated execution, rendering, and bounded error feedback; publication is not runtime success. Do not render with browser/shell tools or deliver screenshots/files unless explicitly requested. For visual tasks, your final reply contains only the exact returned rich-inline marker(s), with essential instructions inside the HTML; no explanatory prose unless requested. The isolated SDK is window.rich: onState(callback), getState(), getDraft(), setDraft(fields), submit(values,{actionId,fileGrants}), status(actionId), cancel(actionId), bindForm(form). onState fires after initialization and updates. Keep filters, tabs, and animation local. Never access host files, credentials, or network. For render feedback, repair the existing blockId and preserve stateSchemaVersion and confirmed values. Existing block updates need no additional marker. Use rich_inline_complete only after processing a submitted business interaction.",
+        "description": "Replace the HTML, CSS, and JavaScript of an existing Rich block, including repairs requested by Render feedback. Returns the block ID and revisions. For a new block, emit a rich-html fenced result.",
         "parameters": {
           "type": "object",
           "properties": {
             "blockId": {
               "type": "string",
-              "description": "Existing block owned by this session, omitted for a new block."
+              "description": "ID of the existing block in this session. Omission is supported for legacy tool callers creating a block."
             },
             "expectedRenderRevision": {
               "type": "integer",
-              "description": "Required when repairing Render feedback: use its renderRevision to refuse stale code replacement."
+              "description": "Required for Render feedback repairs. Copy the renderRevision from that feedback."
             },
             "html": {
               "type": "string"
@@ -231,9 +266,12 @@
               "description": "Useful plain-text content if scripting or rendering is unavailable."
             },
             "stateSchemaVersion": {
-              "type": "integer"
+              "type": "integer",
+              "description": "State schema version. Keep the existing version when repairing a block."
             },
-            "values": {}
+            "values": {
+              "description": "Replacement confirmed values. Omit to preserve the existing values."
+            }
           },
           "required": [
             "html",
@@ -246,22 +284,32 @@
       },
       {
         "name": "rich_inline_read",
-        "description": "Read a bounded immutable HTML/CSS/JS or values fragment using a sourceRef from prior Rich artifact context. References are scoped to your current Session, including inherited sources. Read only needed fields and ranges; this never mounts content or runs actions. Original full source remains in the audit log.",
+        "description": "Read one field of an immutable Rich block snapshot in this session. Returns a text fragment and nextOffset, or null at the end.",
         "parameters": {
           "type": "object",
           "properties": {
             "sourceRef": {
-              "type": "string"
+              "type": "string",
+              "description": "Exact reference from earlier Rich artifact context, including inherited references."
             },
             "field": {
               "type": "string",
-              "description": "Declared html, css, js, fallbackText or values (JSON) from this immutable authored or confirmed replacement snapshot."
+              "description": "Snapshot field to read. Values are returned as JSON text.",
+              "enum": [
+                "html",
+                "css",
+                "js",
+                "fallbackText",
+                "values"
+              ]
             },
             "offset": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Zero-based UTF-16 offset. Use the returned nextOffset to continue."
             },
             "length": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Positive number of UTF-16 code units to read, subject to the per-call limit."
             }
           },
           "required": [
@@ -274,22 +322,28 @@
       },
       {
         "name": "rich_inline_update",
-        "description": "Replace confirmed state and readable fallback of an existing interactive block without changing HTML/CSS/JavaScript or unsent inputs. Use window.rich.onState in the published page to render values. Supply the current render and data revisions from publication or interactive input; a stale revision is rejected. Progress in an ordinary task may use this tool without an actionId. Tool or task completion must still come from its actual outcome. No new marker is needed.",
+        "description": "Replace the confirmed values and fallback text of an existing Rich block. Keeps the code and unsent inputs. Returns the new data revision.",
         "parameters": {
           "type": "object",
           "properties": {
             "blockId": {
-              "type": "string"
+              "type": "string",
+              "description": "ID of the existing block in this session."
             },
             "expectedRenderRevision": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Current render revision from the block publication or interactive input."
             },
             "expectedDataRevision": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Current data revision. Use the new revision returned by a successful update for the next write."
             },
-            "values": {},
+            "values": {
+              "description": "Complete replacement values, including entries that should remain."
+            },
             "fallbackText": {
-              "type": "string"
+              "type": "string",
+              "description": "Readable text representing the new confirmed state."
             }
           },
           "required": [
@@ -305,21 +359,25 @@
     [
       {
         "name": "rich_inline_complete",
-        "description": "Settle the exact actionId supplied in an interactive user input after its requested work is complete. Completed means the work succeeded; failed means its failure is known. This does not promise exactly-once external effects. Return structured values for the block. Do not settle another session or infer completion from being idle.",
+        "description": "Settle a submitted Rich action once its outcome is known. Returns the settlement and structured values for the block.",
         "parameters": {
           "type": "object",
           "properties": {
             "actionId": {
-              "type": "string"
+              "type": "string",
+              "description": "Exact actionId from the submitted interactive input."
             },
             "state": {
               "type": "string",
+              "description": "Use completed for confirmed success and failed for known failure.",
               "enum": [
                 "completed",
                 "failed"
               ]
             },
-            "values": {}
+            "values": {
+              "description": "Structured result values for the block."
+            }
           },
           "required": [
             "actionId",
@@ -329,21 +387,25 @@
       },
       {
         "name": "rich_inline_progress",
-        "description": "Report progress for the exact actionId supplied in an interactive input. Progress is not completion. Use non-negative integer done and total, with done no larger than total; label describes the work already performed.",
+        "description": "Report intermediate progress for a submitted Rich action that is still in progress.",
         "parameters": {
           "type": "object",
           "properties": {
             "actionId": {
-              "type": "string"
+              "type": "string",
+              "description": "Exact actionId from the submitted interactive input."
             },
             "done": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Units completed, from zero through total."
             },
             "total": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Total units of work, a non-negative integer."
             },
             "label": {
-              "type": "string"
+              "type": "string",
+              "description": "Short description of work already performed."
             }
           },
           "required": [
@@ -356,17 +418,17 @@
       },
       {
         "name": "rich_inline_publish",
-        "description": "Author complete HTML/CSS/JavaScript for an interactive block inside chat. The plugin owns validation, isolated execution, rendering, and bounded error feedback; publication is not runtime success. Do not render with browser/shell tools or deliver screenshots/files unless explicitly requested. For visual tasks, your final reply contains only the exact returned rich-inline marker(s), with essential instructions inside the HTML; no explanatory prose unless requested. The isolated SDK is window.rich: onState(callback), getState(), getDraft(), setDraft(fields), submit(values,{actionId,fileGrants}), status(actionId), cancel(actionId), bindForm(form). onState fires after initialization and updates. Keep filters, tabs, and animation local. Never access host files, credentials, or network. For render feedback, repair the existing blockId and preserve stateSchemaVersion and confirmed values. Existing block updates need no additional marker. Use rich_inline_complete only after processing a submitted business interaction.",
+        "description": "Replace the HTML, CSS, and JavaScript of an existing Rich block, including repairs requested by Render feedback. Returns the block ID and revisions. For a new block, emit a rich-html fenced result.",
         "parameters": {
           "type": "object",
           "properties": {
             "blockId": {
               "type": "string",
-              "description": "Existing block owned by this session, omitted for a new block."
+              "description": "ID of the existing block in this session. Omission is supported for legacy tool callers creating a block."
             },
             "expectedRenderRevision": {
               "type": "integer",
-              "description": "Required when repairing Render feedback: use its renderRevision to refuse stale code replacement."
+              "description": "Required for Render feedback repairs. Copy the renderRevision from that feedback."
             },
             "html": {
               "type": "string"
@@ -382,9 +444,12 @@
               "description": "Useful plain-text content if scripting or rendering is unavailable."
             },
             "stateSchemaVersion": {
-              "type": "integer"
+              "type": "integer",
+              "description": "State schema version. Keep the existing version when repairing a block."
             },
-            "values": {}
+            "values": {
+              "description": "Replacement confirmed values. Omit to preserve the existing values."
+            }
           },
           "required": [
             "html",
@@ -397,22 +462,32 @@
       },
       {
         "name": "rich_inline_read",
-        "description": "Read a bounded immutable HTML/CSS/JS or values fragment using a sourceRef from prior Rich artifact context. References are scoped to your current Session, including inherited sources. Read only needed fields and ranges; this never mounts content or runs actions. Original full source remains in the audit log.",
+        "description": "Read one field of an immutable Rich block snapshot in this session. Returns a text fragment and nextOffset, or null at the end.",
         "parameters": {
           "type": "object",
           "properties": {
             "sourceRef": {
-              "type": "string"
+              "type": "string",
+              "description": "Exact reference from earlier Rich artifact context, including inherited references."
             },
             "field": {
               "type": "string",
-              "description": "Declared html, css, js, fallbackText or values (JSON) from this immutable authored or confirmed replacement snapshot."
+              "description": "Snapshot field to read. Values are returned as JSON text.",
+              "enum": [
+                "html",
+                "css",
+                "js",
+                "fallbackText",
+                "values"
+              ]
             },
             "offset": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Zero-based UTF-16 offset. Use the returned nextOffset to continue."
             },
             "length": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Positive number of UTF-16 code units to read, subject to the per-call limit."
             }
           },
           "required": [
@@ -425,22 +500,28 @@
       },
       {
         "name": "rich_inline_update",
-        "description": "Replace confirmed state and readable fallback of an existing interactive block without changing HTML/CSS/JavaScript or unsent inputs. Use window.rich.onState in the published page to render values. Supply the current render and data revisions from publication or interactive input; a stale revision is rejected. Progress in an ordinary task may use this tool without an actionId. Tool or task completion must still come from its actual outcome. No new marker is needed.",
+        "description": "Replace the confirmed values and fallback text of an existing Rich block. Keeps the code and unsent inputs. Returns the new data revision.",
         "parameters": {
           "type": "object",
           "properties": {
             "blockId": {
-              "type": "string"
+              "type": "string",
+              "description": "ID of the existing block in this session."
             },
             "expectedRenderRevision": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Current render revision from the block publication or interactive input."
             },
             "expectedDataRevision": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Current data revision. Use the new revision returned by a successful update for the next write."
             },
-            "values": {},
+            "values": {
+              "description": "Complete replacement values, including entries that should remain."
+            },
             "fallbackText": {
-              "type": "string"
+              "type": "string",
+              "description": "Readable text representing the new confirmed state."
             }
           },
           "required": [

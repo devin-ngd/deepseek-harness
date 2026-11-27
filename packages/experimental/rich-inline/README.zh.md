@@ -69,7 +69,7 @@ projectDefaults:
 
 实时回合准备结束时，插件检查完整发布、唯一块名和块外文字。实质性纯文本回答（至少 160 字符）或非法 `rich-html` 会收到至多一次已记录的格式修正请求（`maxFormatRepairAttempts`，0–2，默认 1）。修正只使用已有结果。修正步骤不接收模型工具，包括 PTC 的程序执行入口。修正期间，执行保护也会拒绝步骤外的工具调用。简短交流、明确要求文字或源码、已有内容块更新均免除修正。查看历史、挂载及刷新不会触发修正。模型仍拒绝格式时保留原回答及兼容提示，不能视为 HTML 验收通过。
 
-新结果使用 `rich-html` 围栏 JSON，字段为 `key`、`html`、`css`、`js`、`fallbackText`、`stateSchemaVersion` 及可选的 `values`。key 在同一消息中唯一。插件负责渲染，Agent 不运行浏览器或交付截图。只有完整且未中断的助手消息才能提交；Host 重新读取该持久化消息，才创建状态并启用脚本。原有 `rich_inline_publish` 工具和标记继续用于更新及修复；同一 `blockId` 更新原消息。
+新结果使用 `rich-html` 围栏 JSON，字段为 `key`、`html`、`css`、`js`、`fallbackText`、`stateSchemaVersion` 及可选的 `values`。同一消息中的 key 必须唯一。只有完整且未中断的助手消息才能提交新块。Host 重新读取持久化消息后才创建状态并启用脚本。替换或修复代码时，用 `rich_inline_publish` 传入已有的 `blockId`。替换已确认数据时，用 `rich_inline_update`。旧调用方仍可省略 `blockId` 调用 `rich_inline_publish` 创建块并取得返回标记。
 
 流式预览在独立的只读原生容器中解码 HTML/CSS，不安装生成的 JS 或业务 SDK。更新最多每 34 ms 合并一次。已完成的同级片段保留 DOM；未完成尾部最多解析 32 KiB，因此较大的未闭合章节可能到最终提交时才完整显示。取消或 JSON 无效时保留源码，不发布内容块。可信控件可以终止预览。最终提交释放预览，再挂载完整校验后的文档。条件轮询覆盖草稿、动作、附件、修复和待应用代码；状态不变时不传输 manifest。渲染器没有固定组件目录。
 
@@ -239,7 +239,7 @@ pnpm exec vitest run --config vitest.web.config.ts apps/web/tests/rich-inline.e2
 
 #### 模型所见
 
-启用的插件项注册全局创作提示词及发布、完成和进度 schema。提交 JSON 进入标记 `inputTrust: "untrusted-rich-ui"` 的用户消息；界面提供数据，不提供授权。渲染诊断标记 `inputTrust: "untrusted-render-diagnostic"`，与业务动作分开。发布返回短标记，不代表运行成功；HTML 和脚本留在普通工具参数和历史中。
+启用的插件项注册全局创作提示词及发布、完成和进度 schema。提交 JSON 进入标记 `inputTrust: "untrusted-rich-ui"` 的用户消息；界面提供数据，不提供授权。渲染诊断标记 `inputTrust: "untrusted-render-diagnostic"`，与业务动作分开。新块的 HTML、CSS 和 JavaScript 记录在助手消息里。调用 `rich_inline_publish` 时，代码记录在工具参数里，存储成功后返回内容块标记。插件在发布后检查渲染结果。
 
 #### Token 影响
 
